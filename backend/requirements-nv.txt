@@ -1,0 +1,7 @@
+# Optional runtime for the unmodified NVIDIA Hugging Face pipeline.
+# Install the PyTorch build appropriate for your CUDA driver when running outside Docker.
+torch==2.6.0
+monai==1.5.1
+transformers==4.51.3
+einops==0.8.1
+safetensors>=0.4.3,<1

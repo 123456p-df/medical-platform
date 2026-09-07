@@ -1,0 +1,11 @@
+.git
+.cache
+.env
+**/.git
+**/node_modules
+**/.venv
+**/.env
+**/.env.local
+**/dist
+**/__pycache__
+**/*.tsbuildinfo

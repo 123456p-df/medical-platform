@@ -1,0 +1,44 @@
+[project]
+name = "vmrb-backend"
+version = "0.1.0"
+description = "Medical records, imaging, segmentation and medical AI API"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+  "sqlalchemy>=2.0.36,<3",
+  "psycopg[binary]>=3.2,<4",
+  "alembic>=1.14,<2",
+  "pydantic-settings>=2.7,<3",
+  "PyJWT>=2.10,<3",
+  "argon2-cffi>=23.1,<26",
+  "cryptography>=44,<49",
+  "python-multipart>=0.0.20,<1",
+  "httpx>=0.28,<1",
+  "numpy>=2.2,<3",
+  "nibabel>=5.3,<6",
+  "scikit-image>=0.25,<1",
+  "trimesh>=4.6,<5",
+  "Pillow>=11,<13",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3,<10", "pytest-cov>=6,<8", "ruff>=0.11,<1"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008"]

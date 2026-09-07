@@ -1,0 +1,19 @@
+# docker compose -f compose.yaml -f compose.gpu.yaml up --build -d
+services:
+  backend:
+    build:
+      target: gpu
+    environment:
+      NV_SEGMENT_CT_DIR: /models/nv-segment-ct
+      NV_SEGMENT_DEVICE: cuda:0
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - ${NV_SEGMENT_CT_HOST_DIR:?Set the local NVIDIA model directory}:/models/nv-segment-ct:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
