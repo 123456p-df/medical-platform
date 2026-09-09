@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkflowQueue from '@/components/medical/WorkflowQueue.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   Activity,
@@ -112,7 +113,7 @@ onMounted(() => {
       <StatsCard label="Today's Uploads" :value="todaysExams" note="Patients with new images" :icon="CalendarDays" tone="blue" />
     </section>
 
-    <section class="dashboard-grid">
+    <WorkflowQueue /><section class="dashboard-grid">
       <div class="patient-section">
         <div class="card">
           <div class="card-header">

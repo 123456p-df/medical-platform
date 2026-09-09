@@ -10,6 +10,8 @@ ORGANS = {
     "stomach": "胃",
     "pancreas": "胰腺",
     "spleen": "脾脏",
+    "eye": "眼睛",
+    "other": "其他",
 }
 
 

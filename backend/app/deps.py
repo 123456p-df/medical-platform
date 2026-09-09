@@ -60,7 +60,7 @@ def check_patient_access(db: Session, user: User, patient_id: int, *, write=Fals
     if write:
         require_doctor(db, user)
     patient = db.get(Patient, patient_id)
-    if patient is None:
+    if patient is None or patient.deleted_at is not None:
         raise APIError(404, 40401, "Patient not found")
     if user.role == "patient" and patient.user_id == user.id and not write:
         return patient

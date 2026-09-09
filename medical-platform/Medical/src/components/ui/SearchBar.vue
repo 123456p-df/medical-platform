@@ -26,10 +26,10 @@ function update(value: string) {
     <input
       :value="props.modelValue"
       type="search"
-      :placeholder="placeholder"
+      :placeholder="$t(placeholder)"
       @input="update(($event.target as HTMLInputElement).value)"
     />
-    <button v-if="props.modelValue" type="button" aria-label="Clear search" @click="update('')">
+    <button v-if="props.modelValue" type="button" :aria-label="$t('Clear search')" @click="update('')">
       <X :size="14" />
     </button>
   </label>

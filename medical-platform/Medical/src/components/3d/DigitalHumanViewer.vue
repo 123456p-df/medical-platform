@@ -1,305 +1,88 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RotateCcw, Rotate3D, Layers } from 'lucide-vue-next'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { modelApi } from '@/api/models'
-import type { OrganModel } from '@/types'
-
-const props = withDefaults(
-  defineProps<{
-    selectedOrganId?: string | null
-    compact?: boolean
-  }>(),
-  {
-    selectedOrganId: null,
-    compact: false,
-  },
-)
-
-const emit = defineEmits<{
-  select: [organId: string]
-}>()
-
-const hostRef = ref<HTMLDivElement | null>(null)
-let renderer: THREE.WebGLRenderer | null = null
-let scene: THREE.Scene | null = null
-let camera: THREE.PerspectiveCamera | null = null
-let controls: OrbitControls | null = null
-let animationFrame = 0
-let organMeshes: THREE.Mesh[] = []
-let organMap = new Map<string, THREE.Mesh>()
-let labels: THREE.Sprite[] = []
-let bodyGroup: THREE.Group | null = null
-let resizeObserver: ResizeObserver | null = null
-
-const organPositions: Record<string, [number, number, number]> = {
-  lung: [0, 0.55, 0.22],
-  brain: [0, 1.18, 0],
-  heart: [-0.14, 0.46, 0.2],
-  liver: [0.16, 0.12, 0.22],
-  kidney: [-0.22, -0.08, 0.23],
-  stomach: [-0.2, 0.13, 0.28],
-  pancreas: [0, -0.1, 0.3],
-  spleen: [-0.32, 0.1, 0.1],
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { organNames } from '@/api/mappers'
+const props = withDefaults(defineProps<{selectedOrganId?: string | null; compact?: boolean}>(), {selectedOrganId: null, compact: false})
+const emit = defineEmits<{select: [organId: string]}>()
+const host = ref<HTMLDivElement>(), loading = ref(true), error = ref(''), rotating = ref(false), shell = ref(true)
+let renderer: THREE.WebGLRenderer | undefined, scene: THREE.Scene | undefined, camera: THREE.PerspectiveCamera | undefined
+let controls: OrbitControls | undefined, observer: ResizeObserver | undefined, frame = 0, disposed = false
+const organs: THREE.Mesh[] = [], shells: THREE.Mesh[] = []
+let down: {x: number; y: number} | null = null
+function disposeObject(object: THREE.Object3D) {
+  object.traverse(child => { if (child instanceof THREE.Mesh) { child.geometry.dispose(); const materials = Array.isArray(child.material) ? child.material : [child.material]; materials.forEach(m => m.dispose()) } })
 }
-
-function createLabel(text: string) {
-  const canvas = document.createElement('canvas')
-  canvas.width = 256
-  canvas.height = 80
-  const context = canvas.getContext('2d')
-  if (!context) return null
-  context.fillStyle = 'rgba(18, 37, 42, 0.86)'
-  context.beginPath()
-  context.roundRect(12, 12, 232, 56, 14)
-  context.fill()
-  context.fillStyle = '#ffffff'
-  context.font = '600 25px Inter, sans-serif'
-  context.textAlign = 'center'
-  context.textBaseline = 'middle'
-  context.fillText(text, 128, 42)
-
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.minFilter = THREE.LinearFilter
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    depthTest: false,
-    transparent: true,
-  })
-  const sprite = new THREE.Sprite(material)
-  sprite.scale.set(0.82, 0.26, 1)
-  return sprite
-}
-
-function createBody() {
-  const group = new THREE.Group()
-  const shellMaterial = new THREE.MeshStandardMaterial({
-    color: 0xe8f3f3,
-    roughness: 0.78,
-    metalness: 0.02,
-    transparent: true,
-    opacity: 0.34,
-  })
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 48, 24), shellMaterial)
-  head.position.set(0, 1.18, 0)
-  head.scale.set(0.82, 1.04, 0.9)
-  group.add(head)
-
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.44, 0.78, 8, 32), shellMaterial)
-  torso.position.set(0, 0.34, 0)
-  group.add(torso)
-
-  const shoulderMaterial = shellMaterial.clone()
-  const armGeometry = new THREE.CapsuleGeometry(0.13, 0.52, 4, 18)
-  const leftArm = new THREE.Mesh(armGeometry, shoulderMaterial)
-  leftArm.position.set(-0.65, 0.34, 0)
-  leftArm.rotation.z = 0.18
-  group.add(leftArm)
-  const rightArm = new THREE.Mesh(armGeometry, shoulderMaterial)
-  rightArm.position.set(0.65, 0.34, 0)
-  rightArm.rotation.z = -0.18
-  group.add(rightArm)
-
-  const legGeometry = new THREE.CapsuleGeometry(0.2, 0.6, 4, 20)
-  const leftLeg = new THREE.Mesh(legGeometry, shoulderMaterial)
-  leftLeg.position.set(-0.2, -0.76, 0)
-  group.add(leftLeg)
-  const rightLeg = new THREE.Mesh(legGeometry, shoulderMaterial)
-  rightLeg.position.set(0.2, -0.76, 0)
-  group.add(rightLeg)
-
-  return group
-}
-
-function createOrganMarkers(organs: OrganModel[]) {
-  if (!scene) return
-  organMeshes = []
-  organMap.clear()
-  labels = []
-
-  organs.forEach((organ) => {
-    const position = organPositions[organ.id] ?? [0, 0, 0]
-    const geometry = new THREE.SphereGeometry(0.18, 32, 20)
-    const material = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(organ.color),
-      roughness: 0.48,
-      metalness: 0.04,
-      emissive: new THREE.Color(organ.color),
-      emissiveIntensity: 0.08,
-    })
-    const mesh = new THREE.Mesh(geometry, material)
-    mesh.position.set(...position)
-    mesh.userData.organId = organ.id
-    scene?.add(mesh)
-    organMeshes.push(mesh)
-    organMap.set(organ.id, mesh)
-
-    const label = createLabel(organ.label)
-    if (label) {
-      label.position.set(position[0], position[1] + 0.42, position[2])
-      scene?.add(label)
-      labels.push(label)
-    }
-  })
-}
-
-function setSelectedOrgan(id: string | null) {
-  organMap.forEach((mesh, organId) => {
-    const material = mesh.material as THREE.MeshStandardMaterial
-    material.emissiveIntensity = organId === id ? 0.5 : 0.08
-    material.opacity = organId === id ? 1 : 0.82
-  })
-}
-
-function updateSceneSize() {
-  if (!hostRef.value || !renderer || !camera) return
-  const width = hostRef.value.clientWidth
-  const height = hostRef.value.clientHeight
-  renderer.setSize(width, height)
-  camera.aspect = width / Math.max(1, height)
-  camera.updateProjectionMatrix()
-}
-
-function getPointer(event: PointerEvent) {
-  if (!hostRef.value) return null
-  const rect = hostRef.value.getBoundingClientRect()
-  return new THREE.Vector2(
-    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1,
-  )
-}
-
-function onPointerDown(event: PointerEvent) {
-  if (!camera || !scene) return
-  const point = getPointer(event)
-  if (!point) return
-  const raycaster = new THREE.Raycaster()
-  raycaster.setFromCamera(point, camera)
-  const intersections = raycaster.intersectObjects(organMeshes, false)
-  if (intersections[0]) {
-    const organId = intersections[0].object.userData.organId as string
-    emit('select', organId)
+function updateSelection() {
+  for (const mesh of organs) {
+    const material = mesh.material as THREE.MeshStandardMaterial, selected = mesh.userData.organId === props.selectedOrganId
+    material.emissive.set(selected ? 0x483425 : 0x000000)
+    material.emissiveIntensity = selected ? .25 : 0
+    material.opacity = !props.selectedOrganId || props.selectedOrganId === 'other' || selected ? 1 : .82
+    material.transparent = material.opacity < 1
+    material.depthWrite = !material.transparent
   }
 }
-
-function animate() {
-  animationFrame = requestAnimationFrame(animate)
-  if (controls) controls.update()
-  if (bodyGroup) bodyGroup.rotation.y += 0.0025
-  if (renderer && scene && camera) renderer.render(scene, camera)
+function reset() { camera?.position.set(0,.30,4.65); controls?.target.set(0,.27,0); controls?.update() }
+function pointerDown(e: PointerEvent) { down = {x: e.clientX, y: e.clientY} }
+function pointerUp(e: PointerEvent) {
+  if (!down || Math.hypot(e.clientX-down.x,e.clientY-down.y)>5 || !camera || !renderer) return
+  down = null
+  const r=renderer.domElement.getBoundingClientRect(), ray=new THREE.Raycaster()
+  ray.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1, -(e.clientY-r.top)/r.height*2+1),camera)
+  const hit=ray.intersectObjects(organs,false)[0]
+  if(hit) emit('select',hit.object.userData.organId)
 }
-
-async function init() {
-  if (!hostRef.value) return
-  const width = hostRef.value.clientWidth
-  const height = hostRef.value.clientHeight
-
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-  renderer.setSize(width, height)
-  renderer.outputColorSpace = THREE.SRGBColorSpace
-  renderer.toneMapping = THREE.ACESFilmicToneMapping
-  hostRef.value.appendChild(renderer.domElement)
-
-  scene = new THREE.Scene()
-  scene.background = new THREE.Color(0xf6fbfb)
-  camera = new THREE.PerspectiveCamera(42, width / Math.max(1, height), 0.1, 100)
-  camera.position.set(0, 0.2, 4.4)
-
-  scene.add(new THREE.HemisphereLight(0xeef7f7, 0xb7cfd0, 2.2))
-  const keyLight = new THREE.DirectionalLight(0xffffff, 3)
-  keyLight.position.set(2, 3, 3)
-  scene.add(keyLight)
-  const rimLight = new THREE.DirectionalLight(0xbde2e3, 1.6)
-  rimLight.position.set(-2, 0.4, -2)
-  scene.add(rimLight)
-
-  bodyGroup = createBody()
-  scene.add(bodyGroup)
-
-  controls = new OrbitControls(camera, renderer.domElement)
-  controls.enableDamping = true
-  controls.enablePan = false
-  controls.minDistance = 2.6
-  controls.maxDistance = 7
-  controls.target.set(0, 0.05, 0)
-  controls.update()
-
-  const organs = await modelApi.getOrganModels()
-  createOrganMarkers(organs)
-  setSelectedOrgan(props.selectedOrganId)
-
-  renderer.domElement.addEventListener('pointerdown', onPointerDown)
-  resizeObserver = new ResizeObserver(() => {
-    updateSceneSize()
-  })
-  resizeObserver.observe(hostRef.value)
-  animate()
-}
-
-watch(
-  () => props.selectedOrganId,
-  (id) => setSelectedOrgan(id),
-)
-
-onMounted(init)
-
-onBeforeUnmount(() => {
-  cancelAnimationFrame(animationFrame)
-  resizeObserver?.disconnect()
-  renderer?.domElement.removeEventListener('pointerdown', onPointerDown)
-  labels.forEach((sprite) => {
-    sprite.material.map?.dispose()
-    sprite.material.dispose()
-  })
-  organMeshes.forEach((mesh) => mesh.geometry.dispose())
-  bodyGroup?.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      child.geometry.dispose()
-      if (Array.isArray(child.material)) {
-        child.material.forEach((material) => material.dispose())
-      } else {
-        child.material.dispose()
-      }
-    }
-  })
-  controls?.dispose()
-  renderer?.dispose()
-  renderer?.domElement.remove()
+function animate() { if(disposed)return; frame=requestAnimationFrame(animate); controls?.update(); if(scene&&camera) renderer?.render(scene,camera) }
+watch(() => props.selectedOrganId, updateSelection)
+watch(rotating, value => { if(controls) controls.autoRotate=value })
+watch(shell,value => shells.forEach(mesh => { mesh.visible=value }))
+onMounted(async () => {
+  try {
+    if(!host.value)return
+    renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2))
+    renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.95
+    renderer.domElement.setAttribute('aria-label','可旋转的三维人体器官导航')
+    host.value.appendChild(renderer.domElement)
+    scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(39,1,.05,30)
+    scene.add(new THREE.HemisphereLight(0xf4fbff,0x71938b,2.5))
+    const key=new THREE.DirectionalLight(0xffeee1,3.2);key.position.set(-2,3,4);scene.add(key)
+    const rim=new THREE.DirectionalLight(0xb9eee8,3);rim.position.set(2,1,-2);scene.add(rim)
+    const fill=new THREE.DirectionalLight(0xffffff,1.2);fill.position.set(0,-1,3);scene.add(fill)
+    const ring=new THREE.Mesh(new THREE.RingGeometry(.39,.40,80),new THREE.MeshBasicMaterial({color:0xadc8c2,transparent:true,opacity:.7,side:THREE.DoubleSide}));ring.rotation.x=-Math.PI/2;ring.position.y=-1.21;scene.add(ring)
+    const disc=new THREE.Mesh(new THREE.CircleGeometry(.39,80),new THREE.MeshBasicMaterial({color:0xcddcd6,transparent:true,opacity:.25,side:THREE.DoubleSide}));disc.rotation.x=-Math.PI/2;disc.position.y=-1.212;scene.add(disc)
+    controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.enablePan=false
+    controls.minDistance=2.3;controls.maxDistance=7;controls.autoRotateSpeed=.7;controls.minPolarAngle=.35;controls.maxPolarAngle=Math.PI-.35;reset()
+    const resize=()=> {if(!host.value||!renderer||!camera)return;const {clientWidth:w,clientHeight:h}=host.value;renderer.setSize(w,h);camera.aspect=w/Math.max(h,1);camera.updateProjectionMatrix()}
+    observer=new ResizeObserver(resize);observer.observe(host.value);resize()
+    renderer.domElement.addEventListener('pointerdown',pointerDown);renderer.domElement.addEventListener('pointerup',pointerUp)
+    animate()
+    const gltf=await new GLTFLoader().loadAsync('/models/anatomy-navigation.glb')
+    if(disposed){disposeObject(gltf.scene);return}
+    gltf.scene.traverse(child=> {
+      if(!(child instanceof THREE.Mesh))return
+      const name=child.name.replace(/_\d+$/,'')
+      if(name==='body_shell'||name==='spine') {
+        shells.push(child);const m=child.material as THREE.MeshStandardMaterial;m.transparent=true;m.opacity=name==='body_shell'?.30:.35;m.depthWrite=false;m.side=THREE.DoubleSide;child.renderOrder=2
+      } else if(name.startsWith('eye_') || organNames[name]) { child.userData.organId=name.startsWith('eye_') ? 'eye' : name;organs.push(child) }
+    })
+    scene.add(gltf.scene);updateSelection();loading.value=false
+  } catch(e) { if(!disposed){loading.value=false;error.value=e instanceof Error?e.message:'三维视图加载失败'} }
 })
+onBeforeUnmount(()=> {disposed=true;cancelAnimationFrame(frame);observer?.disconnect();controls?.dispose();renderer?.domElement.removeEventListener('pointerdown',pointerDown);renderer?.domElement.removeEventListener('pointerup',pointerUp);if(scene)disposeObject(scene);renderer?.dispose();renderer?.domElement.remove()})
 </script>
-
 <template>
-  <div :class="['digital-human', { compact }]" ref="hostRef">
-    <span class="scene-hint">Drag to rotate · Scroll to zoom</span>
+  <div class="anatomy-stage" :class="{compact}">
+    <div ref="host" class="anatomy-canvas" />
+    <div class="anatomy-caption"><span>ANATOMY ATLAS</span><strong>{{ selectedOrganId ? $t(organNames[selectedOrganId]) : '数字人体' }}</strong><small>器官导航示意模型</small></div>
+    <div class="anatomy-tools"><button :class="{active: shell}" aria-label="显示或隐藏人体外壳" :aria-pressed="shell" @click="shell=!shell"><Layers :size="16" /></button><button :class="{active: rotating}" aria-label="自动旋转人体" :aria-pressed="rotating" @click="rotating=!rotating"><Rotate3D :size="16" /></button><button aria-label="恢复人体正面视角" @click="reset"><RotateCcw :size="16" /></button></div>
+    <span class="side-label patient-right">R</span><span class="side-label patient-left">L</span>
+    <p v-if="loading || error" :role="error ? 'alert' : 'status'" class="anatomy-state">{{ error || '正在加载精细人体模型…' }}</p>
+    <div class="anatomy-hint">拖动旋转 · 滚轮缩放 · 点击器官</div>
   </div>
 </template>
-
 <style scoped>
-.digital-human {
-  position: relative;
-  min-height: 480px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: #f6fbfb;
-}
-
-.digital-human.compact {
-  min-height: 320px;
-}
-
-.scene-hint {
-  position: absolute;
-  z-index: 2;
-  right: 12px;
-  bottom: 10px;
-  padding: 4px 8px;
-  border-radius: 5px;
-  background: rgb(24 47 51 / 68%);
-  color: #ffffff;
-  font-size: 10px;
-  pointer-events: none;
-}
+.anatomy-stage{height:570px;position:relative;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#fff 0,#f0f5ef 55%,#e4ede9 100%);border-bottom:1px solid var(--border)}.anatomy-stage.compact{height:530px}.anatomy-canvas{position:absolute;inset:0}.anatomy-caption{position:absolute;top:18px;left:19px;display:grid;gap:6px;pointer-events:none}.anatomy-caption span{font-size:8px;letter-spacing:.18em;color:#71958c}.anatomy-caption strong{font-size:18px;color:#294e45}.anatomy-caption small{font-size:10px;color:#80998e}.anatomy-tools{position:absolute;right:12px;top:17px;display:grid;gap:6px}.anatomy-tools button{display:grid;place-items:center;background:#ffffffa6;border:1px solid #d5e1da;color:#76908a;border-radius:7px;padding:8px}.anatomy-tools button.active{color:#367365;background:#e5f0e8}.anatomy-hint{position:absolute;bottom:13px;left:0;right:0;text-align:center;color:#78938b;font-size:10px;pointer-events:none}.side-label{position:absolute;top:44%;font-size:11px;color:#89a299;pointer-events:none}.patient-right{left:20px}.patient-left{right:20px}.anatomy-state{position:absolute;top:45%;left:20px;right:20px;text-align:center;font-size:12px;background:#eef6efdf;padding:12px;color:#426b5e}
 </style>

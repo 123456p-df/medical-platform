@@ -1,7 +1,11 @@
 import gzip
 import io
 import math
+import os
+import tempfile
+from collections import OrderedDict
 from pathlib import Path
+from threading import RLock
 
 import nibabel as nib
 import numpy as np
@@ -11,6 +15,83 @@ from skimage.measure import marching_cubes
 
 from app.config import Settings
 from app.errors import APIError
+
+# The source is retained for inference. A local uncompressed, canonical float32 sidecar is
+# prepared on upload and memory-mapped for slicing, including after process restarts.
+# The OS only pages in the portions being read; viewports never decompress the source again.
+_volume_cache = OrderedDict()
+_volume_lock = RLock()
+_cache_limit = 256 * 1024 * 1024
+
+
+def slice_cache_path(path: Path):
+    return path.with_name(path.name + ".slices.npy")
+
+
+def release_volume_cache(root: Path):
+    with _volume_lock:
+        for key in list(_volume_cache):
+            if Path(key[0]).is_relative_to(root.resolve()):
+                del _volume_cache[key]
+
+
+def prepare_slice_cache(path: Path, volume, data):
+    canonical = nib.as_closest_canonical(nib.Nifti1Image(data, volume.affine))
+    target = slice_cache_path(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=".slice-", suffix=".tmp", delete=False
+        ) as output:
+            temporary = Path(output.name)
+            np.save(output, np.asarray(canonical.dataobj, dtype=np.float32), allow_pickle=False)
+        os.replace(temporary, target)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+    return canonical
+
+
+def canonical_voxels(path: Path, settings: Settings):
+    stat = path.stat()
+    key = (
+        str(path.resolve()),
+        stat.st_mtime_ns,
+        stat.st_size,
+        settings.max_uncompressed_bytes,
+        settings.max_volume_voxels,
+    )
+    with _volume_lock:
+        if key in _volume_cache:
+            _volume_cache.move_to_end(key)
+            return _volume_cache[key]
+        target = slice_cache_path(path)
+        voxels = None
+        if target.is_file() and target.stat().st_mtime_ns >= stat.st_mtime_ns:
+            try:
+                voxels = np.load(target, mmap_mode="r", allow_pickle=False)
+                if (
+                    voxels.dtype != np.float32
+                    or voxels.ndim != 3
+                    or min(voxels.shape) < 2
+                    or voxels.size > settings.max_volume_voxels
+                    or voxels.nbytes > settings.max_uncompressed_bytes
+                ):
+                    voxels = None
+            except (OSError, ValueError, EOFError):
+                voxels = None
+        if voxels is None:
+            volume, data = load_volume(path, settings)
+            prepare_slice_cache(path, volume, data)
+            voxels = np.load(target, mmap_mode="r", allow_pickle=False)
+        if voxels.nbytes <= _cache_limit:
+            while (
+                _volume_cache
+                and sum(v.nbytes for v in _volume_cache.values()) + voxels.nbytes > _cache_limit
+            ):
+                _volume_cache.popitem(last=False)
+            _volume_cache[key] = voxels
+        return voxels
 
 
 def load_volume(path: Path, settings: Settings):
@@ -33,7 +114,7 @@ def load_volume(path: Path, settings: Settings):
         if image.get_data_dtype().kind not in "iuf":
             raise ValueError("Expected real scalar voxels")
         if (
-            math.prod(image.shape) * image.get_data_dtype().itemsize
+            math.prod(image.shape) * max(4, image.get_data_dtype().itemsize)
             > settings.max_uncompressed_bytes
         ):
             raise APIError(413, 41302, "Decoded image exceeds limit")
@@ -52,13 +133,19 @@ def load_volume(path: Path, settings: Settings):
         raise APIError(400, 40002, "Invalid or unsupported 3D NIfTI image") from None
 
 
-def slice_png(path: Path, index: int, settings: Settings, window_center=None, window_width=None):
-    volume, data = load_volume(path, settings)
-    # Canonical RAS axes: slice index always follows inferior -> superior.
-    canonical = nib.as_closest_canonical(nib.Nifti1Image(data, volume.affine))
-    if index < 0 or index >= canonical.shape[2]:
+def slice_png(
+    path: Path, index: int, settings: Settings, window_center=None, window_width=None, axis="axial"
+):
+    # Authorization is checked by the route on every request, including cache hits.
+    canonical = canonical_voxels(path, settings)
+    axes = {"axial": 2, "coronal": 1, "sagittal": 0}
+    if axis not in axes:
+        raise APIError(400, 40003, "Invalid slice axis")
+    if index < 0 or index >= canonical.shape[axes[axis]]:
         raise APIError(404, 40405, "Slice index out of range")
-    plane = np.asarray(canonical.dataobj[:, :, index], dtype=np.float32)
+    selector = [slice(None)] * 3
+    selector[axes[axis]] = index
+    plane = canonical[tuple(selector)]
     if (window_center is None) != (window_width is None):
         raise APIError(400, 40003, "window_center and window_width must be provided together")
     if window_width is not None:

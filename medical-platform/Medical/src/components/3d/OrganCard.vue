@@ -16,8 +16,8 @@ const emit = defineEmits<{
   <button :class="['organ-card', { active }]" type="button" @click="emit('select', organ)">
     <span class="organ-dot" :style="{ background: organ.color }" />
     <span class="organ-copy">
-      <strong>{{ organ.label }}</strong>
-      <small>{{ organ.description }}</small>
+      <strong>{{ $t(organ.label) }}</strong>
+      <small>{{ $t(organ.description) }}</small>
     </span>
     <ChevronRight :size="17" />
   </button>

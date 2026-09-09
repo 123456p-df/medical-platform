@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CheckCircle2, Clock3, FileText } from 'lucide-vue-next'
+import { organNames } from '@/api/mappers'
 import type { Report } from '@/types'
 
 defineProps<{
@@ -13,31 +14,33 @@ defineProps<{
     <div class="report-header">
       <span class="report-icon"><FileText :size="18" /></span>
       <div class="report-heading">
-        <strong>Medical Record</strong>
-        <span>{{ report.date }}</span>
+        <strong>{{ $t("Final Diagnosis") }}</strong>
+        <span>{{ $t(report.date) }}</span>
       </div>
       <span :class="['review-state', { reviewed: report.reviewed }]">
         <CheckCircle2 v-if="report.reviewed" :size="14" />
         <Clock3 v-else :size="14" />
-        {{ report.reviewed ? 'Doctor Record' : 'Pending Review' }}
+        {{ $t(report.reviewed ? 'Doctor Reviewed' : 'Pending Review') }}
       </span>
     </div>
-    <h4>{{ report.diagnosis }}</h4>
+    <div class="record-organ-tags"><span v-for="id in report.organIds || [report.organId || 'other']" :key="id">{{ $t(organNames[id]) }}</span></div><h4>{{ report.diagnosis }}</h4>
     <p>{{ report.description }}</p>
-    <template v-if="!patientFacing">
+    <div class="report-content">
       <div v-if="report.recommendation" class="report-section">
-        <span>Recommendation</span>
+        <span>{{ $t("Recommendation") }}</span>
         <p>{{ report.recommendation }}</p>
       </div>
       <div class="report-footer">
-        <span>Recorded by {{ report.doctor }}</span>
-        <span>{{ report.date }}</span>
+        <span>{{ $t(report.reviewed ? 'Signed by' : 'Prepared by') }} {{ report.doctor }}</span>
+        <span>{{ $t(report.date) }}</span>
       </div>
-    </template>
+    </div>
   </article>
 </template>
 
 <style scoped>
+.record-organ-tags{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.record-organ-tags span{font-size:10px;color:var(--accent);background:#e7f0ed;border-radius:4px;padding:4px 7px}
+
 .report-card {
   padding: 17px;
   border: 1px solid var(--border);

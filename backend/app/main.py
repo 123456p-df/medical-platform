@@ -12,8 +12,20 @@ from starlette.exceptions import HTTPException
 from app.config import Settings
 from app.db import make_engine, make_session_factory
 from app.errors import APIError, success
-from app.routers import ai, auth, catalog, images, organ_models, patients, records, segmentation
+from app.routers import (
+    ai,
+    auth,
+    catalog,
+    images,
+    organ_models,
+    patients,
+    profile,
+    records,
+    segmentation,
+    workflow,
+)
 from app.services.ai import AIProvider
+from app.services.imaging import release_volume_cache
 from app.services.segmentation import SegmentationRunner
 
 logger = logging.getLogger(__name__)
@@ -31,6 +43,8 @@ class BodyLimitMiddleware:
         total = 0
         rejected = False
         limit = self.max_bytes if scope["path"].endswith("/medical-images") else 1024 * 1024
+        if scope["path"] in {"/api/v1/auth/profile/files", "/api/v1/auth/profile/avatar"}:
+            limit = 11 * 1024 * 1024
 
         async def reject():
             nonlocal rejected
@@ -101,6 +115,7 @@ def create_app(
             yield
         finally:
             runner.close()
+            release_volume_cache(settings.storage_root)
             if lock_connection is not None:
                 lock_connection.execute(
                     text("SELECT pg_advisory_unlock(:key)"), {"key": SINGLE_INSTANCE_LOCK}
@@ -181,6 +196,8 @@ def create_app(
         )
 
     for router in [
+        profile.router,
+        workflow.router,
         auth.router,
         catalog.router,
         patients.router,

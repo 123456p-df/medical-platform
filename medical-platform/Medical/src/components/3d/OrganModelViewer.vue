@@ -51,8 +51,8 @@ onMounted(() => {
     host.value.appendChild(renderer.domElement)
     camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100); camera.position.set(0, 0.3, 5.5)
     controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.saveState()
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x79918f, 2.5))
-    const light = new THREE.DirectionalLight(0xffffff, 3); light.position.set(3, 4, 5); scene.add(light)
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x79918f, 1.6))
+    const light = new THREE.DirectionalLight(0xffffff, 2.1); light.position.set(3, 4, 5); scene.add(light)
     observer = new ResizeObserver(() => {
       if (!host.value || !renderer) return
       const width = host.value.clientWidth, height = host.value.clientHeight

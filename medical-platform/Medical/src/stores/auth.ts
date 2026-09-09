@@ -2,6 +2,8 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, SESSION_KEY } from '@/api/client'
 import { usePatientStore } from './patients'
+import { useProfileStore } from './profile'
+import { useWorkflowStore } from './workflow'
 import type { PortalRole, UserSession } from '@/types'
 function stored(): UserSession | null {
   try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') }
@@ -15,6 +17,8 @@ export const useAuthStore = defineStore('auth', () => {
     session.value = null
     sessionStorage.removeItem(SESSION_KEY)
     usePatientStore().reset()
+    useProfileStore().reset()
+    useWorkflowStore().reset()
   }
   async function login(username: string, password: string) {
     logout()

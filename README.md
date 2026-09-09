@@ -2,7 +2,9 @@
 
 病历数据中心 + 医学影像分割服务 + 器官病历接口 + 医疗 AI 问答。
 
-已整合 `medical-platform/Medical` 的 Vue3、TypeScript、Pinia、Vite 前端，保留 PulmoLink 界面并接入真实后端。后端使用 Python、FastAPI、Uvicorn、SQLAlchemy、Alembic 和 PostgreSQL；部署提供 Docker Compose 和 nginx。分割模型保持独立、不作改动。22 个业务接口统一使用 `/api/v1`、JWT Bearer 和 `{code, message, data}`。图片和 GLB 文件返回二进制。
+已整合 `medical-platform/Medical` 的 Vue3、TypeScript、Pinia、Vite 前端，保留 PulmoLink 界面并接入真实后端。后端使用 Python、FastAPI、Uvicorn、SQLAlchemy、Alembic 和 PostgreSQL；部署提供 Docker Compose 和 nginx。分割模型保持独立、不作改动。35 个业务接口统一使用 `/api/v1`、JWT Bearer 和 `{code, message, data}`。图片、体积、附件和 GLB 文件返回二进制。
+
+Mac 版本已按功能合并到上述前端目录。患者录入/删除、个人资料与上传、影像确认待办、悬浮 AI 助手、三方向切片、眼睛/其他分类与多器官病历已接入后端。合并范围、测试结果和公开样本来源见 [合并与验证记录](docs/merge-and-validation.md)。
 
 ## 查看前后端效果（Windows）
 
@@ -21,11 +23,11 @@
 | 医生 | `demo_doctor` | `DemoDoctor123!` |
 | 患者 | `demo_patient` | `DemoPatient123!` |
 
-预览使用独立 PostgreSQL 数据库 `vmrb_preview`（本机端口 55440），文件、数据库和日志均在忽略提交的 `.cache/preview/`；不会覆盖 `backend/.env`。三个演示患者、病历、NIfTI 影像和默认器官 GLB 均为合成样例，GLB 只是几何示意。演示账号只由受限的 `app.demo` 脚本建立，正式 Docker 启动不创建这些账号。前端快捷登录按钮只在 `VITE_PREVIEW=true` 时显示。
+预览使用独立 PostgreSQL 数据库 `vmrb_preview`（本机端口 55440），文件、数据库和日志均在忽略提交的 `.cache/preview/`；不会覆盖 `backend/.env`。原有三个演示患者、病历和 NIfTI 均为合成样例；另有明确命名的 Slicer 公开 CT/MRI 测试档案，可用下文脚本导入。默认 GLB 是项目自建的器官示意。演示账号只由受限的 `app.demo` 脚本建立，正式 Docker 启动不创建这些账号。前端快捷登录按钮只在 `VITE_PREVIEW=true` 时显示。
 
 医生可查看授权患者、用姓名和身份证核验查询、增改/软删除病历、上传 CT/MRI NIfTI、查看切片、发起分割和读取任务进度。患者可查看自己的病历、影像、器官模型并发起辅助问答。病历与影像分别读取，器官页显示真实分割模型或默认模型来源。原有 mock 数据文件保留在前端源码中，但运行页面不再读取它们。
 
-AI 服务和真实模型需要按下文配置。未配置时接口返回明确的 503 提示，不生成模拟 AI 回答或分割结果。当前预览可直接使用合成影像查看切片、默认 GLB 和数据库读写效果。
+AI 服务和真实模型需要按下文配置。未配置时接口返回明确的 503 提示，不生成模拟 AI 回答或分割结果。悬浮助手可展开、选择器官、填写问题、打开影像或病历；连接配置完成后使用同一问答接口。
 
 首次在其他机器安装：先按后端说明执行 `uv sync --locked` 和 `init-config`，再在 `medical-platform/Medical` 执行 `pnpm install --frozen-lockfile`。Windows 预览脚本默认使用 PostgreSQL 18 的标准安装位置。手动启动前端可运行 `pnpm dev --host 127.0.0.1 --port 4173`；Vite 将 `/api` 代理到本机 8000 端口，支持用 `VMRB_BACKEND_URL` 覆盖。生产构建命令为 `pnpm build`。
 
@@ -66,7 +68,9 @@ docker compose up --build -d
 
 ## 录入患者和授予医生访问权
 
-业务 API 不允许用户自报身份证后认领已有病历，也不允许医生自行获得患者授权。第一版通过可信操作员 CLI 补齐这两个必要入口，之后可接入院内身份核验/授权流程。
+医生可从患者列表的“录入患者”建立新档案，创建者自动获得该新档案的访问权。身份证重复时不会认领或暴露已有档案。删除按钮将患者归档，随后从列表、待办和所有患者数据接口中隐藏，保留病历、影像和审计。误删可由可信操作员执行 `uv run python -m app.cli restore-patient --patient-id 1` 恢复。
+
+已有患者账号的身份补全，以及其他医生对已有档案的授权，继续通过可信操作员 CLI 完成：
 
 先通过注册 API 建立医生 `doctor_a` 和患者 `patient_a`，再在 `backend` 目录执行：
 
@@ -81,15 +85,24 @@ Docker 中使用 `docker compose exec backend python -m app.cli ...`。身份证
 
 医生仅能查阅、创建、修改已授权患者的数据；患者仅能查看自己的数据和发起辅助问答。病历创建、修改、软删除、患者核验、授权变更、影像上传、分割和 AI 调用会写入 `audit_events`。病历修改和删除保留前后快照；此表仅供可信操作员访问，没有公开的审计读取接口。
 
-## 22 个业务 API
+## 35 个业务 API
 
 | 方法 | 路径（均有 `/api/v1` 前缀） | 功能 |
 | --- | --- | --- |
 | POST | `/auth/register` | 注册，201 |
 | POST | `/auth/login` | 登录 |
 | GET | `/auth/me` | 当前用户 |
+| GET | `/auth/profile` | 本人资料和附件列表 |
+| PATCH | `/auth/profile` | 保存个人资料 |
+| POST | `/auth/profile/avatar` | 上传头像 |
+| DELETE | `/auth/profile/avatar` | 移除头像 |
+| POST | `/auth/profile/files` | 上传个人附件，201 |
+| GET | `/auth/profile/files/{file_id}` | 下载本人附件 |
+| DELETE | `/auth/profile/files/{file_id}` | 删除本人附件 |
 | POST | `/doctor/patients/resolve` | 姓名 + 身份证查找已授权患者 |
 | GET | `/patients` | 分页列出授权患者；患者账号只返回本人 |
+| POST | `/patients` | 医生录入新患者，201 |
+| DELETE | `/patients/{patient_id}` | 归档患者 |
 | GET | `/patients/{patient_id}/medical-images` | 分页列出患者影像 |
 | GET | `/patients/{patient_id}/medical-records` | 分页列出患者未删除病历 |
 | GET | `/patients/{patient_id}/overview` | 概览、器官病历/影像标记 |
@@ -101,11 +114,15 @@ Docker 中使用 `docker compose exec backend python -m app.cli ...`。身份证
 | DELETE | `/medical-records/{record_id}` | 软删除，200 + data:null |
 | POST | `/patients/{patient_id}/medical-images` | multipart 影像上传，201 |
 | GET | `/medical-images/{image_id}` | 影像元数据 |
+| GET | `/medical-images/{image_id}/volume` | 带权限的 canonical float32 NPY 体积，用于本地连续浏览 |
 | GET | `/medical-images/{image_id}/slice/{slice_index}` | PNG 切片 |
 | POST | `/medical-images/{image_id}/segmentation` | 创建分割任务，201 |
 | GET | `/segmentation/tasks/{task_id}` | 任务状态和模型 ID |
 | GET | `/organ-models/{model_id}` | GLB 元数据和受保护 URL |
 | GET | `/organ-models/{model_id}/file` | 下载 GLB |
+| GET | `/workflow` | 本人有权限的影像确认队列 |
+| PATCH | `/medical-images/{image_id}/review` | 确认/重新打开待办 |
+| GET | `/ai/status` | 问答服务是否已配置 |
 | POST | `/ai/chat` | 有引用的医疗辅助问答 |
 
 分页参数：`page >= 1`、`1 <= page_size <= 100`（默认 20）、`start_date`、`end_date`（包含边界）。日期采用 ISO `YYYY-MM-DD`，开始日期不能晚于结束日期。分页返回 `items/page/page_size/total`；器官详情的记录数组有 `records_total`，完整历史从分页接口获取。
@@ -122,7 +139,33 @@ Docker 中使用 `docker compose exec backend python -m app.cli ...`。身份证
 
 上传字段：`file`、`organ_id`、`image_type=CT|MRI`。首版支持 `.nii`、`.nii.gz` 三维标量 NIfTI，这与 NV-Segment-CT 的输入一致。DICOM 序列应先经可信工具转换为 NIfTI；当前接口明确拒绝 DICOM/ZIP、4D、无效/截断文件和超限体积。限制可通过 `.env` 调整，gzip 的解压体积也受限。原始文件名不入库，不作为磁盘路径。
 
-切片索引从 0 开始，按 canonical RAS 的轴向由下向上。元数据里的 `shape/spacing/slice_count` 对应这套切片坐标；模型接收保留原始空间信息的文件。可以同时传入 `window_center` 和正数 `window_width` 调整窗宽窗位；不传时使用当前切片 1%–99% 灰度范围。PNG 是查看预览，不带姓名等信息。每次切片请求均做权限校验，原始 NIfTI 路径不会暴露。
+切片索引从 0 开始，`axis=axial|coronal|sagittal`（默认 axial）。坐标采用 canonical RAS；元数据里的 `shape/spacing` 对应该坐标，`slice_count` 保留轴向层数以兼容旧客户端。页面同时显示三个方向，按实际体素间距保持比例。可同时传入 `window_center` 和正数 `window_width` 调整窗宽窗位；不传时使用当前切片 1%–99% 灰度范围。PNG 是查看预览，不带姓名等信息。
+
+影像保存后生成未压缩的 canonical float32 `.slices.npy`，随后通过只读内存映射按需取片，服务重启后仍可直接使用。已有影像在首次请求时补建缓存；损坏的缓存可重建。缓存额外占用约 `体素数 × 4` 字节磁盘空间。原始 NIfTI 保留空间信息，仍作为模型输入。每次切片请求均检查权限，文件路径不会暴露。
+
+浏览器首次进入影像页先显示 PNG 预览，同时通过 `/volume` 下载整卷缓存。显示“连续浏览已就绪”后，由 Web Worker 在本地计算切片，Canvas 绘制；方向键、滚轮、滑块和窗宽切换均不再逐张发起网络请求。方向键切一层，Page Up / Down 跳 10 层，Home / End 跳首尾。拖动只保留最新目标帧，旧画面在新帧完成前保持显示，无 100 ms 防抖或变暗闪烁。
+
+体积仅保留在当前页面内存，退出或切换检查时释放；每 30 秒复核访问权，收到拒绝后清空画面。单卷本地渲染上限 256 MiB（float32 体素数据），超限或加载失败时保留逐张预览并说明原因。首次下载耗时取决于文件大小与连接速度。
+
+公开 CT/MRI 测试数据先完整下载到本地，校验后解压转换，不按切片反复解压：
+
+```powershell
+backend/.venv/Scripts/python.exe scripts/real-imaging-samples.py
+backend/.venv/Scripts/python.exe scripts/verify-real-imaging.py
+# 预览已启动时，可导入两个明确标注的测试档案：
+$env:VMRB_DEMO_SEED = '1'
+backend/.venv/Scripts/python.exe scripts/seed-public-imaging-preview.py
+```
+
+样本和验证输出均位于 `.cache/real-imaging/`，不提交到 Git。来源及 SHA-256 见 [验证记录](docs/merge-and-validation.md)。
+
+## 个人资料、待办与器官分类
+
+点击顶栏头像打开本人 Profile，可保存姓名、职称、科室、联系方式和简介，上传头像及 PDF/图片附件。头像最多 5 MiB，附件最多 10 MiB、20 个；图片限定 JPEG/PNG/WebP 和 1600 万像素，重编码后保存。附件仅本人可下载或删除。
+
+影像确认按当前医生保存，工作台默认只显示待确认项；完成后收起，可从“已完成”重新打开。病历保存仍保留历史资料，待办收起不会删除影像。
+
+器官类别新增 `eye`（眼睛）和 `other`（其他）。未建模器官、全身性或暂未归类的问题可选择“其他”；“其他”没有占位器官模型。病历支持 `organ_ids` 多选关联，一份病历同步出现在所有所选器官的历史、概览标记和 AI 上下文中，总病历数不重复计算。保留 `organ_id` 为主关联以兼容旧接口；只传旧 `organ_id` 表示单器官，传列表时须非空、无重复且包含主关联。PATCH 只传 `organ_ids` 时以首项为主关联。
 
 ## NV-Segment-CT 接入
 
@@ -163,7 +206,9 @@ GLB 使用 marching cubes，保留原始 affine 和体素尺寸，将空间单�
 
 ## 默认器官模型
 
-没有真实分割结果时返回 `source:default` 和 `default_{organ_id}`。项目未附带解剖 GLB 资产，未安装时额外返回 `available:false`、模型元数据 `url:null`，下载接口返回 404，客户端据此显示资源未配置状态。
+没有真实分割结果时返回 `source:default` 和 `default_{organ_id}`。项目附带人体导航和九类器官示意 GLB（含眼睛），生成脚本为 `scripts/build-anatomy-model.py`，预览自动导入。脑包含左右半球、沟回和小脑；人体支持旋转、缩放、器官点击与外壳隐藏。这些是导航示意，未经解剖学验证，不代表患者的分割结果。
+
+正式环境需显式导入默认模型；未安装时返回 `available:false`、模型元数据 `url:null`，下载接口返回 404。眼睛和其他当前不支持分割，接口明确拒绝该请求。
 
 将已有的自包含解剖 GLB 导入：
 
@@ -198,11 +243,11 @@ uv run ruff format --check .
 uv run pytest -q
 ```
 
-默认用每个测试独立的 SQLite 文件验证业务。设置 `TEST_DATABASE_URL=postgresql+psycopg://...` 后，同一套测试改用 PostgreSQL，每个测试创建并删除专用随机 schema，不操作公共业务表；测试账户需要创建 schema 权限。不要将测试连接设置为生产环境。CI 配置还执行 PostgreSQL migration upgrade/check/downgrade/upgrade。
+默认用每个测试独立的 SQLite 文件验证业务。设置 `TEST_DATABASE_URL=postgresql+psycopg://...` 后，同一套测试改用 PostgreSQL，每个测试创建并删除专用随机 schema；测试账户需要创建 schema 权限。请使用独立测试数据库，运行中的预览数据库会因单进程锁拒绝另一应用实例。不要使用生产环境。CI 配置还执行 PostgreSQL migration upgrade/check/downgrade/upgrade。
 
 主要验证：JWT/角色/唯一用户名、身份证加密查询、跨患者与跨医生权限、授权撤销、病历日期分页和软删除审计、NIfTI 校验与切片、非阻塞任务与唯一约束、重启恢复、GLB 尺寸及文件权限、AI 上下文隔离、伪造引用和响应格式。
 
-本次后端 31 项自动化测试通过（包括新增集合接口权限测试），前端 TypeScript 检查和生产构建通过。此前使用 Python 3.12.14 和独立 PostgreSQL 18.4 实例验证了原有 28 项测试，以及 Alembic 升级、一致性检查、回退和重建。当前浏览器预览连接真实 PostgreSQL，验证登录、病历写入、切片读取和默认 GLB 展示。Ruff 检查通过；普通/GPU 两套 Compose 配置解析通过。当前 Docker daemon 未启动，尚未实际构建/启动容器。真实 GPU 权重推理和外部 AI 服务尚未联调。第三方库目前有弃用提示，不影响这些测试结果。
+后端原有 43 项测试在 SQLite 与独立 PostgreSQL 上通过；新增完整体积接口的权限、数据及归档检查后，SQLite 共 44 项通过。Alembic 已验证升级至 0003、一致性检查、回退和重建。前端 TypeScript 和生产构建通过；Mac DICOM 模态工具通过 8 项检查（`pnpm test:modalities`）。`pnpm test:volume --real` 验证两种体素存储顺序、传输完整性、任务合并与退出释放，并用公开 CT/MRI 确认 18 张本地切片与服务端 PNG 逐像素一致。浏览器已验证患者录入/删除、Profile 上传、确认、分类关联及连续切层。真实 GPU 权重推理和外部 AI 服务尚未联调；未验证 Docker 实际启动。第三方依赖有弃用提示，生产包有大小提示。
 
 ## 文件结构
 
@@ -214,14 +259,14 @@ backend/
     models.py              PostgreSQL 数据模型
     security.py / deps.py   JWT、密码、身份证、统一访问校验
     cli.py                 可信操作员的档案/授权/默认模型入口
-    routers/               22 个业务路由
+    routers/               35 个业务路由
     services/              文件、影像、任务和 AI 服务
     adapters/              原模型推理适配器
   migrations/              固定版本 Alembic 迁移
   tests/                   权限和业务集成测试
   .env.example             后端配置模板
 medical-platform/Medical/  Vue 前端、同源 API 客户端和真实影像/GLB 组件
-scripts/                   Windows 预览启动和停止脚本
+scripts/                   预览、示意模型生成、公开影像下载和验证脚本
 deploy/                    前端构建镜像与 nginx 配置
 compose.yaml / compose.gpu.yaml
 ```

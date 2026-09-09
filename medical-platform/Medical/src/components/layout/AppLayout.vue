@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
 import AppSidebar from './Sidebar.vue'
 import AppTopbar from './Topbar.vue'
+import AIAssistant from './AIAssistant.vue'
 
 const auth = useAuthStore()
 const patients = usePatientStore()
@@ -14,11 +15,12 @@ const preview = import.meta.env.VITE_PREVIEW === 'true'
 
 <template>
   <div :class="['app-shell', shellClass]">
+    <AIAssistant />
     <AppSidebar :open="sidebarOpen" @close="sidebarOpen = false" />
     <div class="app-main">
       <AppTopbar @open-sidebar="sidebarOpen = true" />
       <main class="app-content">
-        <div v-if="preview" class="preview-banner">本地联调演示 · 患者、病历与影像均为合成样例 · 不是临床检查结果</div>
+        <div v-if="preview" class="preview-banner">本地测试环境 · 包含合成演示档案与明确标注的公开 CT / MRI 测试样本</div>
         <div v-if="patients.error" class="data-error" role="alert">{{ patients.error }}</div>
         <RouterView />
       </main>

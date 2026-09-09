@@ -16,7 +16,7 @@ router = APIRouter(tags=["Portal collections"])
 def patients(
     db: DB, user: CurrentUser, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 ):
-    query = select(Patient)
+    query = select(Patient).where(Patient.deleted_at.is_(None))
     if user.role == "doctor":
         doctor = require_doctor(db, user)
         query = query.join(DoctorPatientAccess, DoctorPatientAccess.patient_id == Patient.id).where(

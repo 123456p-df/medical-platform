@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { locale } from '@/i18n'
 import { ScanLine } from 'lucide-vue-next'
 import type { Examination } from '@/types'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
@@ -12,7 +13,7 @@ const emit = defineEmits<{
 }>()
 
 function formatDate(date: string) {
-  return new Intl.DateTimeFormat('en', {
+  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
@@ -34,8 +35,8 @@ function formatDate(date: string) {
         <span v-if="index < examinations.length - 1" class="timeline-line" />
       </span>
       <span class="timeline-content">
-        <strong>{{ examination.type }} · {{ examination.organ }}</strong>
-        <span>{{ formatDate(examination.date) }}</span>
+        <strong>{{ $t(examination.type) }} · {{ $t(examination.organ) }}</strong>
+        <span>{{ $t(formatDate(examination.date)) }}</span>
         <StatusBadge :status="examination.status" />
       </span>
     </button>

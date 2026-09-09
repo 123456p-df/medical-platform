@@ -8,8 +8,8 @@ defineProps<{
 <template>
   <div class="page-header">
     <div>
-      <h1>{{ title }}</h1>
-      <p v-if="subtitle">{{ subtitle }}</p>
+      <h1>{{ $t(title) }}</h1>
+      <p v-if="subtitle">{{ $t(subtitle) }}</p>
     </div>
     <div class="actions">
       <slot name="actions" />

@@ -11,23 +11,26 @@ defineProps<{
   <article class="record-card">
     <div class="record-row">
       <CalendarDays :size="16" />
-      <span>Age</span>
-      <strong>{{ patient.age }} years · {{ patient.gender }}</strong>
+      <span>{{ $t("Age") }}</span>
+      <strong>{{ $t(patient.age) }} {{ $t("years ·") }} {{ $t(patient.gender) }}</strong>
     </div>
     <div class="record-row">
       <Droplets :size="16" />
-      <span>Blood type</span>
-      <strong>{{ patient.bloodType }}</strong>
+      <span>{{ $t("ABO blood type") }}</span>
+      <strong>{{ $t(patient.bloodType) }}</strong>
+    </div>
+    <div class="record-row">
+      <Droplets :size="16" /><span>{{ $t("Rh(D)") }}</span><strong>{{ $t(patient.rhType ?? 'Unknown') }}</strong>
     </div>
     <div class="record-row">
       <Phone :size="16" />
-      <span>Contact</span>
-      <strong>{{ patient.phone }}</strong>
+      <span>{{ $t("Contact") }}</span>
+      <strong>{{ $t(patient.phone) }}</strong>
     </div>
     <div class="record-row">
       <ShieldAlert :size="16" />
-      <span>Allergies</span>
-      <strong>{{ patient.allergies.length ? patient.allergies.join(', ') : 'None recorded' }}</strong>
+      <span>{{ $t("Allergies") }}</span>
+      <strong>{{ $t(patient.allergies.length ? patient.allergies.join(', ') : 'None recorded') }}</strong>
     </div>
   </article>
 </template>

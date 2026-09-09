@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
+import PatientDeleteButton from '@/components/patient/PatientDeleteButton.vue'
 import { ArrowLeft } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { usePatientStore } from '@/stores/patients'
@@ -49,13 +50,13 @@ watch(patientId, loadPatient)
             <RiskBadge :level="selectedPatient.risk" />
           </div>
           <p>
-            {{ selectedPatient.id }} · {{ selectedPatient.age }} years · {{ selectedPatient.gender }} ·
+            {{ selectedPatient.id }} · {{ selectedPatient.age === null ? '年龄未登记' : selectedPatient.age + ' 岁' }} · {{ $t(selectedPatient.gender) }} ·
             {{ selectedPatient.bloodType }}
           </p>
         </div>
       </div>
       <div class="patient-status">
-        <span class="status-label">Current status</span>
+        <PatientDeleteButton :id="patientId" :name="selectedPatient.name" /><span class="status-label">Current status</span>
         <StatusBadge :status="selectedPatient.status" />
         <span class="latest-label">Latest: {{ selectedPatient.modality }} {{ selectedPatient.organ }}</span>
       </div>

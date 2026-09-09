@@ -16,13 +16,13 @@ watch(() => [props.patientId,organ.value], async (_,__,onCleanup) => {
 <template>
   <div class="organ-workspace">
     <aside class="card">
-      <div class="card-header"><div><h3>Organ navigator</h3><p class="muted">Schematic body illustration</p></div></div>
+      <div class="card-header"><div><h3>器官导航</h3><p class="muted">选择器官以查看模型与病历</p></div></div>
       <DigitalHumanViewer :selected-organ-id="organ" compact @select="organ=$event" />
-      <div class="organ-buttons"><button v-for="item in organCatalog" :key="item.id" class="btn btn-secondary btn-sm" :class="{selected:organ===item.id}" @click="organ=item.id">{{ item.label }}</button></div>
+      <div class="organ-buttons"><button v-for="item in organCatalog" :key="item.id" class="btn btn-secondary btn-sm" :class="{selected:organ===item.id}" @click="organ=item.id">{{ $t(item.label) }}</button></div>
     </aside>
     <section class="stack">
       <div class="card"><div class="card-header"><h3>{{ detail?.name || organ }} · Organ model</h3></div>
-        <OrganModelViewer :patient-id="patientId" :organ-id="organ" />
+        <div v-if="organ === 'other'" class="empty-state">其他分类用于未建模器官、全身性或尚未归类的问题。相关病历显示在下方。</div><OrganModelViewer v-else :patient-id="patientId" :organ-id="organ" />
       </div>
       <section class="card"><div class="card-header"><h3>Organ medical history</h3><span class="muted">{{ detail?.records_total || 0 }} records</span></div>
         <div class="card-body">
@@ -36,7 +36,7 @@ watch(() => [props.patientId,organ.value], async (_,__,onCleanup) => {
   </div>
 </template>
 <style scoped>
-.organ-workspace{display:grid;grid-template-columns:300px minmax(0,1fr);gap:18px;align-items:start}.organ-buttons{display:flex;gap:8px;flex-wrap:wrap;padding:16px}.organ-buttons .selected{background:#d8ece9;border-color:#7fb5af;color:#236b66}
+.organ-workspace{display:grid;grid-template-columns:360px minmax(0,1fr);gap:18px;align-items:start}.organ-buttons{display:flex;gap:8px;flex-wrap:wrap;padding:16px}.organ-buttons .selected{background:#d8ece9;border-color:#7fb5af;color:#236b66}
 .history-record{padding:14px 0;border-bottom:1px solid var(--border)}.history-record:last-child{border:0}.history-record>span{font-size:11px;color:var(--text-muted)}.history-record h4{margin:10px 0 6px}.history-record p{white-space:pre-wrap;font-size:13px;line-height:1.7}
 @media(max-width:1050px){.organ-workspace{grid-template-columns:1fr}}
 </style>

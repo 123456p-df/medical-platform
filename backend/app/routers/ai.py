@@ -13,6 +13,17 @@ from app.services.ai import build_context
 router = APIRouter(prefix="/ai", tags=["AI Chat"])
 
 
+@router.get("/status", response_model=Envelope[dict])
+def status(user: CurrentUser, settings: Config):
+    return success(
+        {
+            "configured": bool(settings.ai_base_url and settings.ai_model),
+            "capabilities": ["record_summary", "record_questions"],
+            "image_analysis": False,
+        }
+    )
+
+
 @router.post("/chat", response_model=Envelope[ChatOut])
 def chat(body: ChatInput, request: Request, db: DB, user: CurrentUser, settings: Config):
     patient = check_patient_access(db, user, body.patient_id)

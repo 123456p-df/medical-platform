@@ -20,6 +20,7 @@ export interface Patient {
   gender: 'Male' | 'Female' | 'Unknown'
   phone: string
   email: string
+  rhType?: string
   bloodType: string
   allergies: string[]
   risk: RiskLevel
@@ -32,6 +33,8 @@ export interface Patient {
 }
 
 export interface Examination {
+  shape?: number[]
+  spacing?: number[]
   organId?: string
   id: string
   patientId: string
@@ -59,6 +62,7 @@ export interface Finding {
 }
 
 export interface Report {
+  organIds?: string[]
   organId?: string
   id: string
   patientId: string

@@ -1,8 +1,8 @@
 from typing import Literal
 from uuid import uuid4
 
-import nibabel as nib
 from fastapi import APIRouter, File, Form, Query, Response, UploadFile
+from fastapi.responses import FileResponse
 
 from app.audit import audit
 from app.deps import DB, Config, CurrentUser, check_patient_access
@@ -10,7 +10,13 @@ from app.errors import APIError, Envelope, success
 from app.models import MedicalImage
 from app.organs import require_organ
 from app.schemas import ImageOut
-from app.services.imaging import load_volume, slice_png
+from app.services.imaging import (
+    canonical_voxels,
+    load_volume,
+    prepare_slice_cache,
+    slice_cache_path,
+    slice_png,
+)
 from app.services.storage import relative_path, stored_path
 
 router = APIRouter(tags=["Medical Image"])
@@ -69,9 +75,9 @@ def upload_image(
                 if size > settings.max_upload_bytes:
                     raise APIError(413, 41301, "Upload exceeds limit")
                 output.write(chunk)
-        volume, _ = load_volume(path, settings)
+        volume, data = load_volume(path, settings)
         # API slice geometry is canonical; the stored original is kept for the model.
-        canonical = nib.as_closest_canonical(volume)
+        canonical = prepare_slice_cache(path, volume, data)
         record = MedicalImage(
             id=image_id,
             patient_id=patient_id,
@@ -88,6 +94,7 @@ def upload_image(
     except Exception:
         db.rollback()
         path.unlink(missing_ok=True)
+        slice_cache_path(path).unlink(missing_ok=True)
         raise
     finally:
         file.file.close()
@@ -97,6 +104,21 @@ def upload_image(
 @router.get("/medical-images/{image_id}", response_model=Envelope[ImageOut])
 def get_image(image_id: str, db: DB, user: CurrentUser):
     return success(image_out(accessible_image(db, user, image_id)))
+
+
+@router.get("/medical-images/{image_id}/volume", response_class=FileResponse)
+def get_volume(image_id: str, db: DB, user: CurrentUser, settings: Config):
+    image = accessible_image(db, user, image_id)
+    path = stored_path(settings, image.file_path)
+    if not path.is_file():
+        raise APIError(404, 40404, "Medical image file not found")
+    # Prepare legacy uploads once; FileResponse streams the existing uncompressed file.
+    canonical_voxels(path, settings)
+    return FileResponse(
+        slice_cache_path(path),
+        media_type="application/octet-stream",
+        headers={"X-Image-Orientation": "RAS"},
+    )
 
 
 @router.get(
@@ -112,13 +134,14 @@ def get_slice(
     settings: Config,
     window_center: float | None = Query(None, allow_inf_nan=False),
     window_width: float | None = Query(None, gt=0, allow_inf_nan=False),
+    axis: Literal["axial", "coronal", "sagittal"] = Query("axial"),
 ):
     image = accessible_image(db, user, image_id)
     path = stored_path(settings, image.file_path)
     if not path.is_file():
         raise APIError(404, 40404, "Medical image file not found")
     return Response(
-        slice_png(path, slice_index, settings, window_center, window_width),
+        slice_png(path, slice_index, settings, window_center, window_width, axis),
         media_type="image/png",
-        headers={"X-Image-Orientation": "RAS", "X-Slice-Axis": "axial"},
+        headers={"X-Image-Orientation": "RAS", "X-Slice-Axis": axis},
     )

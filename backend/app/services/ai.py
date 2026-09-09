@@ -19,7 +19,7 @@ class AIAnswer(BaseModel):
 def build_context(db, patient, organ_id, settings):
     filters = (
         MedicalRecord.patient_id == patient.id,
-        MedicalRecord.organ_id == organ_id,
+        MedicalRecord.has_organ(organ_id),
         MedicalRecord.deleted_at.is_(None),
     )
     total = db.scalar(select(func.count()).select_from(MedicalRecord).where(*filters))
@@ -33,6 +33,7 @@ def build_context(db, patient, organ_id, settings):
     for record in rows:
         item = {
             "record_id": record.id,
+            "organ_ids": record.organ_ids,
             "date": record.record_date.isoformat(),
             "diagnosis": record.diagnosis,
             "description": record.description,

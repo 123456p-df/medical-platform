@@ -22,9 +22,9 @@ withDefaults(
       <component :is="icon" :size="19" />
     </div>
     <div class="stats-copy">
-      <span class="stats-label">{{ label }}</span>
-      <strong>{{ value }}</strong>
-      <small>{{ note }}</small>
+      <span class="stats-label">{{ $t(label) }}</span>
+      <strong>{{ $t(value) }}</strong>
+      <small>{{ $t(note) }}</small>
     </div>
   </article>
 </template>

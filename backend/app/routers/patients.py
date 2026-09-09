@@ -1,16 +1,74 @@
 from fastapi import APIRouter
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.audit import audit
 from app.deps import DB, Config, CurrentUser, check_patient_access, require_doctor
 from app.errors import APIError, Envelope, success
-from app.models import Doctor, MedicalImage, MedicalRecord, OrganModel, Patient, User
+from app.models import (
+    Doctor,
+    DoctorPatientAccess,
+    MedicalImage,
+    MedicalRecord,
+    OrganModel,
+    Patient,
+    RecordOrgan,
+    User,
+    utcnow,
+)
 from app.organs import ORGANS, require_organ
-from app.schemas import OrganOut, OverviewOut, PatientOut, ResolveInput
-from app.security import identity_hash
+from app.schemas import OrganOut, OverviewOut, PatientCreate, PatientOut, ResolveInput
+from app.security import encrypt_identity, identity_hash
 from app.services.storage import stored_path
 
 router = APIRouter(tags=["Patient / Organ"])
+
+
+@router.post("/patients", status_code=201, response_model=Envelope[PatientOut])
+def create_patient(body: PatientCreate, db: DB, user: CurrentUser, settings: Config):
+    doctor = require_doctor(db, user)
+    patient = Patient(
+        **body.model_dump(exclude={"id_number"}),
+        id_number_hash=identity_hash(body.id_number, settings),
+        id_number_encrypted=encrypt_identity(body.id_number, settings),
+    )
+    db.add(patient)
+    try:
+        db.flush()
+        db.add(DoctorPatientAccess(doctor_id=doctor.id, patient_id=patient.id, status="active"))
+        audit(db, user.id, patient.id, "patient.create", "patient", patient.id)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise APIError(
+            409, 40904, "Patient identity already registered; contact the records administrator"
+        ) from None
+    return success(
+        {
+            "patient_id": patient.id,
+            "name": patient.name,
+            "gender": patient.gender,
+            "birth_date": patient.birth_date,
+        }
+    )
+
+
+@router.delete("/patients/{patient_id}", response_model=Envelope[None])
+def delete_patient(patient_id: int, db: DB, user: CurrentUser):
+    patient = check_patient_access(db, user, patient_id, write=True)
+    patient.deleted_at = utcnow()
+    audit(
+        db,
+        user.id,
+        patient.id,
+        "patient.delete",
+        "patient",
+        patient.id,
+        before={"deleted": False},
+        after={"deleted": True},
+    )
+    db.commit()
+    return success(None)
 
 
 @router.post("/doctor/patients/resolve", response_model=Envelope[PatientOut])
@@ -45,6 +103,13 @@ def overview(patient_id: int, db: DB, user: CurrentUser):
             select(MedicalRecord.organ_id)
             .where(MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None))
             .distinct()
+        )
+    )
+    record_organs.update(
+        db.scalars(
+            select(RecordOrgan.organ_id)
+            .join(MedicalRecord)
+            .where(MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None))
         )
     )
     image_organs = set(
@@ -97,7 +162,7 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
     }
     filters = (
         MedicalRecord.patient_id == patient_id,
-        MedicalRecord.organ_id == organ_id,
+        MedicalRecord.has_organ(organ_id),
         MedicalRecord.deleted_at.is_(None),
     )
     total = db.scalar(select(func.count()).select_from(MedicalRecord).where(*filters))
@@ -112,6 +177,7 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
     records = [
         {
             "record_id": r.id,
+            "organ_ids": r.organ_ids,
             "date": r.record_date,
             "diagnosis": r.diagnosis,
             "description": r.description,

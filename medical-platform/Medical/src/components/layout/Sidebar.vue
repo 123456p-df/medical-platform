@@ -13,6 +13,7 @@ import {
   Sparkles,
   Stethoscope,
   Users,
+  UserRound,
   X,
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
@@ -34,6 +35,7 @@ const patients = usePatientStore()
 const primaryPatientId = computed(() => patients.selectedPatientId || patients.patients[0]?.id)
 
 const doctorNav = computed(() => [
+  { label: '个人资料', to: '/doctor/profile', icon: UserRound },
   { label: 'Dashboard', to: '/doctor/dashboard', icon: LayoutDashboard },
   { label: 'Patients', to: '/doctor/patients', icon: Users },
   { label: 'Imaging', to: primaryPatientId.value ? `/doctor/patients/${primaryPatientId.value}/imaging` : '/doctor/patients', icon: ScanLine },
@@ -43,6 +45,7 @@ const doctorNav = computed(() => [
 ])
 
 const patientNav = computed(() => [
+  { label: '个人资料', to: '/patient/profile', icon: UserRound },
   { label: 'Home', to: '/patient/dashboard', icon: Home },
   { label: 'My Health', to: '/patient/dashboard', icon: HeartPulse },
   { label: 'My Examinations', to: '/patient/examinations', icon: Stethoscope },
@@ -84,7 +87,7 @@ function logout() {
         @click="emit('close')"
       >
         <component :is="item.icon" :size="18" />
-        <span>{{ item.label }}</span>
+        <span>{{ $t(item.label) }}</span>
       </RouterLink>
     </nav>
 

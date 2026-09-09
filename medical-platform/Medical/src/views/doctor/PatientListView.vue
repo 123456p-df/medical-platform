@@ -10,6 +10,9 @@ import type { Patient } from '@/types'
 import { ref } from 'vue'
 import { patientApi } from '@/api/patients'
 
+import PatientCreateDialog from '@/components/patient/PatientCreateDialog.vue'
+import { UserPlus } from 'lucide-vue-next'
+const createDialog = ref<InstanceType<typeof PatientCreateDialog>>()
 const router = useRouter()
 const store = usePatientStore()
 const name = ref(''), identity = ref(''), resolveError = ref(''), resolving = ref(false)
@@ -58,10 +61,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page">
+  <div class="page"><PatientCreateDialog ref="createDialog" @created="router.push('/doctor/patients/' + $event)" />
     <PageHeader title="Patients" subtitle="Search, filter, and open the complete patient record.">
       <template #actions>
-        <SearchBar v-model="filters.search" />
+        <SearchBar v-model="filters.search" /><button class="btn btn-primary" @click="createDialog?.open()"><UserPlus :size="16" />录入患者</button>
       </template>
     </PageHeader>
 

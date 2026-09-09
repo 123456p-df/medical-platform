@@ -1,7 +1,7 @@
 from datetime import UTC, date, datetime
 
 from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 
@@ -21,6 +21,7 @@ class User(CreatedMixin, Base):
     username: Mapped[str] = mapped_column(String(64), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16))
+    profile: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
 
 
 class Patient(CreatedMixin, Base):
@@ -35,6 +36,24 @@ class Patient(CreatedMixin, Base):
     height: Mapped[float | None]
     weight: Mapped[float | None]
     blood_type: Mapped[str | None] = mapped_column(String(16))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProfileFile(CreatedMixin, Base):
+    __tablename__ = "profile_files"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    media_type: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int]
+    file_path: Mapped[str] = mapped_column(Text)
+
+
+class ImageReview(Base):
+    __tablename__ = "image_reviews"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    image_id: Mapped[str] = mapped_column(ForeignKey("medical_images.id"), primary_key=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Doctor(CreatedMixin, Base):
@@ -65,6 +84,36 @@ class MedicalRecord(CreatedMixin, Base):
     record_date: Mapped[date]
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    organ_links: Mapped[list["RecordOrgan"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    @property
+    def organ_ids(self):
+        return [
+            self.organ_id,
+            *sorted(link.organ_id for link in self.organ_links if link.organ_id != self.organ_id),
+        ]
+
+    @organ_ids.setter
+    def organ_ids(self, values):
+        values = list(dict.fromkeys(values or [self.organ_id]))
+        self.organ_id = values[0]
+        existing = {link.organ_id: link for link in self.organ_links}
+        self.organ_links = [existing.get(value) or RecordOrgan(organ_id=value) for value in values]
+
+    @classmethod
+    def has_organ(cls, organ_id):
+        # The primary field keeps old imports/clients compatible; EXISTS avoids duplicate rows.
+        return (cls.organ_id == organ_id) | cls.organ_links.any(RecordOrgan.organ_id == organ_id)
+
+
+class RecordOrgan(Base):
+    __tablename__ = "record_organs"
+    record_id: Mapped[int] = mapped_column(
+        ForeignKey("medical_records.id", ondelete="CASCADE"), primary_key=True
+    )
+    organ_id: Mapped[str] = mapped_column(String(64), primary_key=True)
 
 
 class MedicalImage(CreatedMixin, Base):

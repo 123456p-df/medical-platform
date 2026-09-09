@@ -12,7 +12,7 @@ def test_core_and_portal_apis_and_uniform_errors(app_env):
         if path.startswith("/api/v1")
         for method in methods
     ]
-    assert len(operations) == 22  # 19 core APIs plus 3 access-controlled portal collections.
+    assert len(operations) == 35  # Core APIs, patient/profile/workflow and canonical volume.
     assert client.get("/missing").json() == {
         "code": 40401,
         "message": "Resource not found",

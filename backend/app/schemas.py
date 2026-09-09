@@ -50,8 +50,40 @@ class PatientOut(BaseModel):
     birth_date: date | None
 
 
+class PatientCreate(ResolveInput):
+    birth_date: date | None = None
+    gender: Literal["male", "female", "unknown"] = "unknown"
+    height: float | None = Field(None, gt=0, le=300, allow_inf_nan=False)
+    weight: float | None = Field(None, gt=0, le=700, allow_inf_nan=False)
+    blood_type: str | None = Field(None, pattern=r"^(A|B|AB|O)([+-])?$")
+
+    @field_validator("birth_date")
+    @classmethod
+    def valid_birth_date(cls, value):
+        if value and (value > date.today() or value.year < 1850):
+            raise ValueError("Invalid birth date")
+        return value
+
+
+class ProfilePatch(Input):
+    display_name: str = Field(min_length=1, max_length=100)
+    title: str = Field(default="", max_length=100)
+    department: str = Field(default="", max_length=100)
+    phone: str = Field(default="", max_length=40)
+    email: str = Field(default="", max_length=254)
+    bio: str = Field(default="", max_length=2000)
+
+    @field_validator("display_name")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("Name must not be blank")
+        return value.strip()
+
+
 class RecordCreate(Input):
     organ_id: str = Field(min_length=1, max_length=64)
+    organ_ids: list[str] | None = Field(None, min_length=1, max_length=10)
     diagnosis: str = Field(min_length=1, max_length=10000)
     description: str = Field(min_length=1, max_length=30000)
     record_date: date
@@ -63,9 +95,21 @@ class RecordCreate(Input):
             raise ValueError("Must not be blank")
         return value.strip()
 
+    @model_validator(mode="after")
+    def matching_organs(self):
+        if self.organ_ids is not None:
+            if (
+                len(set(self.organ_ids)) != len(self.organ_ids)
+                or self.organ_id not in self.organ_ids
+            ):
+                raise ValueError("Organ list must be unique and include the primary organ")
+            self.organ_ids = [self.organ_id, *[v for v in self.organ_ids if v != self.organ_id]]
+        return self
+
 
 class RecordPatch(Input):
     organ_id: str | None = Field(default=None, min_length=1, max_length=64)
+    organ_ids: list[str] | None = Field(None, min_length=1, max_length=10)
     diagnosis: str | None = Field(default=None, min_length=1, max_length=10000)
     description: str | None = Field(default=None, min_length=1, max_length=30000)
     record_date: date | None = None
@@ -77,6 +121,11 @@ class RecordPatch(Input):
             v is None or (isinstance(v, str) and not v.strip()) for v in values.values()
         ):
             raise ValueError("Provide at least one non-null, non-blank field")
+        if self.organ_ids is not None:
+            if len(set(self.organ_ids)) != len(self.organ_ids):
+                raise ValueError("Organ list must be unique")
+            if self.organ_id is not None and self.organ_id not in self.organ_ids:
+                raise ValueError("Primary organ must be included")
         return self
 
 
@@ -84,6 +133,7 @@ class RecordOut(BaseModel):
     record_id: int
     patient_id: int
     organ_id: str
+    organ_ids: list[str]
     diagnosis: str
     description: str
     record_date: date
@@ -127,6 +177,7 @@ class ModelSelection(BaseModel):
 
 class OrganRecord(BaseModel):
     record_id: int
+    organ_ids: list[str]
     date: date
     diagnosis: str
     description: str

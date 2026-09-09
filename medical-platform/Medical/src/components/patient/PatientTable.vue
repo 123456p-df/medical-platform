@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { locale } from '@/i18n'
 import { ChevronRight } from 'lucide-vue-next'
 import type { Patient } from '@/types'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
@@ -14,8 +15,8 @@ const emit = defineEmits<{
 }>()
 
 function formatDate(date: string) {
-  if (!date) return '—'
-  return new Intl.DateTimeFormat('en', {
+  if (!date || Number.isNaN(Date.parse(date))) return '—'
+  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
@@ -28,16 +29,16 @@ function formatDate(date: string) {
     <table class="patient-table">
       <thead>
         <tr>
-          <th>Patient</th>
-          <th>ID</th>
-          <th>Age</th>
-          <th>Gender</th>
-          <th>Latest Examination</th>
-          <th>Modality</th>
-          <th>Organ</th>
-          <th>AI Status</th>
-          <th>Risk</th>
-          <th class="action-col"><span class="sr-only">Action</span></th>
+          <th>{{ $t("Patient") }}</th>
+          <th>{{ $t("ID") }}</th>
+          <th>{{ $t("Age") }}</th>
+          <th>{{ $t("Gender") }}</th>
+          <th>{{ $t("Latest Examination") }}</th>
+          <th>{{ $t("Modality") }}</th>
+          <th>{{ $t("Organ") }}</th>
+          <th>{{ $t("AI Status") }}</th>
+          <th>{{ $t("Risk") }}</th>
+          <th class="action-col"><span class="sr-only">{{ $t("Action") }}</span></th>
         </tr>
       </thead>
       <tbody>
@@ -52,17 +53,17 @@ function formatDate(date: string) {
           <td>
             <div class="patient-cell">
               <span class="patient-avatar" :style="{ background: patient.avatarColor }">
-                {{ patient.name.split(' ').map((part) => part[0]).join('') }}
+                {{ $t(patient.name.split(' ').map((part) => part[0]).join('')) }}
               </span>
               <strong>{{ patient.name }}</strong>
             </div>
           </td>
-          <td class="mono">{{ patient.id }}</td>
+          <td class="mono">{{ $t(patient.id) }}</td>
           <td>{{ patient.age ?? '—' }}</td>
-          <td>{{ patient.gender }}</td>
-          <td>{{ formatDate(patient.lastExamDate) }}</td>
-          <td><span class="modality">{{ patient.modality }}</span></td>
-          <td>{{ patient.organ }}</td>
+          <td>{{ $t(patient.gender) }}</td>
+          <td>{{ $t(formatDate(patient.lastExamDate)) }}</td>
+          <td><span class="modality">{{ $t(patient.modality) }}</span></td>
+          <td>{{ $t(patient.organ) }}</td>
           <td><StatusBadge :status="patient.aiStatus" /></td>
           <td><RiskBadge :level="patient.risk" /></td>
           <td class="action-col">

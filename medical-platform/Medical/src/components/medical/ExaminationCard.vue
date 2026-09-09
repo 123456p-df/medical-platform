@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { locale } from '@/i18n'
 import { ChevronRight, ScanLine } from 'lucide-vue-next'
 import type { Examination } from '@/types'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
@@ -12,7 +13,7 @@ const emit = defineEmits<{
 }>()
 
 function formatDate(date: string) {
-  return new Intl.DateTimeFormat('en', {
+  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en', {
     month: 'long',
     day: '2-digit',
     year: 'numeric',
@@ -24,8 +25,8 @@ function formatDate(date: string) {
   <button class="exam-card" type="button" @click="emit('select', examination)">
     <span class="exam-icon"><ScanLine :size="20" /></span>
     <span class="exam-main">
-      <strong>{{ examination.type }} · {{ examination.bodyPart }}</strong>
-      <span>{{ examination.organ }} · {{ formatDate(examination.date) }}</span>
+      <strong>{{ $t(examination.type) }} · {{ $t(examination.bodyPart) }}</strong>
+      <span>{{ $t(examination.organ) }} · {{ $t(formatDate(examination.date)) }}</span>
     </span>
     <StatusBadge :status="examination.status" />
     <ChevronRight :size="18" class="exam-chevron" />

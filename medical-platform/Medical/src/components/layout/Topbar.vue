@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Bell, Menu, Search } from 'lucide-vue-next'
+import { computed, ref, onMounted } from 'vue'
+import { useProfileStore } from '@/stores/profile'
+import { useWorkflowStore } from '@/stores/workflow'
+import { locale, setLocale } from '@/i18n'
+import { Bell, Menu } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -10,6 +13,12 @@ const emit = defineEmits<{
 
 const auth = useAuthStore()
 const route = useRoute()
+const profile = useProfileStore(), workflow = useWorkflowStore(), notices = ref(false), profileError = ref('')
+const displayName = computed(() => profile.data?.display_name || auth.session?.name || '')
+onMounted(async () => {
+  try { await profile.load() } catch (e) { profileError.value = e instanceof Error ? e.message : '资料加载失败' }
+  if (auth.portal === 'doctor') await workflow.load()
+})
 
 const pageTitles: Record<string, string> = {
   'doctor-dashboard': 'Doctor Dashboard',
@@ -27,16 +36,16 @@ const pageTitles: Record<string, string> = {
   'patient-ai': 'AI Assistant',
 }
 
-const title = computed(() => pageTitles[String(route.name)] ?? 'PulmoLink')
+const title = computed(() => route.path.endsWith('/profile') ? '个人资料' : pageTitles[String(route.name)] ?? 'PulmoLink')
 const greeting = computed(() => {
   if (auth.portal === 'patient') {
-    return `Good morning, ${auth.session?.name ?? 'Patient'}`
+    return `Good morning, ${displayName.value || 'Patient'}`
   }
-  return `Good morning, ${auth.session?.name ?? 'Doctor'}`
+  return `Good morning, ${displayName.value || 'Doctor'}`
 })
 
 const initials = computed(() =>
-  auth.session?.name
+  displayName.value
     ?.split(' ')
     .map((part) => part[0])
     .join('')
@@ -52,32 +61,42 @@ const initials = computed(() =>
       </button>
       <div class="title-wrap">
         <span class="eyebrow">{{ auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health' }}</span>
-        <strong>{{ title }}</strong>
+        <strong>{{ $t(title) }}</strong>
       </div>
     </div>
 
     <div class="topbar-actions">
-      <div class="greeting">{{ greeting }}</div>
-      <label class="topbar-search">
-        <Search :size="16" />
-        <input type="search" placeholder="Search" aria-label="Search" />
-      </label>
-      <button class="icon-btn notification" type="button" aria-label="Notifications">
-        <Bell :size="18" />
-        <span class="notification-dot" />
-      </button>
-      <div class="topbar-profile">
-        <span class="profile-avatar">{{ initials }}</span>
+      <div class="greeting">{{ $t(greeting) }}</div>
+      <button class="btn btn-secondary btn-sm" aria-label="切换界面语言" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? '中文 / EN' : 'EN / 中文' }}</button>
+      <div class="notification-wrap" @keydown.esc="notices = false">
+        <button class="icon-btn notification" type="button" aria-label="通知" :aria-expanded="notices" @click="notices = !notices; notices && auth.portal === 'doctor' && workflow.load()">
+          <Bell :size="18" /><span v-if="auth.portal === 'doctor' && workflow.pending.length" class="notification-dot" />
+        </button>
+        <div v-if="notices" class="notice-panel">
+          <div class="notice-heading"><strong>通知与待办</strong><button class="btn btn-secondary btn-sm" @click="notices = false">关闭</button></div>
+          <p v-if="workflow.error" role="alert">{{ workflow.error }}</p>
+          <template v-if="auth.portal === 'doctor' && workflow.pending.length">
+            <RouterLink v-for="item in workflow.pending.slice(0, 5)" :key="item.image_id" :to="{path:'/doctor/patients/' + item.patient_id + '/imaging',query:{exam:item.image_id}}" @click="notices = false"><strong>{{ item.patient_name }} · {{ item.image_type }}</strong><small>影像待确认 · {{ item.created_at.slice(0,10) }}</small></RouterLink>
+            <RouterLink to="/doctor/dashboard" @click="notices = false">查看全部 {{ workflow.pending.length }} 项待办</RouterLink>
+          </template>
+          <p v-else>当前没有待处理通知</p>
+        </div>
+      </div>
+      <RouterLink class="topbar-profile" :to="'/' + auth.portal + '/profile'" aria-label="打开个人资料">
+        <span class="profile-avatar"><img v-if="profile.data?.avatar_url" :src="profile.data.avatar_url" alt="头像" /><template v-else>{{ initials }}</template></span>
         <span class="profile-copy">
-          <strong>{{ auth.session?.name }}</strong>
+          <strong>{{ displayName }}</strong>
           <small>{{ auth.portal === 'doctor' ? 'Doctor' : 'Patient' }}</small>
         </span>
-      </div>
+      </RouterLink>
     </div>
   </header>
+  <p v-if="profileError" role="alert">{{ profileError }}</p>
 </template>
 
 <style scoped>
+.profile-avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover}.notification-wrap{position:relative}.notice-panel{position:absolute;right:0;top:46px;width:330px;padding:18px;background:white;border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 50px #12332f25}.notice-panel>a{display:grid;gap:6px;padding:12px 0;border-bottom:1px solid var(--border);font-size:12px}.notice-panel small,.notice-panel p{color:var(--text-muted);font-size:11px}.notice-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px;font-size:13px}@media(max-width:600px){.notice-panel{position:fixed;right:16px;top:72px;width:calc(100vw - 32px)}}
+
 .topbar {
   position: sticky;
   z-index: 20;

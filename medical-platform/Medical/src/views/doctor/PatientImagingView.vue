@@ -1,15 +1,26 @@
 <script setup lang="ts">
-import { computed, ref, onBeforeUnmount } from 'vue'
+import { useWorkflowStore } from '@/stores/workflow'
+import { computed, ref, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Upload, ScanLine, Box } from 'lucide-vue-next'
 import { usePatientStore } from '@/stores/patients'
 import RemoteSliceViewer from '@/components/medical/RemoteSliceViewer.vue'
 import { api } from '@/api/client'
 import { organNames } from '@/api/mappers'
-const route = useRoute(), store = usePatientStore()
+const route = useRoute(), store = usePatientStore(), workflow = useWorkflowStore()
+const reviewBusy = ref(false)
 const patientId = computed(() => String(route.params.id))
 const selected = ref(String(route.query.exam || ''))
 const active = computed(() => store.examinations.find(i => i.id === selected.value) || store.examinations[0])
+watch(() => route.query.exam, value => { selected.value = String(value || '') })
+const reviewed = computed(() => !!workflow.items.find(i => i.image_id === active.value?.id)?.completed_at)
+async function review() {
+  if (!active.value || reviewBusy.value) return
+  reviewBusy.value = true; error.value = ''
+  try { await workflow.complete(active.value.id, !reviewed.value) }
+  catch (e) { error.value = e instanceof Error ? e.message : '确认失败' }
+  finally { reviewBusy.value = false }
+}
 const file = ref<File | null>(null), organ = ref('lung'), imageType = ref('CT'), busy = ref(false), error = ref('')
 const task = ref<{ task_id: string; status: string; progress?: number; error_message?: string; result?: { model_id:string } } | null>(null)
 let timer: ReturnType<typeof setTimeout> | undefined, disposed = false
@@ -20,7 +31,7 @@ async function upload() {
   const form = new FormData(); form.append('file',file.value); form.append('organ_id',organ.value); form.append('image_type',imageType.value)
   try {
     const image = await api<{ image_id: string }>('/patients/' + patientId.value + '/medical-images', { method:'POST', body:form })
-    await store.loadPatientContext(patientId.value); selected.value = image.image_id; file.value = null
+    await store.loadPatientContext(patientId.value); selected.value = image.image_id; file.value = null; await workflow.load(); await store.loadPatients()
   } catch (reason) { error.value = reason instanceof Error ? reason.message : '上传失败' }
   finally { busy.value = false }
 }
@@ -52,9 +63,10 @@ onBeforeUnmount(() => { disposed=true; if(timer) clearTimeout(timer) })
       <RemoteSliceViewer v-if="active" :key="active.id" :examination="active" />
       <div v-else class="card empty-state">No medical images uploaded yet.</div>
       <p v-if="error" class="integration-error" role="alert">{{ error }}</p>
+      <div v-if="active" class="card task-card"><strong>{{ reviewed ? '影像已确认' : '影像待确认' }}</strong><button class="btn btn-secondary" :disabled="reviewBusy" @click="review">{{ reviewed ? '重新打开待办' : '确认完成并收起待办' }}</button></div>
       <div v-if="active" class="card task-card">
-        <div><h3>Organ segmentation</h3><p class="muted">Create a background task using the configured model.</p></div>
-        <button class="btn btn-primary" :disabled="busy || ['queued','running'].includes(task?.status || '')" @click="segment"><ScanLine :size="16" /> Start segmentation</button>
+        <div><h3>Organ segmentation</h3><p class="muted">CT 使用已配置的模型分割；MRI 当前支持浏览。</p></div>
+        <button class="btn btn-primary" :disabled="active.type !== 'CT' || ['eye','other'].includes(active.organId || '') || busy || ['queued','running'].includes(task?.status || '')" @click="segment"><ScanLine :size="16" /> Start segmentation</button>
         <p v-if="task">Task: {{ task.status }} · {{ task.progress || 0 }}%</p>
         <RouterLink v-if="task?.status === 'completed'" class="btn btn-secondary" :to="'/doctor/patients/' + patientId + '/3d'"><Box :size="16" /> View 3D result</RouterLink>
       </div>

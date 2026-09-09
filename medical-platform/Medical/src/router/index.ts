@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ProfileView from '@/views/ProfileView.vue'
 import LoginView from '@/views/LoginView.vue'
 import DoctorDashboardView from '@/views/doctor/DoctorDashboardView.vue'
 import PatientListView from '@/views/doctor/PatientListView.vue'
@@ -18,6 +19,7 @@ import BodyView from '@/views/patient/BodyView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior: () => ({ top: 0 }),
   routes: [
     {
       path: '/',
@@ -34,6 +36,7 @@ const router = createRouter({
       component: AppLayout,
       meta: { portal: 'doctor', requiresAuth: true },
       children: [
+        { path: 'profile', component: ProfileView },
         {
           path: '',
           redirect: '/doctor/dashboard',
@@ -90,6 +93,7 @@ const router = createRouter({
       component: AppLayout,
       meta: { portal: 'patient', requiresAuth: true },
       children: [
+        { path: 'profile', component: ProfileView },
         {
           path: '',
           redirect: '/patient/dashboard',

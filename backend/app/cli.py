@@ -128,6 +128,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init-config", help="Create .env; refuse to overwrite")
+    restore = commands.add_parser("restore-patient", help="Restore a soft-deleted patient archive")
+    restore.add_argument("--patient-id", type=int, required=True)
     patient = commands.add_parser(
         "provision-patient", help="Verify and fill an existing patient account"
     )
@@ -184,6 +186,22 @@ def main():
                     "active" if args.command == "grant-access" else "revoked",
                 )
                 print("Access updated")
+            elif args.command == "restore-patient":
+                patient = db.get(Patient, args.patient_id)
+                if patient is None:
+                    raise ValueError("Patient not found")
+                patient.deleted_at = None
+                audit(
+                    db,
+                    None,
+                    patient.id,
+                    "patient.restore",
+                    "patient",
+                    patient.id,
+                    after={"deleted": False},
+                )
+                db.commit()
+                print("Patient archive restored")
             else:
                 install_default(db, settings, args.organ, args.file)
                 print(f"Installed default_{args.organ}")

@@ -8,7 +8,7 @@ export const reportApi = {
   async saveReport(report: Report) {
     const creating = !report.id
     const data = await api<RecordDTO>(creating ? '/patients/' + report.patientId + '/medical-records' : '/medical-records/' + report.id, {
-      method: creating ? 'POST' : 'PATCH', body: JSON.stringify({ organ_id: report.organId || 'lung',
+      method: creating ? 'POST' : 'PATCH', body: JSON.stringify({ organ_id: report.organIds?.[0] || report.organId || 'other', organ_ids: report.organIds || [report.organId || 'other'],
         diagnosis: report.diagnosis, description: report.description, record_date: report.date }),
     })
     return mapRecord(data)

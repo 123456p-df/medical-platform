@@ -28,6 +28,12 @@ def create_task(
 ):
     image = accessible_image(db, user, image_id, write=True)
     require_organ(body.organ_id)
+    if body.organ_id in {"other", "eye"}:
+        raise APIError(
+            400,
+            40007,
+            "This category currently supports records and image browsing, not segmentation",
+        )
     if image.organ_id != body.organ_id:
         raise APIError(400, 40006, "organ_id must match the uploaded image")
     runner = request.app.state.segmentation_runner

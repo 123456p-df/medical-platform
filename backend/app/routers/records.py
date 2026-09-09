@@ -23,6 +23,7 @@ def record_out(db, record):
         "record_id": record.id,
         "patient_id": record.patient_id,
         "organ_id": record.organ_id,
+        "organ_ids": record.organ_ids,
         "diagnosis": record.diagnosis,
         "description": record.description,
         "record_date": record.record_date,
@@ -35,6 +36,7 @@ def record_out(db, record):
 def snapshot(record):
     return {
         "organ_id": record.organ_id,
+        "organ_ids": record.organ_ids,
         "diagnosis": record.diagnosis,
         "description": record.description,
         "record_date": record.record_date.isoformat(),
@@ -69,7 +71,7 @@ def list_records(
         raise APIError(400, 40001, "start_date must not be after end_date")
     filters = [
         MedicalRecord.patient_id == patient_id,
-        MedicalRecord.organ_id == organ_id,
+        MedicalRecord.has_organ(organ_id),
         MedicalRecord.deleted_at.is_(None),
     ]
     if start_date:
@@ -106,6 +108,8 @@ def create_record(patient_id: int, body: RecordCreate, db: DB, user: CurrentUser
     check_patient_access(db, user, patient_id, write=True)
     doctor = require_doctor(db, user)
     require_organ(body.organ_id)
+    for organ_id in body.organ_ids or []:
+        require_organ(organ_id)
     record = MedicalRecord(patient_id=patient_id, doctor_id=doctor.id, **body.model_dump())
     db.add(record)
     db.flush()
@@ -127,9 +131,18 @@ def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
     record = accessible_record(db, user, record_id, write=True)
     if body.organ_id is not None:
         require_organ(body.organ_id)
+    for organ_id in body.organ_ids or []:
+        require_organ(organ_id)
     before = snapshot(record)
-    for key, value in body.model_dump(exclude_unset=True).items():
+    for key, value in body.model_dump(exclude_unset=True, exclude={"organ_ids"}).items():
         setattr(record, key, value)
+    if body.organ_ids is not None:
+        organ_ids = body.organ_ids
+        if body.organ_id:
+            organ_ids = [body.organ_id, *[v for v in organ_ids if v != body.organ_id]]
+        record.organ_ids = organ_ids
+    elif body.organ_id is not None:
+        record.organ_ids = [body.organ_id]
     record.updated_at = utcnow()
     audit(
         db,

@@ -2,6 +2,7 @@
 
 import os
 from datetime import date, timedelta
+from pathlib import Path
 
 import nibabel as nib
 import numpy as np
@@ -112,10 +113,23 @@ def seed(settings):
                 )
             db.commit()
         for organ in ORGANS:
+            if organ == "other":
+                continue
             # Only reference assets: never mark synthetic geometry as model inference.
             from app.models import OrganModel
 
-            if db.get(OrganModel, f"default_{organ}"):
+            if (
+                db.get(OrganModel, f"default_{organ}")
+                and os.environ.get("VMRB_REFRESH_DEMO_MODELS") != "1"
+            ):
+                continue
+            asset = (
+                Path(__file__).resolve().parents[2]
+                / "medical-platform/Medical/public/models"
+                / f"organ-{organ}.glb"
+            )
+            if asset.is_file():
+                install_default(db, settings, organ, asset)
                 continue
             scene = trimesh.Scene()
             if organ == "lung":
