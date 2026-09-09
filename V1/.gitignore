@@ -3,7 +3,3 @@ dist
 .DS_Store
 *.local
 *.log
-node_modules/
-.DS_Store
-.env
-dist/
