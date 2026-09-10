@@ -32,7 +32,11 @@ def patients(
         image = db.scalar(
             select(MedicalImage)
             .where(MedicalImage.patient_id == patient.id)
-            .order_by(MedicalImage.created_at.desc(), MedicalImage.id.desc())
+            .order_by(
+                MedicalImage.study_date.desc().nullslast(),
+                MedicalImage.created_at.desc(),
+                MedicalImage.id.desc(),
+            )
             .limit(1)
         )
         result.append(
@@ -60,7 +64,11 @@ def images(
     query = select(MedicalImage).where(MedicalImage.patient_id == patient_id)
     total = db.scalar(select(func.count()).select_from(query.subquery()))
     rows = db.scalars(
-        query.order_by(MedicalImage.created_at.desc(), MedicalImage.id.desc())
+        query.order_by(
+            MedicalImage.study_date.desc().nullslast(),
+            MedicalImage.created_at.desc(),
+            MedicalImage.id.desc(),
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
     )

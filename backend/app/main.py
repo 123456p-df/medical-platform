@@ -14,6 +14,7 @@ from app.db import make_engine, make_session_factory
 from app.errors import APIError, success
 from app.routers import (
     ai,
+    analysis,
     auth,
     catalog,
     images,
@@ -25,6 +26,7 @@ from app.routers import (
     workflow,
 )
 from app.services.ai import AIProvider
+from app.services.analysis import AnalysisRunner
 from app.services.imaging import release_volume_cache
 from app.services.segmentation import SegmentationRunner
 
@@ -87,6 +89,7 @@ def create_app(
     *,
     engine=None,
     segmentation_adapter=None,
+    analysis_adapter=None,
     ai_provider=None,
     recover_tasks=True,
 ) -> FastAPI:
@@ -94,6 +97,7 @@ def create_app(
     engine = engine or make_engine(settings.database_url)
     sessions = make_session_factory(engine)
     runner = SegmentationRunner(settings, sessions, segmentation_adapter)
+    analysis_runner = AnalysisRunner(settings, sessions, analysis_adapter)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -112,9 +116,11 @@ def create_app(
             settings.storage_root.mkdir(parents=True, exist_ok=True)
             if recover_tasks:
                 runner.recover()
+                analysis_runner.recover()
             yield
         finally:
             runner.close()
+            analysis_runner.close()
             release_volume_cache(settings.storage_root)
             if lock_connection is not None:
                 lock_connection.execute(
@@ -133,6 +139,7 @@ def create_app(
     app.state.settings = settings
     app.state.session_factory = sessions
     app.state.segmentation_runner = runner
+    app.state.analysis_runner = analysis_runner
     app.state.ai_provider = ai_provider or AIProvider(settings)
     app.add_middleware(BodyLimitMiddleware, max_bytes=settings.max_upload_bytes + 1024 * 1024)
     app.add_middleware(
@@ -204,6 +211,7 @@ def create_app(
         records.router,
         images.router,
         segmentation.router,
+        analysis.router,
         organ_models.router,
         ai.router,
     ]:

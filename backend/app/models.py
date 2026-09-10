@@ -130,6 +130,7 @@ class MedicalImage(CreatedMixin, Base):
     shape: Mapped[list] = mapped_column(JSON)
     spacing: Mapped[list] = mapped_column(JSON)
     size_bytes: Mapped[int]
+    study_date: Mapped[date | None]
 
 
 class OrganModel(CreatedMixin, Base):
@@ -177,6 +178,80 @@ class SegmentationTask(CreatedMixin, Base):
     progress: Mapped[int] = mapped_column(default=0)
     result_model_id: Mapped[str | None] = mapped_column(ForeignKey("organ_models.id"))
     error_message: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AnalysisTask(CreatedMixin, Base):
+    __tablename__ = "analysis_tasks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'completed', 'failed')",
+            name="ck_analysis_task_status",
+        ),
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_analysis_task_progress"),
+        CheckConstraint(
+            "score_threshold >= 0 AND score_threshold <= 1",
+            name="ck_analysis_score_threshold",
+        ),
+        Index(
+            "uq_active_analysis",
+            "image_id",
+            "analysis_type",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+        Index("ix_analysis_patient_created", "patient_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    image_id: Mapped[str] = mapped_column(ForeignKey("medical_images.id"))
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
+    analysis_type: Mapped[str] = mapped_column(String(64), default="lung_nodule_detection")
+    requested_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    model_name: Mapped[str] = mapped_column(String(200))
+    score_threshold: Mapped[float] = mapped_column(default=0.1)
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    progress: Mapped[int] = mapped_column(default=0)
+    result_count: Mapped[int] = mapped_column(default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Finding(CreatedMixin, Base):
+    __tablename__ = "findings"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'confirmed', 'modified', 'dismissed')",
+            name="ck_finding_status",
+        ),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_finding_confidence"),
+        CheckConstraint("diameter_mm > 0", name="ck_finding_diameter"),
+        CheckConstraint("coordinate_system = 'RAS'", name="ck_finding_coordinate_system"),
+        CheckConstraint("box_mode = 'cccwhd'", name="ck_finding_box_mode"),
+        Index("ix_findings_image_status", "image_id", "status"),
+        Index("ix_findings_patient_created", "patient_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("analysis_tasks.id"), index=True)
+    image_id: Mapped[str] = mapped_column(ForeignKey("medical_images.id"))
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
+    finding_type: Mapped[str] = mapped_column(String(64), default="lung_nodule")
+    model_label: Mapped[str] = mapped_column(String(100), default="0")
+    label: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float]
+    diameter_mm: Mapped[float]
+    coordinate_system: Mapped[str] = mapped_column(String(8), default="RAS")
+    box_mode: Mapped[str] = mapped_column(String(16), default="cccwhd")
+    center_world_mm: Mapped[list] = mapped_column(JSON)
+    box_world_mm: Mapped[list] = mapped_column(JSON)
+    center_voxel: Mapped[list] = mapped_column(JSON)
+    box_voxel: Mapped[list] = mapped_column(JSON)
+    side: Mapped[str | None] = mapped_column(String(16))
+    lobe: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

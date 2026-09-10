@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Literal
 from uuid import uuid4
 
@@ -40,6 +41,7 @@ def image_out(image):
         "shape": image.shape,
         "spacing": image.spacing,
         "slice_count": image.shape[2],
+        "study_date": image.study_date,
         "created_at": image.created_at,
     }
 
@@ -55,9 +57,13 @@ def upload_image(
     file: UploadFile = File(),
     organ_id: str = Form(max_length=64),
     image_type: Literal["CT", "MRI"] = Form(),
+    study_date: date | None = Form(None),
 ):
-    check_patient_access(db, user, patient_id, write=True)
+    # Doctors need an active assignment; patients may upload only to their own record.
+    check_patient_access(db, user, patient_id, write=user.role == "doctor")
     require_organ(organ_id)
+    if study_date and study_date > date.today():
+        raise APIError(400, 40010, "Study date cannot be in the future")
     filename = (file.filename or "").lower()
     extension = (
         ".nii.gz" if filename.endswith(".nii.gz") else ".nii" if filename.endswith(".nii") else None
@@ -87,6 +93,7 @@ def upload_image(
             shape=list(canonical.shape),
             size_bytes=size,
             spacing=[float(x) for x in canonical.header.get_zooms()],
+            study_date=study_date,
         )
         db.add(record)
         audit(db, user.id, patient_id, "image.upload", "medical_image", image_id)
