@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { nextTick, reactive, ref } from 'vue'
 import { X, UserPlus } from 'lucide-vue-next'
-import { api } from '@/api/client'
 import { usePatientStore } from '@/stores/patients'
 const emit = defineEmits<{ created: [id: string] }>()
 const dialog = ref<HTMLDialogElement>(), busy = ref(false), error = ref('')
@@ -13,12 +12,12 @@ async function save() {
   if (busy.value) return
   busy.value = true; error.value = ''
   try {
-    const result = await api<{ patient_id: number }>('/patients', { method: 'POST', body: JSON.stringify({
+    const patientId = await store.createPatient({
       name: form.name.trim(), id_number: form.id_number.trim(), birth_date: form.birth_date || null, gender: form.gender,
       height: form.height ? Number(form.height) : null, weight: form.weight ? Number(form.weight) : null,
       blood_type: form.abo ? form.abo + form.rh : null,
-    }) })
-    await store.loadPatients(); dialog.value?.close(); emit('created', String(result.patient_id))
+    })
+    dialog.value?.close(); emit('created', patientId)
   } catch (e) { error.value = e instanceof Error ? e.message : '录入失败' }
   finally { busy.value = false }
 }

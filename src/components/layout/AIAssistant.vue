@@ -6,6 +6,7 @@ import { api } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
 import { organNames } from '@/api/mappers'
+import { localPreview } from '@/utils/runtime'
 const auth = useAuthStore(), patients = usePatientStore(), route = useRoute(), router = useRouter()
 const open = ref(false), question = ref(''), organ = ref('lung'), busy = ref(false), configured = ref<boolean | null>(null), error = ref('')
 const input = ref<HTMLTextAreaElement>(), log = ref<HTMLDivElement>(), launcher = ref<HTMLButtonElement>()
@@ -18,6 +19,7 @@ watch(() => patientId.value + ':' + organ.value, () => { generation++; controlle
 watch(open, async value => {
   if (!value) { launcher.value?.focus(); return }
   await nextTick(); input.value?.focus()
+  if (localPreview) { configured.value = false; error.value = ''; return }
   try { configured.value = (await api<{configured: boolean}>('/ai/status')).configured }
   catch (e) { error.value = e instanceof Error ? e.message : '连接状态读取失败' }
 })

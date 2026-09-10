@@ -12,7 +12,7 @@ const normalized = computed(() => props.status.toLowerCase().replace(/\s+/g, '-'
 <template>
   <span :class="['status-badge', normalized]">
     <span class="dot" />
-    {{ status }}
+    {{ $t(status) }}
   </span>
 </template>
 

@@ -6,8 +6,10 @@ import {
   CalendarDays,
   Clock3,
   FileText,
+  RotateCcw,
   ScanLine,
   TriangleAlert,
+  UserPlus,
   Users,
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
@@ -17,6 +19,8 @@ import StatsCard from '@/components/ui/StatsCard.vue'
 import SearchBar from '@/components/ui/SearchBar.vue'
 import FilterBar from '@/components/ui/FilterBar.vue'
 import PatientTable from '@/components/patient/PatientTable.vue'
+import PatientCreateDialog from '@/components/patient/PatientCreateDialog.vue'
+import PatientDeleteButton from '@/components/patient/PatientDeleteButton.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
 import type { Patient } from '@/types'
@@ -34,6 +38,7 @@ const filters = reactive({
 })
 
 const selectedPatientId = ref<string | null>(null)
+const patientDialog = ref<InstanceType<typeof PatientCreateDialog>>()
 const today = new Date().toISOString().slice(0, 10)
 const recent = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
 
@@ -80,16 +85,39 @@ const filteredPatients = computed(() => {
 })
 
 const selectedPatient = computed(
-  () => store.patients.find((patient) => patient.id === selectedPatientId.value) ?? store.patients[0] ?? null,
+  () => store.patients.find((patient) => patient.id === selectedPatientId.value) ?? null,
 )
 
-function openPatient(patient: Patient) {
+const hasActiveFilters = computed(
+  () => filters.search.trim() !== '' || Object.entries(filters).some(([key, value]) => key !== 'search' && value !== 'All'),
+)
+
+function selectPatient(patient: Patient) {
   selectedPatientId.value = patient.id
+}
+
+function openPatient(patient: Patient) {
+  selectPatient(patient)
   router.push({ name: 'doctor-patient-overview', params: { id: patient.id } })
 }
 
-onMounted(() => {
-  if (!store.patients.length) store.loadPatients()
+function patientCreated(id: string) {
+  selectedPatientId.value = id
+}
+
+function patientRemoved(id: string) {
+  if (selectedPatientId.value === id) selectedPatientId.value = store.patients[0]?.id || null
+}
+
+function resetFilters() {
+  Object.assign(filters, { search: '', modality: 'All', organ: 'All', status: 'All', risk: 'All', date: 'All' })
+}
+
+onMounted(async () => {
+  if (!store.patients.length) await store.loadPatients()
+  if (!selectedPatientId.value || !store.patients.some((patient) => patient.id === selectedPatientId.value)) {
+    selectedPatientId.value = store.patients[0]?.id || null
+  }
 })
 </script>
 
@@ -98,11 +126,9 @@ onMounted(() => {
     <PageHeader
       title="Patient Workspace"
       subtitle="View every patient, search the roster, then open one record for imaging and reports."
-    >
-      <template #actions>
-        <SearchBar v-model="filters.search" placeholder="Search patient name or ID..." />
-      </template>
-    </PageHeader>
+    />
+
+    <PatientCreateDialog ref="patientDialog" @created="patientCreated" />
 
     <section class="grid four-col stats-grid">
       <StatsCard label="Total Patients" :value="totalPatients" note="Across all modules" :icon="Users" tone="teal" />
@@ -111,15 +137,30 @@ onMounted(() => {
       <StatsCard label="Today's Uploads" :value="todaysExams" note="Patients with new images" :icon="CalendarDays" tone="blue" />
     </section>
 
-    <WorkflowQueue /><section class="dashboard-grid">
+    <WorkflowQueue />
+
+    <div v-if="store.lastArchivedPatient" class="undo-banner" role="status">
+      <span>已从工作台移除患者 <strong>{{ store.lastArchivedPatient.name }}</strong></span>
+      <button class="btn btn-secondary btn-sm" type="button" @click="store.restoreLastPatient()">撤销</button>
+    </div>
+
+    <section class="dashboard-grid">
       <div class="patient-section">
         <div class="card">
           <div class="card-header">
             <div>
               <h2>All Patients</h2>
-              <p class="muted">Search and filter the complete patient roster.</p>
+              <p class="muted">搜索、添加或管理患者档案。</p>
             </div>
-            <span class="patient-count">{{ filteredPatients.length }} / {{ totalPatients }}</span>
+            <div class="roster-heading-actions">
+              <span class="patient-count">{{ filteredPatients.length }} / {{ totalPatients }}</span>
+              <button class="btn btn-primary" type="button" @click="patientDialog?.open()"><UserPlus :size="16" /> 加入患者</button>
+            </div>
+          </div>
+          <div class="patient-search-row">
+            <SearchBar v-model="filters.search" placeholder="搜索患者姓名或患者 ID…" />
+            <span v-if="filters.search">正在显示与“{{ filters.search }}”匹配的患者</span>
+            <span v-else>输入姓名或患者 ID 即可快速查找</span>
           </div>
           <div class="filter-row">
             <FilterBar>
@@ -140,13 +181,28 @@ onMounted(() => {
                 <option value="Today">Today</option>
                 <option value="Recent">Last 7 days</option>
               </select>
+              <button v-if="hasActiveFilters" type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
+                <RotateCcw :size="14" /> {{ $t('Clear filters') }}
+              </button>
             </FilterBar>
           </div>
+          <p v-if="store.error" class="roster-message error-message" role="alert">
+            {{ store.error }}
+            <button type="button" class="btn btn-secondary btn-sm" @click="store.loadPatients()">重试</button>
+          </p>
+          <p v-else-if="store.loading" class="roster-message">正在加载患者列表…</p>
           <PatientTable
+            v-else
             :patients="filteredPatients"
             :selected-id="selectedPatientId"
-            @select="openPatient"
+            @select="selectPatient"
+            @open="openPatient"
+            @removed="patientRemoved"
           />
+          <div v-if="!store.loading && !store.error && !filteredPatients.length" class="empty-state">
+            没有找到匹配的患者。
+            <button v-if="hasActiveFilters" type="button" class="btn btn-secondary btn-sm" @click="resetFilters">清除筛选</button>
+          </div>
         </div>
       </div>
 
@@ -165,9 +221,9 @@ onMounted(() => {
             </div>
           </div>
           <div class="selected-meta">
-            <span>{{ selectedPatient.age }} years</span>
-            <span>{{ selectedPatient.gender }}</span>
-            <span>{{ selectedPatient.modality }} · {{ selectedPatient.organ }}</span>
+            <span>{{ selectedPatient.age === null ? '年龄未登记' : selectedPatient.age + ' ' + $t('years') }}</span>
+            <span>{{ $t(selectedPatient.gender) }}</span>
+            <span>{{ $t(selectedPatient.modality) }} · {{ $t(selectedPatient.organ) }}</span>
           </div>
           <div class="ct-preview">
             <ScanLine :size="48" style="color:#83b5b8;position:absolute;left:calc(50% - 24px);top:calc(50% - 24px)" />
@@ -190,6 +246,7 @@ onMounted(() => {
             <button type="button" class="btn btn-secondary" @click="router.push({ name: 'doctor-patient-3d', params: { id: selectedPatient.id } })">
               <Activity :size="16" /> View 3D
             </button>
+            <PatientDeleteButton :id="selectedPatient.id" :name="selectedPatient.name" stay @removed="patientRemoved" />
           </div>
         </div>
         <div v-else class="empty-state">
@@ -226,10 +283,69 @@ onMounted(() => {
   font-weight: 700;
 }
 
+.roster-heading-actions,
+.patient-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.patient-search-row {
+  padding: 15px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg, #f6fbfa 0%, #fbfdfd 100%);
+}
+
+.patient-search-row :deep(.search-bar) {
+  width: min(100%, 460px);
+  height: 44px;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.patient-search-row > span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.undo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -8px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid #c8dfd7;
+  border-radius: 9px;
+  background: #edf7f3;
+  color: #315f53;
+  font-size: 13px;
+}
+
 .filter-row {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   background: #fbfdfd;
+}
+
+.roster-message {
+  display: flex;
+  min-height: 92px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.error-message {
+  color: #a3444b;
+}
+
+.empty-state .btn {
+  margin-left: 8px;
 }
 
 .selected-panel {
@@ -370,6 +486,19 @@ onMounted(() => {
 
   .selected-panel {
     position: static;
+  }
+}
+
+@media (max-width: 680px) {
+  .card-header,
+  .patient-search-row,
+  .roster-heading-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .patient-search-row > span {
+    display: none;
   }
 }
 </style>

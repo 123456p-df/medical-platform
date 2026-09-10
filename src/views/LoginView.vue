@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import type { PortalRole } from '@/types'
 import { ref } from 'vue'
+import { localPreview } from '@/utils/runtime'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -12,7 +13,7 @@ const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const error = ref('')
-const preview = import.meta.env.VITE_PREVIEW === 'true'
+const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
 
 async function login(demoRole?: PortalRole) {
   if (busy.value) return

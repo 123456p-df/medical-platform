@@ -3,7 +3,7 @@ import { computed, ref, onMounted } from 'vue'
 import { useProfileStore } from '@/stores/profile'
 import { useWorkflowStore } from '@/stores/workflow'
 import { locale, setLocale } from '@/i18n'
-import { Bell, Menu } from 'lucide-vue-next'
+import { Bell, ChevronRight, Menu } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -86,8 +86,9 @@ const initials = computed(() =>
         <span class="profile-avatar"><img v-if="profile.data?.avatar_url" :src="profile.data.avatar_url" alt="头像" /><template v-else>{{ initials }}</template></span>
         <span class="profile-copy">
           <strong>{{ displayName }}</strong>
-          <small>{{ auth.portal === 'doctor' ? 'Doctor' : 'Patient' }}</small>
+          <small>{{ auth.portal === 'doctor' ? 'Doctor' : 'Patient' }} · Profile</small>
         </span>
+        <ChevronRight class="profile-chevron" :size="15" />
       </RouterLink>
     </div>
   </header>
@@ -200,7 +201,15 @@ const initials = computed(() =>
 
 .topbar-profile {
   gap: 9px;
-  padding-left: 4px;
+  padding: 5px 7px 5px 5px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.topbar-profile:hover {
+  border-color: var(--border);
+  background: var(--surface-2);
 }
 
 .profile-avatar {
@@ -229,6 +238,10 @@ const initials = computed(() =>
 .profile-copy small {
   color: var(--text-muted);
   font-size: 10px;
+}
+
+.profile-chevron {
+  color: var(--text-muted);
 }
 
 @media (max-width: 980px) {

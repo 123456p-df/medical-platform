@@ -5,13 +5,14 @@ import { usePatientStore } from '@/stores/patients'
 import AppSidebar from './Sidebar.vue'
 import AppTopbar from './Topbar.vue'
 import AIAssistant from './AIAssistant.vue'
+import { localPreview } from '@/utils/runtime'
 
 const auth = useAuthStore()
 const patients = usePatientStore()
 const sidebarOpen = ref(false)
 const sidebarCollapsed = ref(localStorage.getItem('pulmolink-sidebar-collapsed') === 'true')
 const shellClass = computed(() => `portal-${auth.portal ?? 'doctor'}`)
-const preview = import.meta.env.VITE_PREVIEW === 'true'
+const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
 
 watch(sidebarCollapsed, (collapsed) => {
   localStorage.setItem('pulmolink-sidebar-collapsed', String(collapsed))

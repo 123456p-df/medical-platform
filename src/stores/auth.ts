@@ -4,8 +4,8 @@ import { api, SESSION_KEY } from '@/api/client'
 import { usePatientStore } from './patients'
 import { useProfileStore } from './profile'
 import { useWorkflowStore } from './workflow'
+import { localPreview } from '@/utils/runtime'
 import type { PortalRole, UserSession } from '@/types'
-const localPreview = import.meta.env.VITE_LOCAL_PREVIEW === 'true'
 function previewSession(): UserSession {
   return { id: 'P20260021', name: 'Dr. Zhang Wei', role: 'doctor', accessToken: 'local-preview' }
 }
@@ -17,6 +17,11 @@ export const useAuthStore = defineStore('auth', () => {
   const session = ref<UserSession | null>(stored())
   const isAuthenticated = computed(() => Boolean(session.value?.accessToken))
   const portal = computed<PortalRole | null>(() => session.value?.role ?? null)
+  function ensureLocalSession() {
+    if (!localPreview || session.value) return
+    session.value = previewSession()
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
+  }
   function logout() {
     session.value = null
     sessionStorage.removeItem(SESSION_KEY)
@@ -45,5 +50,5 @@ export const useAuthStore = defineStore('auth', () => {
     return result.role
   }
   window.addEventListener('vmrb-session-expired', () => { logout(); window.location.assign('/login') })
-  return { session, isAuthenticated, portal, login, logout }
+  return { session, isAuthenticated, portal, login, logout, ensureLocalSession }
 })

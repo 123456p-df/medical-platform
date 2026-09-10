@@ -2,9 +2,10 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api, collection } from '@/api/client'
 import { mockExaminations, mockPatients } from '@/data/mockData'
-const localPreview = import.meta.env.VITE_LOCAL_PREVIEW === 'true'
+import { localPreview } from '@/utils/runtime'
+const PREVIEW_REVIEW_KEY = 'pulmolink-preview-review-status'
 export interface WorkItem {
-  image_id: string; patient_id: number; patient_name: string; image_type: string
+  image_id: string; patient_id: number | string; patient_name: string; image_type: string
   organ_id: string; created_at: string; completed_at: string | null
 }
 export const useWorkflowStore = defineStore('workflow', () => {
@@ -16,9 +17,14 @@ export const useWorkflowStore = defineStore('workflow', () => {
     const current = ++generation
     loading.value = true; error.value = ''
     if (localPreview) {
-      const examination = mockExaminations[0]
-      const patient = mockPatients.find(item => item.id === examination.patientId)
-      items.value = [{ image_id: examination.id, patient_id: 1, patient_name: patient?.name || 'Demo Patient', image_type: examination.type, organ_id: 'lung', created_at: `${examination.date}T09:00:00Z`, completed_at: null }]
+      let saved: Record<string,string> = {}
+      try { saved = JSON.parse(localStorage.getItem(PREVIEW_REVIEW_KEY) || '{}') }
+      catch { saved = {} }
+      items.value = mockExaminations.map(examination => {
+        const patient = mockPatients.find(item => item.id === examination.patientId)
+        const initiallyComplete = examination.status !== 'Pending Review' ? `${examination.date}T18:00:00Z` : null
+        return { image_id: examination.id, patient_id: examination.patientId, patient_name: patient?.name || 'Demo Patient', image_type: examination.type, organ_id: examination.organId || examination.organ.toLowerCase(), created_at: `${examination.date}T09:00:00Z`, completed_at: saved[examination.id] ?? initiallyComplete }
+      })
       loading.value = false
       return
     }
@@ -30,6 +36,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
     if (localPreview) {
       const item = items.value.find(entry => entry.image_id === id)
       if (item) item.completed_at = completed ? new Date().toISOString() : null
+      let saved: Record<string,string> = {}
+      try { saved = JSON.parse(localStorage.getItem(PREVIEW_REVIEW_KEY) || '{}') }
+      catch { saved = {} }
+      if (completed) saved[id] = item?.completed_at || new Date().toISOString()
+      else saved[id] = ''
+      localStorage.setItem(PREVIEW_REVIEW_KEY, JSON.stringify(saved))
       return
     }
     await api('/medical-images/' + id + '/review', { method: 'PATCH', body: JSON.stringify({ completed }) })

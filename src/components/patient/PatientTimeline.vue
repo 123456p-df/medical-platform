@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { locale } from '@/i18n'
-import { ScanLine } from 'lucide-vue-next'
+import { ChevronRight, ScanLine } from 'lucide-vue-next'
 import type { Examination } from '@/types'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 
@@ -39,6 +39,7 @@ function formatDate(date: string) {
         <span>{{ $t(formatDate(examination.date)) }}</span>
         <StatusBadge :status="examination.status" />
       </span>
+      <span class="timeline-action">{{ examination.status === 'Pending Review' ? '开始审核' : '查看影像' }}<ChevronRight :size="15" /></span>
     </button>
   </div>
 </template>
@@ -91,6 +92,22 @@ function formatDate(date: string) {
   flex-direction: column;
   gap: 4px;
   padding-top: 2px;
+}
+
+.timeline-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-top: 4px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.timeline-item:hover .timeline-action {
+  text-decoration: underline;
 }
 
 .timeline-content strong {

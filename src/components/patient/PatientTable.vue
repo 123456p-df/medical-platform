@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-vue-next'
 import type { Patient } from '@/types'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
+import PatientDeleteButton from '@/components/patient/PatientDeleteButton.vue'
 
 defineProps<{
   patients: Patient[]
@@ -12,6 +13,8 @@ defineProps<{
 
 const emit = defineEmits<{
   select: [patient: Patient]
+  open: [patient: Patient]
+  removed: [id: string]
 }>()
 
 function formatDate(date: string) {
@@ -49,6 +52,7 @@ function formatDate(date: string) {
           tabindex="0"
           @click="emit('select', patient)"
           @keydown.enter="emit('select', patient)"
+          @dblclick="emit('open', patient)"
         >
           <td>
             <div class="patient-cell">
@@ -67,7 +71,24 @@ function formatDate(date: string) {
           <td><StatusBadge :status="patient.aiStatus" /></td>
           <td><RiskBadge :level="patient.risk" /></td>
           <td class="action-col">
-            <ChevronRight :size="17" />
+            <div class="row-actions">
+              <button
+                type="button"
+                class="row-open-button"
+                :aria-label="`${$t('Open patient record')}: ${patient.name}`"
+                :title="`${$t('Open patient record')}: ${patient.name}`"
+                @click.stop="emit('open', patient)"
+              >
+                <ChevronRight :size="17" />
+              </button>
+              <PatientDeleteButton
+                :id="patient.id"
+                :name="patient.name"
+                compact
+                stay
+                @removed="emit('removed', $event)"
+              />
+            </div>
           </td>
         </tr>
       </tbody>
@@ -82,7 +103,7 @@ function formatDate(date: string) {
 
 .patient-table {
   width: 100%;
-  min-width: 920px;
+  min-width: 980px;
   border-collapse: collapse;
 }
 
@@ -160,7 +181,32 @@ function formatDate(date: string) {
 }
 
 .action-col {
-  width: 38px;
+  width: 82px;
   color: var(--text-muted);
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.row-open-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.row-open-button:hover,
+.row-open-button:focus-visible {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--accent);
 }
 </style>

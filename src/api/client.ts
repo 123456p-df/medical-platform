@@ -16,7 +16,7 @@ export async function request(path: string, options: RequestInit = {}): Promise<
   catch { throw new ApiError(0, 0, '无法连接后端，请检查服务是否已启动。') }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    if (response.status === 401 && accessToken) {
+    if (response.status === 401 && accessToken && accessToken !== 'local-preview') {
       sessionStorage.removeItem(SESSION_KEY)
       window.dispatchEvent(new Event('vmrb-session-expired'))
     }

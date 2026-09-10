@@ -1,20 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import ProfileView from '@/views/ProfileView.vue'
 import LoginView from '@/views/LoginView.vue'
-import DoctorDashboardView from '@/views/doctor/DoctorDashboardView.vue'
-import PatientDetailView from '@/views/doctor/PatientDetailView.vue'
-import PatientOverviewView from '@/views/doctor/PatientOverviewView.vue'
-import PatientImagingView from '@/views/doctor/PatientImagingView.vue'
-import PatientAIView from '@/views/doctor/PatientAIView.vue'
-import PatientReportView from '@/views/doctor/PatientReportView.vue'
-import Patient3DView from '@/views/doctor/Patient3DView.vue'
-import PatientDashboardView from '@/views/patient/PatientDashboardView.vue'
-import ExaminationsView from '@/views/patient/ExaminationsView.vue'
-import ExaminationDetailView from '@/views/patient/ExaminationDetailView.vue'
-import ReportsView from '@/views/patient/ReportsView.vue'
-import BodyView from '@/views/patient/BodyView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -35,7 +22,7 @@ const router = createRouter({
       component: AppLayout,
       meta: { portal: 'doctor', requiresAuth: true },
       children: [
-        { path: 'profile', component: ProfileView },
+        { path: 'profile', component: () => import('@/views/ProfileView.vue') },
         {
           path: '',
           redirect: '/doctor/dashboard',
@@ -43,7 +30,7 @@ const router = createRouter({
         {
           path: 'dashboard',
           name: 'doctor-dashboard',
-          component: DoctorDashboardView,
+          component: () => import('@/views/doctor/DoctorDashboardView.vue'),
         },
         {
           path: 'patients',
@@ -52,12 +39,12 @@ const router = createRouter({
         },
         {
           path: 'patients/:id',
-          component: PatientDetailView,
+          component: () => import('@/views/doctor/PatientDetailView.vue'),
           children: [
             {
               path: '',
               name: 'doctor-patient-overview',
-              component: PatientOverviewView,
+              component: () => import('@/views/doctor/PatientOverviewView.vue'),
             },
             {
               path: 'overview',
@@ -66,22 +53,22 @@ const router = createRouter({
             {
               path: 'imaging',
               name: 'doctor-patient-imaging',
-              component: PatientImagingView,
+              component: () => import('@/views/doctor/PatientImagingView.vue'),
             },
             {
               path: 'ai',
               name: 'doctor-patient-ai',
-              component: PatientAIView,
+              component: () => import('@/views/doctor/PatientAIView.vue'),
             },
             {
               path: 'report',
               name: 'doctor-patient-report',
-              component: PatientReportView,
+              component: () => import('@/views/doctor/PatientReportView.vue'),
             },
             {
               path: '3d',
               name: 'doctor-patient-3d',
-              component: Patient3DView,
+              component: () => import('@/views/doctor/Patient3DView.vue'),
             },
           ],
         },
@@ -92,7 +79,7 @@ const router = createRouter({
       component: AppLayout,
       meta: { portal: 'patient', requiresAuth: true },
       children: [
-        { path: 'profile', component: ProfileView },
+        { path: 'profile', component: () => import('@/views/ProfileView.vue') },
         {
           path: '',
           redirect: '/patient/dashboard',
@@ -100,32 +87,32 @@ const router = createRouter({
         {
           path: 'dashboard',
           name: 'patient-dashboard',
-          component: PatientDashboardView,
+          component: () => import('@/views/patient/PatientDashboardView.vue'),
         },
         {
           path: 'examinations',
           name: 'patient-examinations',
-          component: ExaminationsView,
+          component: () => import('@/views/patient/ExaminationsView.vue'),
         },
         {
           path: 'examinations/:id',
           name: 'patient-examination-detail',
-          component: ExaminationDetailView,
+          component: () => import('@/views/patient/ExaminationDetailView.vue'),
         },
         {
           path: 'reports',
           name: 'patient-reports',
-          component: ReportsView,
+          component: () => import('@/views/patient/ReportsView.vue'),
         },
         {
           path: 'body',
           name: 'patient-body',
-          component: BodyView,
+          component: () => import('@/views/patient/BodyView.vue'),
         },
         {
           path: 'assistant',
           name: 'patient-ai',
-          component: PatientAIView,
+          component: () => import('@/views/doctor/PatientAIView.vue'),
         },
       ],
     },
@@ -138,6 +125,7 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
+  auth.ensureLocalSession()
   const isPublic = Boolean(to.meta.public)
 
   if (!isPublic && !auth.isAuthenticated) {

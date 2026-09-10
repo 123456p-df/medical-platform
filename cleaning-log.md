@@ -1,5 +1,21 @@
 # 整理日志
 
+## 2026-09-10 Profile、患者管理与影像审核重组
+
+- 以用户刚从 GitHub pull 的桌面 `/Users/123456p/Desktop/Medical/` 为只读基准，在项目内新建 `medical/V3/` 工作副本；盘点确认当前为 Vue 3 + TypeScript + Vite 前端，原始桌面代码未先行修改或删除。
+- 从医生和患者侧栏移除“个人资料”独立入口；右上角头像继续作为唯一 Profile 入口，并增强悬停提示。Profile 页面新增返回工作台入口，重做表单层级、输入框、焦点态、占位文本与保存区；本地预览资料可保存到浏览器。
+- 患者工作台将姓名/ID 搜索提升到患者列表正上方，新增“加入患者”按钮，并在已选患者操作区加入删除入口。本地预览支持新增、软移除与撤销，数据保存在浏览器中，不删除病历或影像文件。
+- Overview 时间线为 Pending Review 明确显示“开始审核”；影像页将审核状态、AI Findings 入口与“确认审核完成”按钮移动到影像画布上方，并保存本地审核状态。
+- 工作副本与桌面目录均通过 TypeScript/Vite 生产构建；11 个关键修改文件比对一致，桌面 4173 的工作台、Profile、影像审核三条路由均返回 HTTP 200。
+- 未删除、移动或重命名任何原始文件。待确认项：无。已知范围：本地示例 CT/MRI 切片接口仍依赖未启动的后端，界面管理与审核状态使用本地预览数据。
+
+## 2026-09-10 Git pull 后 Vite 模块解析恢复
+
+- 只读检查桌面 `/Users/123456p/Desktop/Medical/`：`src/stores/auth.ts` 存在且已被 Git 跟踪，`vite.config.ts` 与 `tsconfig.app.json` 的 `@` 路径别名配置正确，相关源码没有未提交冲突。
+- 定位到 pull 替换源码后，旧 Vite 开发进程仍保留失效的模块解析/监听状态，导致已存在的 `@/stores/auth` 被错误报告为无法解析。
+- 未修改刚 pull 下来的源码；仅停止旧的 4173 开发进程，并从桌面当前 `main` 代码以本地免密码预览模式重新启动。
+- 验证：`/src/router/index.ts` 已返回 HTTP 200，并正确解析为 `/src/stores/auth.ts`。未删除任何文件；待确认项：无。
+
 ## 2026-09-09 macOS 运行副本准备
 
 - 只读盘点了 `/Users/123456p/Downloads/medical-platform-main 2/`，确认网页位于 `medical-platform/Medical/`，桌面目标为 `/Users/123456p/Desktop/Medical/`。

@@ -10,7 +10,7 @@ const tone = computed(() => props.level.toLowerCase())
 </script>
 
 <template>
-  <span :class="['risk-badge', tone]">{{ level }}</span>
+  <span :class="['risk-badge', tone]">{{ $t(level) }}</span>
 </template>
 
 <style scoped>

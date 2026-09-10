@@ -12,7 +12,6 @@ import {
   PanelLeftOpen,
   Sparkles,
   Stethoscope,
-  UserRound,
   X,
 } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
@@ -33,11 +32,9 @@ const router = useRouter()
 
 const doctorNav = computed(() => [
   { label: 'Patient Workspace', to: '/doctor/dashboard', icon: LayoutDashboard },
-  { label: '个人资料', to: '/doctor/profile', icon: UserRound },
 ])
 
 const patientNav = computed(() => [
-  { label: '个人资料', to: '/patient/profile', icon: UserRound },
   { label: 'Home', to: '/patient/dashboard', icon: Home },
   { label: 'My Health', to: '/patient/dashboard', icon: HeartPulse },
   { label: 'My Examinations', to: '/patient/examinations', icon: Stethoscope },
