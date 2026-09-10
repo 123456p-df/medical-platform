@@ -3,7 +3,7 @@ NV-Segment-CTMR Adapter with Pure 1-Stage Native 1.0mm Isotropic Architecture
 =============================================================================
 Pure 1-Stage Global Anatomy Inference (modality="CT_BODY")
 - Native 1.0mm Isotropic Spacing (1.0, 1.0, 1.0) mm
-- Native 0.5 Sliding Window Overlap (roi_size=(192, 192, 128), gaussian blending)
+- Native 0.5 Sliding Window Overlap (roi_size=(288, 288, 192), gaussian blending)
 - CPU-buffered accumulator (Zero CUDA OOM)
 - Narrow-band Signed Distance Field (SDF) continuous zero-crossing (level=0.0)
 - Watertight 2-manifold Lewiner Marching Cubes in unit space
@@ -78,7 +78,7 @@ class NVSegmentCT:
             self.pipeline = helper_cls("vista3d").init_pipeline(
                 str(folder / "vista3d_pretrained_model"),
                 resample_spacing=(1.0, 1.0, 1.0),
-                roi_size=(192, 192, 128),
+                roi_size=(288, 288, 192),
                 overlap=0.5,
                 device=device,
             )

@@ -4,7 +4,7 @@ Pure 1-Stage Native 1.0mm Isotropic Sub-Voxel Anatomy Reconstruction Pipeline
 Architecture:
 - Pure 1-Stage Global Anatomy Inference (modality="CT_BODY")
 - Native 1.0mm Isotropic Spacing (1.0, 1.0, 1.0) mm
-- Native 0.5 Sliding Window Overlap (roi_size=(192, 192, 128), gaussian blending)
+- Native 0.5 Sliding Window Overlap (roi_size=(288, 288, 192), gaussian blending)
 - CPU-buffered accumulator for 117-class probability field (Zero CUDA OOM)
 - Narrow-band Signed Distance Field (SDF) continuous zero-crossing (level=0.0)
 - Zero volume distortion (<0.1% volume drift), perfectly preserves organic curvature
@@ -249,7 +249,7 @@ def main():
     pipeline = helper.init_pipeline(
         "/home/zhichun/Documents/NV-Segment-CTMR/vista3d_pretrained_model",
         resample_spacing=(1.0, 1.0, 1.0),
-        roi_size=(192, 192, 128),
+        roi_size=(288, 288, 192),
         overlap=0.5,
         device=torch.device("cuda:0"),
     )
