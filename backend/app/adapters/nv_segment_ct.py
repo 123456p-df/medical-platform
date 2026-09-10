@@ -85,11 +85,32 @@ class NVSegmentCT:
 
     def __call__(self, *, image_path: Path, organ_id: str, output_dir: Path, progress):
         self._ensure_pipelines()
-        progress(15)
-
         raw_dir = output_dir / "raw"
         raw_dir.mkdir(exist_ok=True, parents=True)
         labels = LABELS[organ_id]
+
+        if not hasattr(self.pipeline, "preprocess"):
+            progress(20)
+            self.pipeline(
+                {"image": str(image_path), "label_prompt": labels},
+                output_dir=str(raw_dir),
+                output_postfix="seg",
+                separate_folder=False,
+            )
+            progress(75)
+            outputs = list(raw_dir.rglob("*.nii.gz")) + list(raw_dir.rglob("*.nii"))
+            if len(outputs) != 1:
+                raise ValueError("Expected one NIfTI prediction from NVIDIA pipeline")
+            from app.services.imaging import load_volume
+            prediction, values = load_volume(outputs[0], self.settings)
+            mask = np.isin(values, labels).astype(np.uint8)
+            path = output_dir / "mask.nii.gz"
+            header = prediction.header.copy()
+            header.set_data_dtype(np.uint8)
+            nib.save(nib.Nifti1Image(mask, prediction.affine, header), path)
+            return path
+
+        progress(15)
 
         native_img = nib.load(str(image_path))
         native_data = native_img.get_fdata(dtype=np.float32)
