@@ -217,3 +217,11 @@
 - 未修改 3D Viewer，未删除、移动或重命名任何文件。
 - 待确认项：桌面 `/Users/123456p/Desktop/Medical/` 仍按规则保持只读，尚未同步本轮 V4 变更。
 - 下一轮建议：在真实后端模式运行 `alembic upgrade head`，用两份切片数不同的去标识化肺部 CT 验证解剖位置匹配。
+
+## 2026-09-10 GitHub 交付记录
+
+- 在 `medical/V4/` 副本内建立独立 Git 工作区并连接 `https://github.com/123456p-df/medical-platform.git`，桌面原始仓库保持只读。
+- 从远程 `main` 的 `b8339c0` 建立基线，仅暂存本轮 39 个源码、迁移、测试和文档文件；未暂存远程历史 `V1/`、`medical-platform/` 或 `.pnpm-store` 的缺失状态，因此没有提交任何删除。
+- 功能提交 `6e770ad` 已推送到 `origin/main`，远程哈希复核一致。
+- `node_modules`、`.venv`、`dist`、`__pycache__`、本地环境配置和测试构建缓存均未提交。
+- 待确认项：桌面 `/Users/123456p/Desktop/Medical/` 尚未同步本轮源码。
