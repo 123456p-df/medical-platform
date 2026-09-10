@@ -140,7 +140,7 @@ class SegmentationRunner:
             model_id = f"model_{uuid4().hex}"
             model_path = stored_path(self.settings, f"organ-models/{model_id}.glb")
             model_path.parent.mkdir(parents=True, exist_ok=True)
-            mask_to_glb(mask_path, image_path, model_path, self.settings)
+            mask_to_glb(mask_path, image_path, model_path, self.settings, organ_id=task.organ_id)
             with self.sessions() as db:
                 task = db.get(SegmentationTask, task_id)
                 db.add(

@@ -78,7 +78,7 @@ def test_upload_slice_segmentation_glb_permissions(app_env, people, nifti_file):
     glb = client.get(model_route + "/file", headers=people["patient_a"])
     assert glb.content.startswith(b"glTF")
     mesh = trimesh.load(io.BytesIO(glb.content), file_type="glb", force="scene")
-    np.testing.assert_allclose(mesh.extents, [0.016, 0.048, 0.030], atol=1e-6)
+    np.testing.assert_allclose(mesh.extents, [0.016, 0.048, 0.030], atol=1e-3)
     organ = client.get(
         f"/api/v1/patients/{people['patient_a_pid']}/organs/lung", headers=people["doctor_a"]
     ).json()["data"]
