@@ -31,6 +31,30 @@ class SyntheticAdapter:
         return output
 
 
+class SyntheticDetectionAdapter:
+    """Deterministic RAS/cccwhd model response used only by API tests."""
+
+    image_types = {"CT"}
+    model_name = "synthetic/lung-nodule:1"
+
+    def __call__(self, *, image_path, score_threshold, progress):
+        assert image_path.is_file()
+        progress(70)
+        return {
+            "model_name": self.model_name,
+            "coordinate_system": "RAS",
+            "box_mode": "cccwhd",
+            "findings": [
+                {
+                    "box": [10.0, 18.0, 28.0, 8.0, 9.0, 12.0],
+                    "score": 0.93,
+                    "label": 0,
+                    "lobe": "right_upper_lobe",
+                }
+            ],
+        }
+
+
 class CapturingAI:
     def __init__(self):
         self.calls = []
@@ -80,7 +104,11 @@ def app_env(tmp_path):
     Base.metadata.create_all(engine)
     provider = CapturingAI()
     app = create_app(
-        settings, engine=engine, segmentation_adapter=SyntheticAdapter(), ai_provider=provider
+        settings,
+        engine=engine,
+        segmentation_adapter=SyntheticAdapter(),
+        analysis_adapter=SyntheticDetectionAdapter(),
+        ai_provider=provider,
     )
     try:
         with TestClient(app, raise_server_exceptions=False) as client:

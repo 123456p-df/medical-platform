@@ -49,14 +49,24 @@ export interface Examination {
 
 export interface Finding {
   id: string
+  analysisTaskId?: string
   examinationId: string
   patientId: string
   organ: string
-  side: 'left' | 'right'
+  side: 'left' | 'right' | 'unknown'
   location: string
   label: string
   severity: RiskLevel
   confidence: number
+  diameterMm?: number
+  modelName?: string
+  modelLabel?: string
+  coordinateSystem?: 'RAS'
+  boxMode?: 'cccwhd'
+  centerWorldMm?: [number, number, number]
+  boxWorldMm?: [number, number, number, number, number, number]
+  centerVoxel?: [number, number, number]
+  boxVoxel?: [number, number, number, number, number, number]
   description: string
   status: 'pending' | 'confirmed' | 'modified' | 'dismissed'
 }

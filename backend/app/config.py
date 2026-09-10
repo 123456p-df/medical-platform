@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     segmentation_image_types: list[str] = ["CT"]
     nv_segment_ct_dir: Path | None = None
     nv_segment_device: str = "cuda:0"
+    lung_nodule_callable: str | None = None
+    lung_nodule_model_url: str | None = None
+    lung_nodule_model_token: SecretStr | None = None
+    lung_nodule_model_name: str = "MONAI/lung_nodule_ct_detection:0.6.9"
+    lung_nodule_model_timeout_seconds: float = Field(default=300, gt=0, le=1800)
+    lung_nodule_max_findings: int = Field(default=300, ge=1, le=1000)
     ai_base_url: str | None = None
     ai_api_key: SecretStr | None = None
     ai_model: str | None = None

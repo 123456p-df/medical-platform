@@ -122,6 +122,38 @@ def test_bad_uploads_and_mri_rejection(app_env, people, nifti_file):
     assert response.status_code == 503
 
 
+def test_patient_can_upload_own_dated_ct_only(app_env, people, nifti_file):
+    _, client, _, _ = app_env
+    route = f"/api/v1/patients/{people['patient_a_pid']}/medical-images"
+    with nifti_file.open("rb") as source:
+        response = client.post(
+            route,
+            headers=people["patient_a"],
+            files={"file": (nifti_file.name, source)},
+            data={"organ_id": "lung", "image_type": "CT", "study_date": "2026-03-12"},
+        )
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["study_date"] == "2026-03-12"
+
+    with nifti_file.open("rb") as source:
+        forbidden = client.post(
+            route,
+            headers=people["patient_b"],
+            files={"file": (nifti_file.name, source)},
+            data={"organ_id": "lung", "image_type": "CT", "study_date": "2026-03-12"},
+        )
+    assert forbidden.status_code == 403
+
+    with nifti_file.open("rb") as source:
+        future = client.post(
+            route,
+            headers=people["patient_a"],
+            files={"file": (nifti_file.name, source)},
+            data={"organ_id": "lung", "image_type": "CT", "study_date": "2999-01-01"},
+        )
+    assert future.status_code == 400
+
+
 def test_task_is_nonblocking_and_duplicate_is_rejected(app_env, people, nifti_file):
     app, client, _, _ = app_env
     started, release = threading.Event(), threading.Event()

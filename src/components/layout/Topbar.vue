@@ -25,7 +25,7 @@ const pageTitles: Record<string, string> = {
   'doctor-patients': 'Patient Workspace',
   'doctor-patient-overview': 'Patient Record',
   'doctor-patient-imaging': 'Medical Imaging',
-  'doctor-patient-ai': 'AI Assistant',
+  'doctor-patient-ai': 'AI 辅助诊断',
   'doctor-patient-report': 'Doctor Report',
   'doctor-patient-3d': 'Digital Human',
   'patient-dashboard': 'My Health',

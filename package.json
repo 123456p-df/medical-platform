@@ -11,7 +11,8 @@
     "serve": "vite preview --host 127.0.0.1 --port 4173",
     "typecheck": "vue-tsc -b",
     "test:modalities": "node scripts/verify-modalities.mjs",
-    "test:volume": "node scripts/verify-volume-renderer.mjs"
+    "test:volume": "node scripts/verify-volume-renderer.mjs",
+    "test:comparison": "node scripts/verify-comparison.mjs"
   },
   "dependencies": {
     "@cornerstonejs/core": "^5.8.2",

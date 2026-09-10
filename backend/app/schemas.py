@@ -201,6 +201,7 @@ class ImageOut(BaseModel):
     shape: list[int]
     spacing: list[float]
     slice_count: int
+    study_date: date | None
     created_at: datetime
 
 
@@ -221,6 +222,79 @@ class TaskOut(TaskCreated):
     progress: int
     result: TaskResult | None = None
     error_message: str | None = None
+
+
+class AnalysisInput(Input):
+    analysis_type: Literal["lung_nodule_detection"] = "lung_nodule_detection"
+    score_threshold: float = Field(default=0.1, ge=0, le=1, allow_inf_nan=False)
+
+
+class AnalysisStatus(BaseModel):
+    configured: bool
+    analysis_type: Literal["lung_nodule_detection"] = "lung_nodule_detection"
+    model_name: str
+    supported_image_types: list[str]
+    supported_organs: list[str] = Field(default_factory=lambda: ["lung"])
+
+
+class AnalysisTaskResult(BaseModel):
+    findings_count: int
+    findings_url: str
+
+
+class AnalysisTaskOut(TaskCreated):
+    analysis_type: Literal["lung_nodule_detection"]
+    model_name: str
+    score_threshold: float
+    progress: int
+    result: AnalysisTaskResult | None = None
+    error_message: str | None = None
+
+
+class FindingOut(BaseModel):
+    finding_id: str
+    task_id: str
+    image_id: str
+    patient_id: int
+    finding_type: Literal["lung_nodule"]
+    model_label: str
+    label: str
+    description: str
+    confidence: float
+    diameter_mm: float
+    coordinate_system: Literal["RAS"]
+    box_mode: Literal["cccwhd"]
+    center_world_mm: list[float] = Field(min_length=3, max_length=3)
+    box_world_mm: list[float] = Field(min_length=6, max_length=6)
+    center_voxel: list[float] = Field(min_length=3, max_length=3)
+    box_voxel: list[float] = Field(min_length=6, max_length=6)
+    side: Literal["left", "right"] | None
+    lobe: str | None
+    status: Literal["pending", "confirmed", "modified", "dismissed"]
+    model_name: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class FindingPatch(Input):
+    status: Literal["pending", "confirmed", "modified", "dismissed"] | None = None
+    label: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, min_length=1, max_length=4000)
+
+    @model_validator(mode="after")
+    def nonempty(self):
+        values = self.model_dump(exclude_unset=True)
+        if not values or any(value is None for value in values.values()):
+            raise ValueError("Provide at least one non-null field")
+        if self.label is not None:
+            self.label = self.label.strip()
+            if not self.label:
+                raise ValueError("Finding label must not be blank")
+        if self.description is not None:
+            self.description = self.description.strip()
+            if not self.description:
+                raise ValueError("Finding description must not be blank")
+        return self
 
 
 class ModelOut(BaseModel):

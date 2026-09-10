@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { api } from '@/api/client'
 import { examinationApi } from '@/api/examinations'
+import { findingApi } from '@/api/findings'
 import { patientApi } from '@/api/patients'
 import { reportApi } from '@/api/reports'
 import type { Examination, Finding, Patient, Report } from '@/types'
@@ -92,22 +93,32 @@ export const usePatientStore = defineStore('patients', () => {
       return
     }
     try {
-      const [images, records] = await Promise.all([
-        examinationApi.getExaminationsByPatient(id), reportApi.getReportsByPatient(id),
+      const [images, records, detectedFindings] = await Promise.all([
+        examinationApi.getExaminationsByPatient(id),
+        reportApi.getReportsByPatient(id),
+        findingApi.getFindingsByPatient(id),
       ])
       if (revision !== generation) return
-      examinations.value = images; reports.value = records
+      examinations.value = images; reports.value = records; findings.value = detectedFindings
     } catch (reason) {
       if (revision === generation) error.value = reason instanceof Error ? reason.message : '加载病历失败'
     } finally { if (revision === generation) loading.value = false }
   }
-  async function updateFindingStatus(_id: string, _status: Finding['status']) {
+  async function updateFindingStatus(id: string, status: Finding['status']) {
     if (localPreview) {
-      const finding = findings.value.find(item => item.id === _id)
-      if (finding) finding.status = _status
+      const finding = findings.value.find(item => item.id === id)
+      if (finding) finding.status = status
       return
     }
-    error.value = '当前模型只提供器官分割，尚无病灶审核服务。'
+    error.value = null
+    try {
+      const updated = await findingApi.updateFindingStatus(id, status)
+      const index = findings.value.findIndex(item => item.id === id)
+      if (index >= 0) findings.value[index] = updated
+    } catch (reason) {
+      error.value = reason instanceof Error ? reason.message : '更新 AI finding 失败'
+      throw reason
+    }
   }
   async function saveReport(report: Report) {
     if (localPreview) {

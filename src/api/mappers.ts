@@ -5,7 +5,7 @@ export const organNames: Record<string, string> = {
 }
 export interface ImageDTO {
   image_id: string; patient_id: number; image_type: 'CT' | 'MRI'; organ_id: string
-  slice_count: number; created_at: string; shape: number[]; spacing: number[]
+  slice_count: number; study_date: string | null; created_at: string; shape: number[]; spacing: number[]
 }
 export interface PatientDTO {
   patient_id: number; name: string | null; birth_date: string | null
@@ -32,7 +32,7 @@ export function mapPatient(p: PatientDTO): Patient {
 export function mapImage(i: ImageDTO): Examination {
   return { shape: i.shape, spacing: i.spacing, id: i.image_id, patientId: String(i.patient_id), type: i.image_type,
     organId: i.organ_id, organ: organNames[i.organ_id] || i.organ_id,
-    bodyPart: organNames[i.organ_id] || i.organ_id, date: i.created_at.slice(0, 10),
+    bodyPart: organNames[i.organ_id] || i.organ_id, date: i.study_date || i.created_at.slice(0, 10),
     status: 'Available', description: i.image_type + ' · ' + i.shape.join(' × ') + ' voxels', sliceCount: i.slice_count }
 }
 export function mapRecord(r: RecordDTO): Report {

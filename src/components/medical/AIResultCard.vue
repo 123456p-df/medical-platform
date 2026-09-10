@@ -29,6 +29,7 @@ const emit = defineEmits<{
         <CircleDot :size="14" />
         Confidence {{ Math.round(finding.confidence * 100) }}%
       </span>
+      <span v-if="finding.diameterMm">Diameter {{ finding.diameterMm.toFixed(1) }} mm</span>
       <span>Status: {{ finding.status }}</span>
     </div>
     <div v-if="!compact" class="finding-actions">

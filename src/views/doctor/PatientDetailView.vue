@@ -18,7 +18,7 @@ const tabs = [
   { label: 'Overview', name: 'doctor-patient-overview' },
   { label: 'Imaging', name: 'doctor-patient-imaging' },
   { label: 'Report', name: 'doctor-patient-report' },
-  { label: 'AI Assistant', name: 'doctor-patient-ai' },
+  { label: 'AI 辅助诊断', name: 'doctor-patient-ai' },
   { label: '3D Viewer', name: 'doctor-patient-3d' },
 ]
 
