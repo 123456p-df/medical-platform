@@ -2,6 +2,7 @@ import gzip
 import io
 import math
 import os
+import shutil
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -9,12 +10,38 @@ from threading import RLock
 
 import nibabel as nib
 import numpy as np
+import scipy.ndimage as ndi
 import trimesh
 from PIL import Image
 from skimage.measure import marching_cubes
+from skimage.segmentation import random_walker
 
 from app.config import Settings
 from app.errors import APIError
+
+ORGAN_COLORS = {
+    "liver": [180, 82, 82, 255],
+    "spleen": [140, 60, 110, 255],
+    "pancreas": [230, 180, 80, 255],
+    "kidney": [160, 40, 40, 255],
+    "gallbladder": [60, 160, 70, 255],
+    "stomach": [210, 140, 100, 255],
+    "duodenum": [200, 160, 120, 255],
+    "colon": [190, 130, 90, 255],
+    "lung": [120, 180, 200, 255],
+    "heart": [190, 40, 50, 255],
+    "brain": [220, 180, 190, 255],
+    "aorta": [220, 30, 30, 255],
+}
+
+
+def get_organ_color(organ_id: str):
+    lower = (organ_id or "").lower()
+    for key, col in ORGAN_COLORS.items():
+        if key in lower:
+            return col
+    return [99, 166, 225, 255]
+
 
 # The source is retained for inference. A local uncompressed, canonical float32 sidecar is
 # prepared on upload and memory-mapped for slicing, including after process restarts.
@@ -95,7 +122,6 @@ def canonical_voxels(path: Path, settings: Settings):
 
 
 def load_volume(path: Path, settings: Settings):
-    """Validate before decoding. A compressed upload cannot bypass the memory limit."""
     try:
         if path.name.endswith(".gz"):
             total = 0
@@ -122,7 +148,6 @@ def load_volume(path: Path, settings: Settings):
             raise ValueError("Invalid spatial transform")
         if not np.isfinite(image.header.get_zooms()).all() or min(image.header.get_zooms()) <= 0:
             raise ValueError("Invalid voxel spacing")
-        # Read all voxels once to detect truncated files; do not persist this array in memory.
         data = image.get_fdata(dtype=np.float32)
         if not np.isfinite(data).all():
             raise ValueError("Non-finite voxels")
@@ -157,14 +182,83 @@ def slice_png(
     pixels = np.zeros(plane.shape, dtype=np.uint8)
     if high > low:
         pixels = (np.clip((plane - low) / (high - low), 0, 1) * 255).astype(np.uint8)
-    # Anterior at top, patient right on the viewer's left; no text overlays containing PHI.
     pixels = np.flip(pixels.T, axis=(0, 1))
     buffer = io.BytesIO()
     Image.fromarray(pixels).save(buffer, format="PNG")
     return buffer.getvalue()
 
 
-def mask_to_glb(mask_path: Path, image_path: Path, output_path: Path, settings: Settings):
+def refine_boundary_native_grid(
+    binary_mask: np.ndarray,
+    ct_data: np.ndarray,
+    organ_id: str,
+    spacing: tuple,
+    band_mm: float = 4.0,
+) -> np.ndarray:
+    if not np.any(binary_mask):
+        return binary_mask
+
+    struct = ndi.generate_binary_structure(3, 1)
+    rx = max(1, int(round(band_mm / max(spacing[0], 0.1))))
+    ry = max(1, int(round(band_mm / max(spacing[1], 0.1))))
+    iter_cnt = max(1, int(round((rx + ry) / 2)))
+
+    dilated = ndi.binary_dilation(binary_mask, structure=struct, iterations=iter_cnt)
+    eroded = ndi.binary_erosion(binary_mask, structure=struct, iterations=iter_cnt)
+    narrow_band = dilated & ~eroded
+
+    if not np.any(narrow_band) or not np.any(eroded):
+        return binary_mask
+
+    high_contrast_organs = {"lung", "bone", "vertebrae", "rib", "aorta", "heart"}
+    is_high_contrast = any(k in organ_id.lower() for k in high_contrast_organs)
+
+    if is_high_contrast:
+        slices = ndi.find_objects(dilated)[0]
+        sub_ct = ct_data[slices]
+        sub_dilated = dilated[slices]
+        sub_eroded = eroded[slices]
+        sub_band = narrow_band[slices]
+
+        ct_min, ct_max = (
+            np.percentile(sub_ct[sub_dilated], [1, 99])
+            if np.any(sub_dilated)
+            else (sub_ct.min(), sub_ct.max())
+        )
+        if ct_max > ct_min:
+            norm_ct = np.clip((sub_ct - ct_min) / (ct_max - ct_min), 0.0, 1.0)
+        else:
+            norm_ct = np.zeros_like(sub_ct, dtype=np.float32)
+
+        markers = np.zeros(sub_ct.shape, dtype=np.int32)
+        markers[sub_eroded] = 1
+        markers[~sub_dilated] = 2
+
+        try:
+            rw_labels = random_walker(norm_ct, markers, beta=25.0, mode="cg_j", tol=1e-3)
+            refined_sub = rw_labels == 1
+            refined_mask = binary_mask.copy()
+            refined_mask[slices][sub_band] = refined_sub[sub_band]
+            return refined_mask.astype(np.uint8)
+        except Exception:
+            return binary_mask.astype(np.uint8)
+    else:
+        labeled, num_features = ndi.label(binary_mask)
+        if num_features > 1:
+            sizes = ndi.sum(binary_mask, labeled, range(1, num_features + 1))
+            main_label = np.argmax(sizes) + 1
+            cleaned_mask = labeled == main_label
+        else:
+            cleaned_mask = binary_mask.copy()
+
+        smoothed = ndi.binary_closing(cleaned_mask, structure=struct, iterations=1)
+        smoothed = ndi.binary_opening(smoothed, structure=struct, iterations=1)
+        return smoothed.astype(np.uint8)
+
+
+def mask_to_glb(
+    mask_path: Path, image_path: Path, output_path: Path, settings: Settings, organ_id: str = ""
+):
     mask_image, data = load_volume(mask_path, settings)
     source = nib.load(image_path)
     if mask_image.shape != source.shape or not np.allclose(
@@ -173,17 +267,29 @@ def mask_to_glb(mask_path: Path, image_path: Path, output_path: Path, settings: 
         raise ValueError("Mask must be in the input image voxel space")
     if not np.isin(data, [0, 1]).all() or not np.any(data == 1):
         raise ValueError("Adapter must return a nonempty binary mask")
-    # Padding closes surfaces that touch a volume edge; remove padding in voxel coordinates.
+
+    # If high-resolution continuous surface mesh was precomputed by FMRC adapter, preserve it!
+    highres_glb = mask_path.parent / "highres_surface.glb"
+    if highres_glb.is_file() and highres_glb.stat().st_size > 1024:
+        shutil.copyfile(highres_glb, output_path)
+        return
+
     vertices, faces, _, _ = marching_cubes(np.pad(data, 1), level=0.5)
     vertices = nib.affines.apply_affine(mask_image.affine, vertices - 1)
     unit = source.header.get_xyzt_units()[0]
     scales = {"meter": 1.0, "mm": 0.001, "micron": 0.000001, "unknown": 0.001}
     vertices *= scales[unit]
-    # NIfTI RAS -> glTF right-handed Y-up, preserving the patient-world origin.
     vertices = vertices[:, [0, 2, 1]] * [1, 1, -1]
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
+
+    if len(mesh.vertices) > 40:
+        try:
+            trimesh.smoothing.filter_taubin(mesh, iterations=8)
+        except Exception:
+            pass
+
     mesh.fix_normals()
-    mesh.visual.vertex_colors = [99, 166, 225, 255]
+    mesh.visual.vertex_colors = get_organ_color(organ_id)
     scene = trimesh.Scene(mesh)
     scene.metadata.update(
         {
@@ -191,6 +297,7 @@ def mask_to_glb(mask_path: Path, image_path: Path, output_path: Path, settings: 
             "coordinates": "RAS to glTF: x,z,-y",
             "source_spatial_unit": unit,
             "unknown_unit_assumption": "mm",
+            "organ_id": organ_id,
         }
     )
     scene.export(output_path, file_type="glb")

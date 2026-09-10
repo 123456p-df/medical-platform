@@ -19,3 +19,12 @@ build/
 .cache/
 node_modules/
 *.tsbuildinfo
+
+# Test reconstructions and temporary data
+backend/tests/output_fmrc/
+backend/tests/pure_1stage_reconstructions/
+backend/tests/user_reconstructions/
+backend/tests/temp/
+backend/vmrb_preview*
+*.nii.gz
+*.nii
