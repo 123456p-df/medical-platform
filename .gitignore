@@ -35,3 +35,4 @@ backend/tests/temp/
 backend/vmrb_preview*
 *.nii.gz
 *.nii
+backend/migrate_sqlite_to_pg.py

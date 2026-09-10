@@ -193,7 +193,7 @@ def extract_subvoxel_surface(
 
     # 6. Topology-Preserving QEM Decimation
     initial_faces = len(mesh_ijk.faces)
-    if fast_simplification is not None and target_faces > 0 and initial_faces > target_faces:
+    if fast_simplification is not None and target_faces > 0 and initial_faces > target_faces * 1.1:
         reduction = 1.0 - (target_faces / initial_faces)
         try:
             v_simp, f_simp = fast_simplification.simplify(
@@ -202,7 +202,11 @@ def extract_subvoxel_surface(
                 target_reduction=reduction,
                 agg=2,
             )
-            mesh_ijk = trimesh.Trimesh(vertices=v_simp, faces=f_simp, process=True)
+            candidate_mesh = trimesh.Trimesh(vertices=v_simp, faces=f_simp, process=True)
+            if mesh_ijk.is_watertight and not candidate_mesh.is_watertight:
+                logger.info(f"QEM decimation compromised watertightness for {organ_id}; retaining watertight mesh ({initial_faces} faces).")
+            else:
+                mesh_ijk = candidate_mesh
         except Exception as e:
             logger.warning(f"QEM simplification failed: {e}")
 
@@ -260,6 +264,7 @@ def extract_subvoxel_surface_from_mask(
     min_component_voxels: int = 50,
     smooth_iterations: int = 0,
     margin_voxels: int = 4,
+    sdf_sigma: float = 0.0,
 ) -> Tuple[trimesh.Trimesh, Dict]:
     """
     Extracts a high-precision watertight sub-voxel 3D surface mesh from a binary mask.
@@ -304,6 +309,9 @@ def extract_subvoxel_surface_from_mask(
     # Calculate ground-truth voxel volume in cm3 (spacing-independent)
     voxel_vol_cm3 = float(np.sum(clean_mask) * abs(np.linalg.det(affine[:3, :3])) / 1000.0)
 
+    if sdf_sigma > 0.0:
+        sdf = ndi.gaussian_filter(sdf, sigma=sdf_sigma)
+
     # 4. Extract continuous zero-crossing surface via extract_subvoxel_surface
     mesh, metadata = extract_subvoxel_surface(
         field=sdf,
@@ -318,6 +326,7 @@ def extract_subvoxel_surface_from_mask(
 
     if np.isnan(metadata["volume_cm3"]) or metadata["volume_cm3"] <= 0:
         metadata["volume_cm3"] = voxel_vol_cm3
+    metadata["sdf_sigma"] = sdf_sigma
 
     metadata["voxel_volume_cm3"] = voxel_vol_cm3
     return mesh, metadata

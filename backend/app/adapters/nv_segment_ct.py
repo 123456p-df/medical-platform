@@ -30,8 +30,12 @@ try:
 except ImportError:
     trimesh = None
 
-from monai.data.utils import decollate_batch
-from monai.apps.vista3d.transforms import VistaPostTransformd
+try:
+    from monai.data.utils import decollate_batch
+    from monai.apps.vista3d.transforms import VistaPostTransformd
+except ImportError:
+    decollate_batch = None
+    VistaPostTransformd = None
 from app.config import Settings
 from app.services.imaging import get_organ_color, refine_boundary_native_grid
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
@@ -149,6 +153,10 @@ class NVSegmentCT:
         safe_name = organ_id.replace(" ", "_")
         target_faces = 40000 if organ_id in ["liver", "lung"] else 30000
 
+        bone_keywords = ["vertebra", "rib", "sternum", "clavicle", "scapula", "pelvis", "femur", "humerus", "spine", "bone"]
+        is_bone = any(kw in organ_id.lower() for kw in bone_keywords)
+        sdf_sigma = 0.6 if is_bone else 1.2
+
         try:
             mesh, meta = extract_subvoxel_surface_from_mask(
                 mask=mask_1mm,
@@ -157,6 +165,7 @@ class NVSegmentCT:
                 organ_id=safe_name,
                 min_component_voxels=30,
                 smooth_iterations=0,
+                sdf_sigma=sdf_sigma,
             )
             highres_glb = output_dir / "highres_surface.glb"
             mesh.export(str(highres_glb), file_type="glb")
