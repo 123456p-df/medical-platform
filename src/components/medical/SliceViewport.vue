@@ -25,6 +25,7 @@ const props = withDefaults(
     position?: number
     compact?: boolean
     findings?: Finding[]
+    selectedFindingId?: string | null
     isMaximized?: boolean
     labelVolume?: LabelVolume | null
     visibleLabels?: number[]
@@ -38,6 +39,7 @@ const props = withDefaults(
     position: undefined,
     compact: false,
     findings: () => [],
+    selectedFindingId: null,
     isMaximized: false,
     labelVolume: null,
     visibleLabels: () => [],
@@ -51,6 +53,12 @@ const props = withDefaults(
 const emit = defineEmits<{
   positionChange: [position: number]
   selectFinding: [id: string]
+  updateFindingBox: [
+    id: string,
+    centerVoxel: [number, number, number],
+    boxVoxel: [number, number, number, number, number, number],
+    diameterMm: number,
+  ]
   toggleMaximize: []
 }>()
 
@@ -77,33 +85,29 @@ const spacing = computed<[number, number, number]>(() => {
 const geometry = computed(() => {
   const sh = shape.value
   const sp = spacing.value
-  const layer = props.axis === 'axial' ? 2 : props.axis === 'coronal' ? 1 : 0
-  const u = props.axis === 'sagittal' ? 1 : 0
-  const v = props.axis === 'axial' ? 1 : 2
+  const [x, y, z] =
+    props.axis === 'axial' ? [0, 1, 2] : props.axis === 'coronal' ? [0, 2, 1] : [1, 2, 0]
   return {
-    count: sh[layer],
-    width: sh[u] * sp[u],
-    height: sh[v] * sp[v],
-    pixelWidth: sh[u],
-    pixelHeight: sh[v],
-    spacing: sp[layer],
-    sliceThickness: sp[layer],
-    pixelSpacing: sp[u],
+    count: sh[z],
+    width: sh[x] * sp[x],
+    height: sh[y] * sp[y],
+    pixelWidth: sh[x],
+    pixelHeight: sh[y],
+    spacing: sp[z],
+    sliceThickness: sp[z],
+    pixelSpacing: sp[x],
   }
 })
 
 const fitStyle = computed(() => {
   const ratio = Math.max(0.01, geometry.value.width / geometry.value.height)
-  // Give the fit box the physical FOV aspect ratio. This keeps sagittal and
-  // coronal views from being stretched while the canvas and overlay share the
-  // exact same CSS box.
   const width = ratio >= 1 ? 96 : Math.max(1, 94 * ratio)
   const height = ratio >= 1 ? Math.max(1, 94 / ratio) : 94
   return {
     width: width + '%',
     height: height + '%',
     aspectRatio: String(ratio),
-    transform: 'translate(' + pan.value.x + 'px, ' + pan.value.y + 'px) scale(' + (zoom * localZoom.value) + ')',
+    transform: 'translate(' + pan.value.x + 'px, ' + pan.value.y + 'px) scale(' + (props.zoom * localZoom.value) + ')',
   }
 })
 
@@ -156,18 +160,6 @@ watch(
         slice.value = targetSlice
         emit('positionChange', sliceToPosition(targetSlice, geometry.value.count))
       }
-    }
-  },
-)
-
-watch(
-  () => props.axis,
-  () => {
-    const count = geometry.value.count
-    if (props.position !== undefined) {
-      slice.value = positionToSlice(props.position, count)
-    } else if (slice.value >= count) {
-      slice.value = Math.max(0, count - 1)
     }
   },
 )
@@ -506,7 +498,7 @@ defineExpose({
 
         <!-- 3D 十字准星与专业量测矢量叠加层 -->
         <CrosshairsOverlay
-          v-if="showCrosshairs && canvas && canvas.width > 0"
+          v-if="canvas && canvas.width > 0"
           :axis="axis"
           :width="canvas.width"
           :height="canvas.height"
@@ -514,6 +506,10 @@ defineExpose({
           :slice-count="geometry.count"
           :thickness-mm="geometry.sliceThickness"
           :spacing-mm="geometry.pixelSpacing"
+          :shape="shape"
+          :spacing="spacing"
+          :findings="findings"
+          :selected-finding-id="selectedFindingId"
           :crosshairs-col="crosshairProj.col"
           :crosshairs-row="crosshairProj.row"
           :crosshairs-visible="crosshairsVisible"
@@ -525,6 +521,8 @@ defineExpose({
           :active-ruler="activeRuler"
           :is-maximized="isMaximized"
           @toggle-maximize="emit('toggleMaximize')"
+          @select-finding="emit('selectFinding', $event)"
+          @update-finding-box="(id, centerV, boxV, dia) => emit('updateFindingBox', id, centerV, boxV, dia)"
         />
       </div>
 
@@ -676,7 +674,6 @@ defineExpose({
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: fill;
   pointer-events: none;
 }
 
