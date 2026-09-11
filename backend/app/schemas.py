@@ -173,6 +173,14 @@ class ModelSelection(BaseModel):
     source: Literal["default", "segmentation"]
     model_id: str
     available: bool
+    label_id: int | None = None
+    label_name: str | None = None
+    group_id: str | None = None
+    face_count: int | None = None
+    size_bytes: int | None = None
+    volume_cm3: float | None = None
+    is_watertight: bool | None = None
+    bounds: dict | None = None
 
 
 class OrganRecord(BaseModel):
@@ -203,6 +211,9 @@ class ImageOut(BaseModel):
     slice_count: int
     study_date: date | None
     created_at: datetime
+    segmentation_batch_id: str | None = None
+    atlas_model_id: str | None = None
+    acquisition: dict | None = None
 
 
 class SegmentationInput(Input):
@@ -222,6 +233,65 @@ class TaskOut(TaskCreated):
     progress: int
     result: TaskResult | None = None
     error_message: str | None = None
+
+
+class BatchItemOut(BaseModel):
+    task_id: str
+    label_id: int | None = None
+    organ_id: str
+    name: str
+    display_name: str | None = None
+    group_id: str | None = None
+    status: Literal["queued", "running", "completed", "failed"]
+    progress: int
+    model_id: str | None = None
+    mesh_name: str | None = None
+    face_count: int | None = None
+    size_bytes: int | None = None
+    volume_cm3: float | None = None
+    is_watertight: bool | None = None
+    bounds: dict | None = None
+    color: list[int] | None = None
+    outline_only: bool | None = None
+    error_message: str | None = None
+
+
+class SegmentationBatchOut(BaseModel):
+    batch_id: str
+    image_id: str
+    status: Literal["queued", "running", "completed", "partial", "failed", "unavailable"]
+    progress: int
+    total_labels: int
+    recognized_count: int
+    completed_count: int
+    failed_count: int
+    atlas_model_id: str | None = None
+    items: list[BatchItemOut] = Field(default_factory=list)
+    error_message: str | None = None
+
+
+class ComparisonCandidateOut(BaseModel):
+    image_id: str
+    patient_id: int
+    image_type: Literal["CT", "MRI"]
+    organ_id: str
+    study_date: date | None
+    shape: list | None = None
+    spacing: list | None = None
+    comparable: bool
+    reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    device: str | None = None
+
+
+class LabelColorOut(BaseModel):
+    label_id: int | None = None
+    organ_id: str
+    name: str
+    display_name: str
+    color: list[int]
+    luminance: float
+    outline_only: bool
 
 
 class AnalysisInput(Input):
@@ -301,8 +371,17 @@ class ModelOut(BaseModel):
     model_id: str
     format: Literal["glb"] = "glb"
     source: Literal["default", "segmentation"]
+    kind: Literal["organ", "atlas"] | None = None
     available: bool
     url: str | None
+    label_id: int | None = None
+    label_name: str | None = None
+    group_id: str | None = None
+    face_count: int | None = None
+    size_bytes: int | None = None
+    volume_cm3: float | None = None
+    is_watertight: bool | None = None
+    bounds: dict | None = None
 
 
 class ChatInput(Input):

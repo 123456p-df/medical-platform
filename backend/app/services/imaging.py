@@ -79,6 +79,76 @@ def prepare_slice_cache(path: Path, volume, data):
     return canonical
 
 
+def _header_text(header, key: str) -> str:
+    value = header.get(key, b"")
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "ignore").strip("\x00 ").strip()
+    return str(value or "").strip()
+
+
+def acquisition_from_volume(volume, data) -> dict:
+    canonical = nib.as_closest_canonical(nib.Nifti1Image(data, volume.affine))
+    shape = [int(size) for size in canonical.shape[:3]]
+    spacing = [float(value) for value in canonical.header.get_zooms()[:3]]
+    device = _header_text(volume.header, "descrip") or _header_text(volume.header, "db_name") or None
+    return {
+        "shape": shape,
+        "spacing_mm": spacing,
+        "fov_mm": [shape[index] * spacing[index] for index in range(3)],
+        "orientation": "RAS",
+        "affine": [[float(value) for value in row] for row in canonical.affine.tolist()],
+        "device": device,
+    }
+
+
+def label_cache_path(path: Path):
+    return path.with_name(path.name + ".labels.npy")
+
+
+def prepare_label_cache(path: Path, settings: Settings):
+    image, data = load_volume(path, settings)
+    labels = np.rint(data).astype(np.uint16, copy=False)
+    canonical = nib.as_closest_canonical(nib.Nifti1Image(labels, image.affine))
+    target = label_cache_path(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=".labels-", suffix=".tmp", delete=False
+        ) as output:
+            temporary = Path(output.name)
+            np.save(output, np.asarray(canonical.dataobj, dtype=np.uint16), allow_pickle=False)
+        os.replace(temporary, target)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+    return target
+
+
+def canonical_labels(path: Path, settings: Settings):
+    target = label_cache_path(path)
+    source_mtime = path.stat().st_mtime_ns
+    if not target.is_file() or target.stat().st_mtime_ns < source_mtime:
+        prepare_label_cache(path, settings)
+    labels = np.load(target, mmap_mode="r", allow_pickle=False)
+    if labels.dtype != np.uint16 or labels.ndim != 3:
+        prepare_label_cache(path, settings)
+        labels = np.load(target, mmap_mode="r", allow_pickle=False)
+    return labels
+
+
+def label_slice_plane(path: Path, index: int, settings: Settings, axis="axial"):
+    labels = canonical_labels(path, settings)
+    axes = {"axial": 2, "coronal": 1, "sagittal": 0}
+    if axis not in axes:
+        raise APIError(400, 40003, "Invalid slice axis")
+    if index < 0 or index >= labels.shape[axes[axis]]:
+        raise APIError(404, 40405, "Slice index out of range")
+    selector = [slice(None)] * 3
+    selector[axes[axis]] = index
+    plane = np.asarray(labels[tuple(selector)])
+    return np.flip(plane.T, axis=(0, 1))
+
+
 def canonical_voxels(path: Path, settings: Settings):
     stat = path.stat()
     key = (

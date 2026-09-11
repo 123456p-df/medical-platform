@@ -12,7 +12,7 @@ defineProps<{
     <div class="record-row">
       <CalendarDays :size="16" />
       <span>{{ $t("Age") }}</span>
-      <strong>{{ $t(patient.age) }} {{ $t("years ·") }} {{ $t(patient.gender) }}</strong>
+      <strong>{{ patient.age ?? '—' }} {{ $t("years ·") }} {{ $t(patient.gender) }}</strong>
     </div>
     <div class="record-row">
       <Droplets :size="16" />

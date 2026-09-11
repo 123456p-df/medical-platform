@@ -120,6 +120,20 @@ export const usePatientStore = defineStore('patients', () => {
       throw reason
     }
   }
+  function updateFindingBox(
+    id: string,
+    centerVoxel: [number, number, number],
+    boxVoxel: [number, number, number, number, number, number],
+    diameterMm: number,
+  ) {
+    const finding = findings.value.find(item => item.id === id)
+    if (finding) {
+      finding.centerVoxel = centerVoxel
+      finding.boxVoxel = boxVoxel
+      finding.diameterMm = diameterMm
+      finding.status = 'modified'
+    }
+  }
   async function saveReport(report: Report) {
     if (localPreview) {
       const saved = { ...report, id: report.id || `LOCAL-${Date.now()}` }
@@ -192,5 +206,5 @@ export const usePatientStore = defineStore('patients', () => {
   }
   return { patients, selectedPatientId, selectedPatient, examinations, findings, reports, reviewedReports,
     lastArchivedPatient, loading, error, reset, loadPatients, selectPatient, loadPatientContext,
-    updateFindingStatus, saveReport, createPatient, archivePatient, restoreLastPatient, updateExaminationReview }
+    updateFindingStatus, updateFindingBox, saveReport, createPatient, archivePatient, restoreLastPatient, updateExaminationReview }
 })

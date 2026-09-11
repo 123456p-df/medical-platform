@@ -19,6 +19,7 @@ dependencies = [
   "nibabel>=5.3,<6",
   "scikit-image>=0.25,<1",
   "trimesh>=4.6,<5",
+  "fast-simplification>=0.2,<0.3",
   "Pillow>=11,<13",
 ]
 

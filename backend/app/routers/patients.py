@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.audit import audit
@@ -19,7 +19,7 @@ from app.models import (
 from app.organs import ORGANS, require_organ
 from app.schemas import OrganOut, OverviewOut, PatientCreate, PatientOut, ResolveInput
 from app.security import encrypt_identity, identity_hash
-from app.services.storage import stored_path
+from app.services.glb import model_available
 
 router = APIRouter(tags=["Patient / Organ"])
 
@@ -147,7 +147,7 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
         select(OrganModel)
         .where(
             OrganModel.patient_id == patient_id,
-            OrganModel.organ_id == organ_id,
+            or_(OrganModel.organ_id == organ_id, OrganModel.group_id == organ_id),
             OrganModel.source == "segmentation",
         )
         .order_by(OrganModel.created_at.desc(), OrganModel.id.desc())
@@ -158,7 +158,15 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
     selection = {
         "source": model.source if model else "default",
         "model_id": model.id if model else f"default_{organ_id}",
-        "available": bool(model and stored_path(settings, model.file_path).is_file()),
+        "available": model_available(db, model, settings),
+        "label_id": model.label_id if model else None,
+        "label_name": model.label_name if model else None,
+        "group_id": model.group_id if model else None,
+        "face_count": model.face_count if model else None,
+        "size_bytes": model.size_bytes if model else None,
+        "volume_cm3": model.volume_cm3 if model else None,
+        "is_watertight": model.is_watertight if model else None,
+        "bounds": model.bounds if model else None,
     }
     filters = (
         MedicalRecord.patient_id == patient_id,

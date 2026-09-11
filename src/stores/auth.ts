@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { api, SESSION_KEY } from '@/api/client'
+import { api, writeSession, readSession } from '@/api/client'
 import { usePatientStore } from './patients'
 import { useProfileStore } from './profile'
 import { useWorkflowStore } from './workflow'
@@ -10,7 +10,7 @@ function previewSession(): UserSession {
   return { id: 'P20260021', name: 'Dr. Zhang Wei', role: 'doctor', accessToken: 'local-preview' }
 }
 function stored(): UserSession | null {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') || (localPreview ? previewSession() : null) }
+  try { return JSON.parse(readSession() || 'null') || (localPreview ? previewSession() : null) }
   catch { return null }
 }
 export const useAuthStore = defineStore('auth', () => {
@@ -20,11 +20,11 @@ export const useAuthStore = defineStore('auth', () => {
   function ensureLocalSession() {
     if (!localPreview || session.value) return
     session.value = previewSession()
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
+    writeSession(JSON.stringify(session.value))
   }
   function logout() {
     session.value = null
-    sessionStorage.removeItem(SESSION_KEY)
+    writeSession(null)
     usePatientStore().reset()
     useProfileStore().reset()
     useWorkflowStore().reset()
@@ -32,7 +32,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(username: string, password: string) {
     if (localPreview) {
       session.value = previewSession()
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
+      writeSession(JSON.stringify(session.value))
       return 'doctor' as const
     }
     logout()
@@ -40,12 +40,12 @@ export const useAuthStore = defineStore('auth', () => {
       method: 'POST', body: JSON.stringify({ username, password }),
     })
     session.value = { id: String(result.user_id), name: username, role: result.role, accessToken: result.access_token }
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
+    writeSession(JSON.stringify(session.value))
     try {
       const me = await api<{ patient_id: number | null; username: string }>('/auth/me')
       if (me.patient_id) session.value.id = String(me.patient_id)
       session.value.name = me.username
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
+      writeSession(JSON.stringify(session.value))
     } catch (error) { logout(); throw error }
     return result.role
   }

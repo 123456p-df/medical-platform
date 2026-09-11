@@ -31,6 +31,27 @@ class SyntheticAdapter:
         return output
 
 
+class SyntheticBatchAdapter(SyntheticAdapter):
+    """All-label fixture used to exercise upload-triggered reconstruction."""
+
+    def __init__(self):
+        from app.services.label_catalog import LabelCatalog
+
+        self.catalog = LabelCatalog(None)
+
+    def run_batch(self, *, image_path, output_dir, progress):
+        original = nib.load(image_path)
+        data = np.zeros(original.shape, dtype=np.uint8)
+        data[2:6, 2:8, 2:10] = 1
+        data[6:10, 8:13, 10:15] = 3
+        one = output_dir / "label_map_1mm.nii.gz"
+        native = output_dir / "label_map_native.nii.gz"
+        nib.save(nib.Nifti1Image(data, original.affine, original.header), one)
+        nib.save(nib.Nifti1Image(data, original.affine, original.header), native)
+        progress(100)
+        return {"label_map_1mm": one, "label_map_native": native, "labels": [1, 3]}
+
+
 class SyntheticDetectionAdapter:
     """Deterministic RAS/cccwhd model response used only by API tests."""
 

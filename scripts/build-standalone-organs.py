@@ -7,8 +7,8 @@ import trimesh
 from trimesh.visual.material import PBRMaterial
 
 ROOT = Path("/home/zhichun/Documents/medical-platform")
-PUBLIC_MODELS = ROOT / "medical-platform/Medical/public/models"
-DIST_MODELS = ROOT / "medical-platform/Medical/dist/models"
+PUBLIC_MODELS = ROOT / "public/models"
+DIST_MODELS = ROOT / "dist/models"
 DEFAULTS_DIR = ROOT / "backend/data/defaults"
 DEFAULTS_DIR.mkdir(parents=True, exist_ok=True)
 

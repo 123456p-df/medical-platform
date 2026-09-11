@@ -12,7 +12,7 @@ from trimesh.visual.material import PBRMaterial
 
 ROOT = Path(__file__).resolve().parents[1]
 ORGANS_DIR = Path("/home/zhichun/Downloads/organs_glb")
-PUBLIC_MODELS = ROOT / "medical-platform/Medical/public/models"
+PUBLIC_MODELS = ROOT / "public/models"
 PUBLIC_MODELS.mkdir(parents=True, exist_ok=True)
 
 nav_orig = trimesh.load(PUBLIC_MODELS / "anatomy-navigation.glb")

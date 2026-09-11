@@ -19,7 +19,7 @@ from skimage.measure import marching_cubes
 import fast_simplification
 
 ROOT = Path("/home/zhichun/Documents/medical-platform")
-PUBLIC_MODELS = ROOT / "medical-platform/Medical/public/models"
+PUBLIC_MODELS = ROOT / "public/models"
 PUBLIC_MODELS.mkdir(parents=True, exist_ok=True)
 
 MASK_PATH = Path("/home/zhichun/Documents/NV-Segment-CTMR/output_ct_body/spleen_10/spleen_10_seg.nii.gz")

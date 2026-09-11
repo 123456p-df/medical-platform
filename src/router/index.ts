@@ -70,9 +70,20 @@ const router = createRouter({
               name: 'doctor-patient-3d',
               component: () => import('@/views/doctor/Patient3DView.vue'),
             },
+            {
+              path: 'viewer',
+              name: 'doctor-patient-study-viewer',
+              component: () => import('@/views/viewer/StudyViewerWindow.vue'),
+            },
           ],
         },
       ],
+    },
+    {
+      path: '/viewer/study/:patientId',
+      name: 'study-viewer',
+      component: () => import('@/views/viewer/StudyViewerWindow.vue'),
+      meta: { portal: 'doctor', requiresAuth: true },
     },
     {
       path: '/patient',

@@ -228,6 +228,9 @@ export const mockFindings: Finding[] = [
     severity: 'Medium',
     confidence: 0.93,
     description: 'Solid nodule measuring 9 mm in the apical segment of the right upper lobe.',
+    diameterMm: 9.2,
+    centerVoxel: [180, 215, 6],
+    boxVoxel: [180, 215, 6, 28, 28, 2],
     status: 'pending',
   },
   {
@@ -241,6 +244,9 @@ export const mockFindings: Finding[] = [
     severity: 'Low',
     confidence: 0.78,
     description: 'Faint ground-glass opacity in the posterior basal segment.',
+    diameterMm: 14.5,
+    centerVoxel: [330, 280, 4],
+    boxVoxel: [330, 280, 4, 36, 36, 2],
     status: 'pending',
   },
   {

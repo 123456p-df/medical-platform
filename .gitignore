@@ -32,7 +32,7 @@ backend/tests/output_fmrc/
 backend/tests/pure_1stage_reconstructions/
 backend/tests/user_reconstructions/
 backend/tests/temp/
-backend/vmrb_preview*
 *.nii.gz
 *.nii
-backend/migrate_sqlite_to_pg.py
+*.orig
+compose.override.yaml

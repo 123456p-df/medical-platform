@@ -46,7 +46,7 @@ def patients(
                 "birth_date": patient.birth_date,
                 "gender": patient.gender,
                 "blood_type": patient.blood_type,
-                "latest_image": image_out(image) if image else None,
+                "latest_image": image_out(image, db) if image else None,
             }
         )
     return success({"items": result, "total": total, "page": page, "page_size": page_size})
@@ -74,7 +74,7 @@ def images(
     )
     return success(
         {
-            "items": [image_out(row) for row in rows],
+            "items": [image_out(row, db) for row in rows],
             "total": total,
             "page": page,
             "page_size": page_size,

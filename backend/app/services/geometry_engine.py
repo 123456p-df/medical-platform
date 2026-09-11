@@ -104,6 +104,41 @@ def get_style_for_organ(organ_id: str) -> Tuple[list, float, str]:
     return srgb_to_linear([180, 120, 120, 255]), 0.40, "OPAQUE"
 
 
+def relative_luminance(srgb: list) -> float:
+    channels = []
+    for value in srgb[:3]:
+        channel = max(0.0, min(1.0, float(value) / 255.0))
+        channels.append(
+            channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def get_srgb_for_organ(organ_id: str) -> list[int]:
+    clean = (organ_id or "").lower().replace(" ", "_")
+    for key, (srgb, _roughness, _alpha) in ORGAN_STYLES.items():
+        if key in clean:
+            return list(srgb)
+    return [180, 120, 120, 255]
+
+
+def is_near_black(srgb: list, value_threshold: float = 0.22) -> bool:
+    channels = [max(0.0, min(255.0, float(value))) for value in srgb[:3]]
+    value = max(channels) / 255.0
+    mean = sum(channels) / 3.0
+    return value < value_threshold and mean < 50
+
+
+def overlay_style(organ_id: str, threshold: float = 0.25) -> dict:
+    srgb = get_srgb_for_organ(organ_id)
+    luminance = relative_luminance(srgb)
+    return {
+        "color": [int(srgb[0]), int(srgb[1]), int(srgb[2])],
+        "luminance": round(luminance, 4),
+        "outline_only": is_near_black(srgb) or luminance < 0.04,
+    }
+
+
 def extract_subvoxel_surface(
     field: np.ndarray,
     affine: np.ndarray,
@@ -191,8 +226,9 @@ def extract_subvoxel_surface(
         except Exception as e:
             logger.warning(f"Taubin smoothing skipped due to: {e}")
 
-    # 6. Topology-Preserving QEM Decimation
+    # 6. Topology-Preserving QEM Decimation with a strict quality gate.
     initial_faces = len(mesh_ijk.faces)
+    decimation_fallback = False
     if fast_simplification is not None and target_faces > 0 and initial_faces > target_faces * 1.1:
         reduction = 1.0 - (target_faces / initial_faces)
         try:
@@ -202,12 +238,33 @@ def extract_subvoxel_surface(
                 target_reduction=reduction,
                 agg=2,
             )
-            candidate_mesh = trimesh.Trimesh(vertices=v_simp, faces=f_simp, process=True)
+            candidate_mesh = trimesh.Trimesh(vertices=v_simp, faces=f_simp, process=False)
+            candidate_mesh.remove_unreferenced_vertices()
             if mesh_ijk.is_watertight and not candidate_mesh.is_watertight:
-                logger.info(f"QEM decimation compromised watertightness for {organ_id}; retaining watertight mesh ({initial_faces} faces).")
-            else:
+                trimesh.repair.fill_holes(candidate_mesh)
+            candidate_mesh.fix_normals()
+            source_volume = abs(float(mesh_ijk.volume)) if mesh_ijk.is_watertight else 0.0
+            candidate_volume = abs(float(candidate_mesh.volume)) if candidate_mesh.is_watertight else 0.0
+            volume_ok = (
+                not source_volume
+                or candidate_mesh.is_watertight
+                and abs(candidate_volume - source_volume) / source_volume <= 0.015
+            )
+            if (
+                len(candidate_mesh.faces) <= target_faces
+                and candidate_mesh.is_watertight == mesh_ijk.is_watertight
+                and volume_ok
+            ):
                 mesh_ijk = candidate_mesh
+            else:
+                decimation_fallback = True
+                logger.warning(
+                    "QEM quality gate failed for %s; retaining %s-face mesh",
+                    organ_id,
+                    initial_faces,
+                )
         except Exception as e:
+            decimation_fallback = True
             logger.warning(f"QEM simplification failed: {e}")
 
     # 7. One-Shot Affine Mapping to Patient RAS Physical Coordinates (mm)
@@ -219,7 +276,7 @@ def extract_subvoxel_surface(
     z_gltf = -verts_ras[:, 1] * 0.001
     verts_gltf = np.column_stack([x_gltf, y_gltf, z_gltf])
 
-    mesh = trimesh.Trimesh(vertices=verts_gltf, faces=mesh_ijk.faces, process=True)
+    mesh = trimesh.Trimesh(vertices=verts_gltf, faces=mesh_ijk.faces, process=False)
     mesh.fix_normals()
 
     # 9. Assign Physically Based Rendering (PBR) Material
@@ -251,6 +308,11 @@ def extract_subvoxel_surface(
         "roughness": roughness,
         "alpha_mode": alpha_mode,
         "smooth_iterations": smooth_iterations,
+        "source_faces": initial_faces,
+        "target_faces": target_faces,
+        "decimation_fallback": decimation_fallback,
+        "bounds_min_m": mesh.bounds[0].tolist(),
+        "bounds_max_m": mesh.bounds[1].tolist(),
     }
 
     return mesh, metadata
@@ -259,7 +321,7 @@ def extract_subvoxel_surface(
 def extract_subvoxel_surface_from_mask(
     mask: np.ndarray,
     affine: np.ndarray,
-    target_faces: int = 30000,
+    target_faces: int = 40000,
     organ_id: str = "generic",
     min_component_voxels: int = 50,
     smooth_iterations: int = 0,
@@ -287,13 +349,18 @@ def extract_subvoxel_surface_from_mask(
     else:
         clean_mask = mask.astype(bool)
 
-    coords = np.argwhere(clean_mask)
-    if len(coords) == 0:
+    if not np.any(clean_mask):
         raise ValueError("Mask contains no foreground voxels.")
 
     # 2. Local bounding-box crop for rapid EDT computation
-    min_c = np.maximum(0, coords.min(axis=0) - margin_voxels)
-    max_c = np.minimum(np.array(mask.shape), coords.max(axis=0) + margin_voxels + 1)
+    min_c = np.empty(3, dtype=np.intp)
+    max_c = np.empty(3, dtype=np.intp)
+    for axis in range(3):
+        other_axes = tuple(index for index in range(3) if index != axis)
+        occupied = np.any(clean_mask, axis=other_axes)
+        indices = np.flatnonzero(occupied)
+        min_c[axis] = max(0, int(indices[0]) - margin_voxels)
+        max_c[axis] = min(mask.shape[axis], int(indices[-1]) + margin_voxels + 1)
 
     sub_mask = clean_mask[min_c[0]:max_c[0], min_c[1]:max_c[1], min_c[2]:max_c[2]]
 

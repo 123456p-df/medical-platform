@@ -114,6 +114,7 @@ def create_app(
                         "BackgroundTasks deployment supports one API process; use --workers 1"
                     )
             settings.storage_root.mkdir(parents=True, exist_ok=True)
+            runner.cleanup_label_maps()
             if recover_tasks:
                 runner.recover()
                 analysis_runner.recover()

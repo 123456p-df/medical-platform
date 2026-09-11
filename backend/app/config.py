@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     segmentation_image_types: list[str] = ["CT"]
     nv_segment_ct_dir: Path | None = None
     nv_segment_device: str = "cuda:0"
+    segmentation_model_fingerprint: str = "nv-segment-ctmr-vista3d-1mm"
+    segmentation_min_component_voxels: int = Field(default=30, ge=1, le=100000)
+    segmentation_target_faces: int = Field(default=40000, ge=1000, le=200000)
+    segmentation_label_map_retention_days: int = Field(default=7, ge=0, le=365)
     lung_nodule_callable: str | None = None
     lung_nodule_model_url: str | None = None
     lung_nodule_model_token: SecretStr | None = None

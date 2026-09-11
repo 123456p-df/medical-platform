@@ -7,8 +7,8 @@ from trimesh.visual.material import PBRMaterial
 import fast_simplification
 
 ROOT = Path("/home/zhichun/Documents/medical-platform")
-PUBLIC_MODELS = ROOT / "medical-platform/Medical/public/models"
-DIST_MODELS = ROOT / "medical-platform/Medical/dist/models"
+PUBLIC_MODELS = ROOT / "public/models"
+DIST_MODELS = ROOT / "dist/models"
 PUBLIC_MODELS.mkdir(parents=True, exist_ok=True)
 DIST_MODELS.mkdir(parents=True, exist_ok=True)
 
