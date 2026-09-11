@@ -29,7 +29,7 @@ def chat(body: ChatInput, request: Request, db: DB, user: CurrentUser, settings:
     patient = check_patient_access(db, user, body.patient_id)
     require_organ(body.organ_id)
     context, truncated = build_context(
-        db, patient, body.organ_id, settings, include_drafts=user.role == "doctor"
+        db, patient, body.organ_id, settings, include_drafts=user.role in {"doctor", "admin"}
     )
     user_id, role = user.id, user.role
     # Release the database transaction before waiting on the external AI service.

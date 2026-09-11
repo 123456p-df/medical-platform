@@ -30,6 +30,8 @@ const props = withDefaults(
     visibleLabels?: number[]
     stainColors?: Record<number, StainStyle>
     stainOpacity?: number
+    syncCrosshairs?: boolean
+    showCrosshairs?: boolean
   }>(),
   {
     blocked: false,
@@ -41,6 +43,8 @@ const props = withDefaults(
     visibleLabels: () => [],
     stainColors: () => ({}),
     stainOpacity: 0.35,
+    syncCrosshairs: true,
+    showCrosshairs: true,
   },
 )
 
@@ -73,17 +77,33 @@ const spacing = computed<[number, number, number]>(() => {
 const geometry = computed(() => {
   const sh = shape.value
   const sp = spacing.value
-  const [x, y, z] =
-    props.axis === 'axial' ? [0, 1, 2] : props.axis === 'coronal' ? [0, 2, 1] : [1, 2, 0]
+  const layer = props.axis === 'axial' ? 2 : props.axis === 'coronal' ? 1 : 0
+  const u = props.axis === 'sagittal' ? 1 : 0
+  const v = props.axis === 'axial' ? 1 : 2
   return {
-    count: sh[z],
-    width: sh[x] * sp[x],
-    height: sh[y] * sp[y],
-    pixelWidth: sh[x],
-    pixelHeight: sh[y],
-    spacing: sp[z],
-    sliceThickness: sp[z],
-    pixelSpacing: sp[x],
+    count: sh[layer],
+    width: sh[u] * sp[u],
+    height: sh[v] * sp[v],
+    pixelWidth: sh[u],
+    pixelHeight: sh[v],
+    spacing: sp[layer],
+    sliceThickness: sp[layer],
+    pixelSpacing: sp[u],
+  }
+})
+
+const fitStyle = computed(() => {
+  const ratio = Math.max(0.01, geometry.value.width / geometry.value.height)
+  // Give the fit box the physical FOV aspect ratio. This keeps sagittal and
+  // coronal views from being stretched while the canvas and overlay share the
+  // exact same CSS box.
+  const width = ratio >= 1 ? 96 : Math.max(1, 94 * ratio)
+  const height = ratio >= 1 ? Math.max(1, 94 / ratio) : 94
+  return {
+    width: width + '%',
+    height: height + '%',
+    aspectRatio: String(ratio),
+    transform: 'translate(' + pan.value.x + 'px, ' + pan.value.y + 'px) scale(' + (zoom * localZoom.value) + ')',
   }
 })
 
@@ -130,11 +150,24 @@ const crosshairProj = computed(() => getCanvasProjection(props.axis, shape.value
 watch(
   () => crosshairProj.value.sliceIndex,
   targetSlice => {
-    if (activeMedicalTool.value === 'crosshairs' || targetSlice !== slice.value) {
-      if (targetSlice >= 0 && targetSlice < geometry.value.count && targetSlice !== slice.value) {
+    if (!props.syncCrosshairs) return
+    if (activeMedicalTool.value === 'crosshairs' && targetSlice !== slice.value) {
+      if (targetSlice >= 0 && targetSlice < geometry.value.count) {
         slice.value = targetSlice
         emit('positionChange', sliceToPosition(targetSlice, geometry.value.count))
       }
+    }
+  },
+)
+
+watch(
+  () => props.axis,
+  () => {
+    const count = geometry.value.count
+    if (props.position !== undefined) {
+      slice.value = positionToSlice(props.position, count)
+    } else if (slice.value >= count) {
+      slice.value = Math.max(0, count - 1)
     }
   },
 )
@@ -450,10 +483,7 @@ defineExpose({
       <div
         ref="sliceFitRef"
         class="slice-fit"
-        :style="{
-          aspectRatio: String(geometry.width / geometry.height),
-          transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom * localZoom})`,
-        }"
+        :style="fitStyle"
       >
         <SyntheticSlice
           v-if="localPreview"
@@ -476,7 +506,7 @@ defineExpose({
 
         <!-- 3D 十字准星与专业量测矢量叠加层 -->
         <CrosshairsOverlay
-          v-if="canvas && canvas.width > 0"
+          v-if="showCrosshairs && canvas && canvas.width > 0"
           :axis="axis"
           :width="canvas.width"
           :height="canvas.height"
@@ -644,9 +674,9 @@ defineExpose({
 
 .slice-fit canvas {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
   pointer-events: none;
 }
 

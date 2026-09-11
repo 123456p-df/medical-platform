@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date
 
 import httpx
@@ -8,6 +9,39 @@ from sqlalchemy import func, select
 from app.errors import APIError
 from app.models import MedicalImage, MedicalRecord, OrganModel, SegmentationTask
 from app.organs import ORGANS
+
+
+
+_PHI_PATTERNS = (
+    re.compile(r"\b\d{17}[\dXx]\b"),
+    re.compile(r"(?<!\d)1\d{10}(?!\d)"),
+    re.compile(r"\b[\w.+-]+@[\w.-]+\.\w{2,}\b"),
+    re.compile(
+        r"((?:患者姓名|姓名|身份证(?:号|号码)?|住院号|病案号|医保号|联系电话|手机号)\s*[:：]?\s*)"
+        r"[^\s,，。；;]+"
+    ),
+)
+
+
+def deidentify_text(value: str) -> str:
+    """External AI boundary redaction for common direct identifiers."""
+    for pattern in _PHI_PATTERNS:
+        if pattern.groups:
+            value = pattern.sub(lambda match: f"{match.group(1)}[已脱敏]", value)
+        else:
+            value = pattern.sub("[已脱敏]", value)
+    return value
+
+
+def deidentify_payload(value):
+    """Recursively redact strings before sending context to an external provider."""
+    if isinstance(value, str):
+        return deidentify_text(value)
+    if isinstance(value, dict):
+        return {key: deidentify_payload(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [deidentify_payload(item) for item in value]
+    return value
 
 
 class AIAnswer(BaseModel):
@@ -101,7 +135,7 @@ class AIProvider:
             raise APIError(503, 50302, "AI service is not configured")
         audience = (
             "面向医生：可使用医学术语，归纳记录变化、证据缺口和需要医生核实的问题。"
-            if role == "doctor"
+            if role in {"doctor", "admin"}
             else "面向患者：使用通俗语言说明已有记录，不提供新的诊断、处方、剂量、停药或自行治疗建议；建议与接诊医生讨论。"
         )
         system = (
@@ -114,15 +148,18 @@ class AIProvider:
             "涉及病历事实应在文字中标明日期及 record_id；used_record_ids 仅包含实际引用且来自上下文的病历 ID。"
             "返回一个 JSON 对象，且仅包含 answer（非空中文字符串）和 used_record_ids（整数数组）。"
         )
+        external_payload = (
+            deidentify_payload({"context": context, "question": question})
+            if getattr(settings, "ai_external_deidentify", True)
+            else {"context": context, "question": question}
+        )
         payload = {
             "model": settings.ai_model,
             "messages": [
                 {"role": "system", "content": system},
                 {
                     "role": "user",
-                    "content": json.dumps(
-                        {"context": context, "question": question}, ensure_ascii=False
-                    ),
+                    "content": json.dumps(external_payload, ensure_ascii=False),
                 },
             ],
             "response_format": {"type": "json_object"},
@@ -155,8 +192,8 @@ class AIProvider:
             known = {r["record_id"] for r in context["records"]}
             if not set(answer.used_record_ids).issubset(known):
                 raise ValueError("Unknown medical record references")
-            if known and not answer.used_record_ids:
-                raise ValueError("Response must cite available medical records")
+            # A general medical-information answer may legitimately cite no record;
+            # only reject references that point outside the authorized context.
             return answer
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError, ValidationError):
             raise APIError(

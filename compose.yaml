@@ -24,8 +24,12 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://vmrb:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/vmrb
       STORAGE_ROOT: /data
+      API_DOCS_ENABLED: "false"
     volumes:
       - medical-data:/data
+      # Keep migration scripts in sync with the bind-mounted application during
+      # staged rollouts; this avoids requiring a GPU image rebuild for schema-only changes.
+      - ./backend/migrations:/app/migrations:ro
     depends_on:
       db:
         condition: service_healthy

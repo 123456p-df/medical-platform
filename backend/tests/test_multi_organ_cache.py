@@ -83,21 +83,21 @@ def test_multi_organ_record_is_single_source_with_scoped_ai(app_env, people):
         headers=headers,
         json={"organ_ids": ["heart", "eye"], "diagnosis": "已更新的共同记录"},
     )
-    assert response.status_code == 200, response.text
-    assert response.json()["data"]["organ_ids"] == ["heart", "eye"]
-    for organ, count in [("heart", 1), ("eye", 1), ("lung", 0), ("other", 0)]:
+    assert response.status_code == 409
+    response = client.post(f"/api/v1/medical-records/{rid}/addenda", headers=headers, json={"reason": "复核", "content": "已更新的共同记录"})
+    for organ, count in [("lung", 1), ("heart", 1), ("other", 1), ("eye", 0)]:
         data = client.get(f"/api/v1/patients/{pid}/organs/{organ}/records", headers=headers).json()[
             "data"
         ]
         assert data["total"] == count
         if count:
-            assert data["items"][0]["diagnosis"] == "已更新的共同记录"
+            assert data["items"][0]["diagnosis"] == "多器官测试记录"
     with app.state.session_factory() as db:
-        event = db.scalar(select(AuditEvent).where(AuditEvent.action == "record.update"))
-        assert event.before["organ_ids"] == ["lung", "heart", "other"]
-        assert event.after["organ_ids"] == ["heart", "eye"]
-        assert len(list(db.scalars(select(RecordOrgan)))) == 2
-    client.delete(f"/api/v1/medical-records/{rid}", headers=headers)
+        event = db.scalar(select(AuditEvent).where(AuditEvent.action == "record.addendum"))
+        assert event.after["content"] == "已更新的共同记录"
+        assert event.after["reason"] == "复核"
+        assert len(list(db.scalars(select(RecordOrgan)))) == 3
+    assert client.delete(f"/api/v1/medical-records/{rid}", headers=headers).status_code == 409
     assert (
         client.get(f"/api/v1/patients/{pid}/organs/eye/records", headers=headers).json()["data"][
             "total"

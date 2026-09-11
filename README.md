@@ -48,3 +48,16 @@ uv run alembic upgrade head
 医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。真实后端使用 `0006_report_delivery` 数据库迁移保存关联检查、建议、签署状态和签署时间；本地演示模式使用浏览器持久化存储，切换医生与患者账号后数据仍会保留。
 
 医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断、报告和 3D 影像；这些页面会作为工作区标签保留，可快速切换或单独关闭。
+
+## Staged production hardening
+
+The default stack keeps the existing LAN HTTP listener on port 8080 and runs the GPU
+segmentation runner in-process. API documentation is disabled in that environment.
+For the optional local integration services (Redis, Celery worker, MinIO, and Orthanc),
+configure the corresponding secrets and model directory, then run:
+
+    docker compose -f compose.yaml -f compose.override.yaml -f compose.infra.yaml --profile infra up -d
+
+Set ORTHANC_URL, ORTHANC_USERNAME, and ORTHANC_PASSWORD in backend/.env before
+using the authenticated DICOM endpoints. TASK_QUEUE_ENABLED remains false unless the
+Celery worker image has been rebuilt and Redis is ready.

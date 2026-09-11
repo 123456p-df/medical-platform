@@ -89,6 +89,18 @@ def test_upload_slice_segmentation_glb_permissions(app_env, people, nifti_file):
     assert client.get(model_route + "/file", headers=people["doctor_a"]).status_code == 403
 
 
+def test_dicom_gateway_is_closed_when_unconfigured(app_env, people):
+    _, client, _, _ = app_env
+    response = client.get("/api/v1/dicom/studies", headers=people["doctor_a"])
+    assert response.status_code == 503
+    response = client.post(
+        "/api/v1/dicom/instances",
+        headers=people["doctor_a"],
+        files={"file": ("scan.dcm", b"DICOM")},
+    )
+    assert response.status_code == 503
+
+
 def test_bad_uploads_and_mri_rejection(app_env, people, nifti_file):
     app, client, settings, _ = app_env
     route = f"/api/v1/patients/{people['patient_a_pid']}/medical-images"

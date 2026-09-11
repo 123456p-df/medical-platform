@@ -1,0 +1,86 @@
+# Optional local integration services. Start explicitly with:
+# docker compose -f compose.yaml -f compose.override.yaml -f compose.infra.yaml --profile infra up -d
+services:
+  backend:
+    environment:
+      ORTHANC_URL: http://orthanc:8042
+  redis:
+    image: redis:7-alpine
+    profiles: ["infra"]
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["infra"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change-this-minio-password}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+  celery-worker:
+    build:
+      context: ./backend
+      target: gpu
+    profiles: ["infra"]
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://vmrb:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env}@db:5432/vmrb
+      STORAGE_ROOT: /data
+      TASK_QUEUE_URL: redis://redis:6379/0
+      TASK_QUEUE_ENABLED: "true"
+      NV_SEGMENT_CT_DIR: /models/nv-segment-ct
+      NV_SEGMENT_DEVICE: cuda:0
+    volumes:
+      - medical-data:/data
+      - ./backend/app:/app/app:ro
+      - ./backend/migrations:/app/migrations:ro
+      - ${NV_SEGMENT_CT_HOST_DIR:?Set the local NVIDIA model directory}:/models/nv-segment-ct:ro
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "--loglevel=INFO", "--concurrency=1"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  orthanc:
+    image: orthancteam/orthanc:24.10.1
+    profiles: ["infra"]
+    environment:
+      ORTHANC__NAME: medical-platform-local
+      ORTHANC__REMOTEACCESSALLOWED: "false"
+      ORTHANC__AUTHENTICATIONENABLED: "true"
+    ports:
+      - "127.0.0.1:8042:8042"
+      - "127.0.0.1:4242:4242"
+    volumes:
+      - orthanc-data:/var/lib/orthanc/db
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  minio-data:
+  orthanc-data:

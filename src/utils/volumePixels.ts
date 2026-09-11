@@ -56,17 +56,24 @@ export function renderVolumeSlice(
   customWindow?: [number, number],
   includeRawPlane = true,
 ): SlicePixels {
-  const [nx, ny, nz] = volume.shape
-  const dimension = axis === 'axial' ? 2 : axis === 'coronal' ? 1 : axis === 'sagittal' ? 0 : -1
-  if (dimension < 0 || !Number.isInteger(index) || index < 0 || index >= (volume.shape as number[])[dimension]) {
+  const [, ny, nz] = volume.shape
+  const spec = axis === 'axial'
+    ? { layer: 2, u: 0, v: 1 }
+    : axis === 'coronal'
+      ? { layer: 1, u: 0, v: 2 }
+      : axis === 'sagittal'
+        ? { layer: 0, u: 1, v: 2 }
+        : null
+  if (!spec || !Number.isInteger(index) || index < 0 || index >= (volume.shape as number[])[spec.layer]) {
     throw new Error('切片位置超出范围')
   }
-  const width = axis === 'sagittal' ? ny : nx, height = axis === 'axial' ? ny : nz
+  const width = volume.shape[spec.u], height = volume.shape[spec.v]
   const plane = new Float32Array(width * height)
   const [sx, sy, sz] = volume.strides || [ny * nz, nz, 1]
-  const columnStride = axis === 'sagittal' ? sy : sx
-  const rowStride = axis === 'axial' ? sy : sz
-  const origin = index * (axis === 'axial' ? sz : axis === 'coronal' ? sy : sx)
+  const strides = [sx, sy, sz]
+  const columnStride = strides[spec.u]
+  const rowStride = strides[spec.v]
+  const origin = index * strides[spec.layer]
   // Radiological view: reverse each displayed plane coordinate; no interpolation of voxels.
   if (columnStride > rowStride) {
     for (let col = 0; col < width; col++) {
@@ -95,10 +102,20 @@ export function renderVolumeSlice(
     low = center - winWidth / 2
     high = center + winWidth / 2
   } else {
-    const sorted = plane.slice().sort()
+    // Estimate percentiles from a bounded deterministic sample. Sorting an
+    // entire 512×512 plane on the UI thread causes visible scroll jank.
+    const sampleSize = Math.min(8192, plane.length)
+    const stride = Math.max(1, Math.floor(plane.length / sampleSize))
+    const sampled: number[] = []
+    for (let i = 0; i < plane.length && sampled.length < sampleSize; i += stride) {
+      sampled.push(plane[i])
+    }
+    sampled.sort((a, b) => a - b)
     const percentile = (q: number) => {
-      const position = (sorted.length - 1) * q, lower = Math.floor(position), fraction = position - lower
-      return sorted[lower] * (1 - fraction) + sorted[Math.min(lower + 1, sorted.length - 1)] * fraction
+      const position = (sampled.length - 1) * q
+      const lower = Math.floor(position)
+      const fraction = position - lower
+      return sampled[lower] * (1 - fraction) + sampled[Math.min(lower + 1, sampled.length - 1)] * fraction
     }
     low = percentile(.01)
     high = percentile(.99)
@@ -160,20 +177,24 @@ export function parseLabelVolume(buffer: ArrayBuffer, expectedShape: Shape3D): L
 }
 
 export function extractLabelPlane(volume: LabelVolume, axis: SliceAxis, index: number): { width: number; height: number; plane: Uint16Array } {
-  const [nx, ny, nz] = volume.shape
-  const dimension: 0 | 1 | 2 = axis === 'axial' ? 2 : axis === 'coronal' ? 1 : 0
-  if (axis !== 'axial' && axis !== 'coronal' && axis !== 'sagittal') {
+  const [, ny, nz] = volume.shape
+  const spec = axis === 'axial'
+    ? { layer: 2 as const, u: 0 as const, v: 1 as const }
+    : axis === 'coronal'
+      ? { layer: 1 as const, u: 0 as const, v: 2 as const }
+      : axis === 'sagittal'
+        ? { layer: 0 as const, u: 1 as const, v: 2 as const }
+        : null
+  if (!spec || !Number.isInteger(index) || index < 0 || index >= volume.shape[spec.layer]) {
     throw new Error('切片位置超出范围')
   }
-  if (!Number.isInteger(index) || index < 0 || index >= volume.shape[dimension]) {
-    throw new Error('切片位置超出范围')
-  }
-  const width = axis === 'sagittal' ? ny : nx, height = axis === 'axial' ? ny : nz
+  const width = volume.shape[spec.u], height = volume.shape[spec.v]
   const plane = new Uint16Array(width * height)
   const [sx, sy, sz] = volume.strides || [ny * nz, nz, 1]
-  const columnStride = axis === 'sagittal' ? sy : sx
-  const rowStride = axis === 'axial' ? sy : sz
-  const origin = index * (axis === 'axial' ? sz : axis === 'coronal' ? sy : sx)
+  const strides = [sx, sy, sz]
+  const columnStride = strides[spec.u]
+  const rowStride = strides[spec.v]
+  const origin = index * strides[spec.layer]
   if (columnStride > rowStride) {
     for (let col = 0; col < width; col++) {
       const columnOffset = origin + (width - 1 - col) * columnStride

@@ -6,9 +6,9 @@ from sqlalchemy import func, select
 from app.audit import audit
 from app.deps import DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import APIError, Envelope, success
-from app.models import Doctor, MedicalImage, MedicalRecord, User, utcnow
+from app.models import Doctor, MedicalImage, MedicalRecord, RecordAddendum, User, utcnow
 from app.organs import require_organ
-from app.schemas import RecordCreate, RecordOut, RecordPage, RecordPatch
+from app.schemas import AddendumCreate, AddendumOut, RecordCreate, RecordOut, RecordPage, RecordPatch
 
 router = APIRouter(tags=["Medical Record"])
 
@@ -62,6 +62,11 @@ def accessible_record(db, user, record_id, *, write=False):
     if user.role == "patient" and not record.reviewed:
         raise APIError(404, 40403, "Medical record not found")
     return record
+
+
+def ensure_draft(record):
+    if record.signed_at is not None:
+        raise APIError(409, 40906, "Signed reports are immutable; append an addendum instead")
 
 
 def validate_examination(db, patient_id, examination_id):
@@ -122,6 +127,45 @@ def get_record(record_id: int, db: DB, user: CurrentUser):
 
 
 @router.post(
+    "/medical-records/{record_id}/addenda",
+    status_code=201,
+    response_model=Envelope[AddendumOut],
+)
+def add_addendum(record_id: int, body: AddendumCreate, db: DB, user: CurrentUser):
+    record = accessible_record(db, user, record_id, write=True)
+    if record.signed_at is None:
+        raise APIError(409, 40907, "Addenda require a signed report")
+    addendum = RecordAddendum(
+        record_id=record.id,
+        author_user_id=user.id,
+        reason=body.reason,
+        content=body.content,
+    )
+    db.add(addendum)
+    db.flush()
+    audit(
+        db,
+        user.id,
+        record.patient_id,
+        "record.addendum",
+        "medical_record",
+        record.id,
+        after={"reason": body.reason, "content": body.content},
+    )
+    db.commit()
+    return success(
+        {
+            "addendum_id": addendum.id,
+            "record_id": addendum.record_id,
+            "author_user_id": addendum.author_user_id,
+            "reason": addendum.reason,
+            "content": addendum.content,
+            "created_at": addendum.created_at,
+        }
+    )
+
+
+@router.post(
     "/patients/{patient_id}/medical-records", status_code=201, response_model=Envelope[RecordOut]
 )
 def create_record(patient_id: int, body: RecordCreate, db: DB, user: CurrentUser):
@@ -151,6 +195,7 @@ def create_record(patient_id: int, body: RecordCreate, db: DB, user: CurrentUser
 @router.patch("/medical-records/{record_id}", response_model=Envelope[RecordOut])
 def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
     record = accessible_record(db, user, record_id, write=True)
+    ensure_draft(record)
     if body.organ_id is not None:
         require_organ(body.organ_id)
     for organ_id in body.organ_ids or []:
@@ -189,6 +234,7 @@ def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
 @router.delete("/medical-records/{record_id}", response_model=Envelope[None])
 def delete_record(record_id: int, db: DB, user: CurrentUser):
     record = accessible_record(db, user, record_id, write=True)
+    ensure_draft(record)
     before = snapshot(record)
     record.deleted_at = record.updated_at = utcnow()
     audit(

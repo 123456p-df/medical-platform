@@ -11,12 +11,12 @@ from tests.conftest import record
 
 def test_registration_roles_passwords_uniqueness(app_env):
     app, client, _, _ = app_env
-    body = {"username": "doctor", "password": "very-secret-test", "role": "doctor"}
+    body = {"username": "patient", "password": "very-secret-test"}
     first = client.post("/api/v1/auth/register", json=body)
     assert first.status_code == 201
     assert "password" not in first.text
     assert client.post("/api/v1/auth/register", json=body).status_code == 409
-    assert client.post("/api/v1/auth/register", json=body | {"role": "admin"}).status_code == 422
+    assert client.post("/api/v1/auth/register", json=body | {"role": "doctor"}).status_code == 422
     with app.state.session_factory() as db:
         user = db.scalar(select(User))
         assert user.password_hash.startswith("$argon2")
@@ -24,7 +24,7 @@ def test_registration_roles_passwords_uniqueness(app_env):
     invalid = client.post("/api/v1/auth/register", json=body | {"password": "secret"})
     assert "secret" not in invalid.text and invalid.json()["data"] is None
     assert client.get("/api/v1/auth/me").status_code == 401
-    wrong = client.post("/api/v1/auth/login", json={"username": "doctor", "password": "wrong-pass"})
+    wrong = client.post("/api/v1/auth/login", json={"username": "patient", "password": "wrong-pass"})
     assert wrong.status_code == 401
     assert wrong.headers["www-authenticate"] == "Bearer"
 
@@ -81,8 +81,9 @@ def test_record_lifecycle_filters_and_audit(app_env, people):
     app, client, _, _ = app_env
     pid = people["patient_a_pid"]
     rid = record(client, people)
-    record(client, people, record_date="2025-01-01")
+    draft_id = record(client, people, record_date="2025-01-01", reviewed=False)
     route = f"/api/v1/medical-records/{rid}"
+    draft_route = f"/api/v1/medical-records/{draft_id}"
     assert client.get(route, headers=people["patient_a"]).status_code == 200
     for who in ["patient_b", "doctor_b"]:
         assert client.get(route, headers=people[who]).status_code == 403
@@ -115,30 +116,17 @@ def test_record_lifecycle_filters_and_audit(app_env, people):
         ).status_code
         == 400
     )
-    assert (
-        client.patch(route, json={"diagnosis": "已修改"}, headers=people["doctor_a"]).status_code
-        == 200
-    )
-    assert client.delete(route, headers=people["doctor_a"]).json()["data"] is None
-    assert client.get(route, headers=people["patient_a"]).status_code == 404
+    assert client.patch(route, json={"diagnosis": "已修改"}, headers=people["doctor_a"]).status_code == 409
+    addendum = client.post(f"{route}/addenda", json={"reason": "复核", "content": "补充说明"}, headers=people["doctor_a"])
+    assert addendum.status_code == 201
+    assert client.delete(draft_route, headers=people["doctor_a"]).json()["data"] is None
+    assert client.get(draft_route, headers=people["patient_a"]).status_code == 404
     with app.state.session_factory() as db:
-        assert db.get(MedicalRecord, rid).deleted_at is not None
-        events = list(
-            db.scalars(
-                select(AuditEvent)
-                .where(
-                    AuditEvent.resource_id == str(rid), AuditEvent.resource_type == "medical_record"
-                )
-                .order_by(AuditEvent.id)
-            )
-        )
-        assert [event.action for event in events] == [
-            "record.create",
-            "record.update",
-            "record.delete",
-        ]
-        assert events[1].before["diagnosis"] == "测试记录"
-        assert events[2].after["deleted_at"] is not None
+        assert db.get(MedicalRecord, rid).deleted_at is None
+        events = list(db.scalars(select(AuditEvent.action).where(AuditEvent.resource_id == str(rid), AuditEvent.resource_type == "medical_record").order_by(AuditEvent.id)))
+        assert events == ["record.create", "record.addendum"]
+        draft_events = list(db.scalars(select(AuditEvent.action).where(AuditEvent.resource_id == str(draft_id), AuditEvent.resource_type == "medical_record").order_by(AuditEvent.id)))
+        assert draft_events == ["record.create", "record.delete"]
 
 
 def test_patient_receives_report_only_after_doctor_signs(app_env, people):
@@ -183,3 +171,38 @@ def test_all_patient_read_routes_enforce_access(app_env, people, suffix):
     assert client.get(route, headers=people["doctor_b"]).status_code == 403
     assert client.get(route, headers=people["patient_b"]).status_code == 403
     assert client.get(route, headers=people["patient_a"]).status_code == 200
+
+
+def test_break_glass_is_audited_time_limited_and_read_only(app_env, people):
+    app, client, _, _ = app_env
+    pid = people["patient_a_pid"]
+    route = f"/api/v1/doctor/patients/{pid}/break-glass"
+    assert client.get(f"/api/v1/patients/{pid}/overview", headers=people["doctor_b"]).status_code == 403
+    response = client.post(
+        route,
+        json={"reason": "急诊会诊：患者无法完成常规身份核验", "duration_minutes": 15},
+        headers=people["doctor_b"],
+    )
+    assert response.status_code == 201
+    grant = response.json()["data"]
+    assert grant["read_only"] is True
+    assert client.get(f"/api/v1/patients/{pid}/overview", headers=people["doctor_b"]).status_code == 200
+    assert client.post(
+        f"/api/v1/patients/{pid}/medical-images",
+        headers=people["doctor_b"],
+        files={"file": ("scan.nii", b"invalid")},
+        data={"organ_id": "lung", "image_type": "CT"},
+    ).status_code == 403
+    assert client.delete(
+        f"/api/v1/doctor/break-glass/{grant['grant_id']}", headers=people["doctor_b"]
+    ).status_code == 200
+    assert client.get(f"/api/v1/patients/{pid}/overview", headers=people["doctor_b"]).status_code == 403
+    with app.state.session_factory() as db:
+        actions = list(
+            db.scalars(
+                select(AuditEvent.action)
+                .where(AuditEvent.resource_id == grant["grant_id"])
+                .order_by(AuditEvent.id)
+            )
+        )
+    assert actions == ["patient.break_glass", "patient.break_glass.revoke"]

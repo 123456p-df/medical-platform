@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SliceViewport from '@/components/medical/SliceViewport.vue'
 import AnatomyScene from '@/components/3d/AnatomyScene.vue'
-import OrganVisibilityList from '@/components/3d/OrganVisibilityList.vue'
+import OrganVisibilityList, { type OrganGroup } from '@/components/3d/OrganVisibilityList.vue'
 import { examinationApi } from '@/api/examinations'
 import {
-  AXIS_FROM_XYZ,
   viewerApi,
   type ComparisonCandidate,
   type SegmentationBatch,
-  type ViewerOrgan,
 } from '@/api/viewer'
 import type { Examination } from '@/types'
 import type { LabelVolume, SliceAxis, StainStyle } from '@/utils/volumePixels'
+import { AXIS_FROM_XYZ, sliceCount as axisSliceCount } from '@/utils/sliceAxes'
 import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
+import { VolumeRenderer } from '@/utils/volumeRenderer'
+import { activeMedicalTool } from '@/composables/useViewportGestures'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,13 +28,18 @@ const xyz = ref<'X' | 'Y' | 'Z'>('Z')
 const axis = computed<SliceAxis>(() => AXIS_FROM_XYZ[xyz.value])
 const opacity = ref(0.35)
 const position = ref(0.5)
+const worldAnchor = ref<[number, number, number] | null>(null)
 const error = ref('')
 const batch = ref<SegmentationBatch | null>(null)
 const compareBatch = ref<SegmentationBatch | null>(null)
 const candidates = ref<ComparisonCandidate[]>([])
 const labels = ref<LabelVolume | null>(null)
 const compareLabels = ref<LabelVolume | null>(null)
-const selected = ref<number[]>([])
+const selectedGroups = ref<string[]>([])
+const preset = ref('lung')
+const volumeRenderer = shallowRef<VolumeRenderer | null>(null)
+const compareRenderer = shallowRef<VolumeRenderer | null>(null)
+const volumeProgress = ref(0)
 const workspace = ref<HTMLElement | null>(null)
 const storedWidth = Number(localStorage.getItem('vmrb-3d-pane-width'))
 const paneWidth = ref(Number.isFinite(storedWidth) && storedWidth >= 320 ? storedWidth : 420)
@@ -45,10 +51,35 @@ const ctStudies = computed(() => studies.value.filter((item) => item.type === 'C
 const primary = computed(() => ctStudies.value.find((item) => item.id === imageId.value) || ctStudies.value[0])
 const secondary = computed(() => ctStudies.value.find((item) => item.id === compareId.value) || null)
 const organs = computed(() => (batch.value?.items || []).filter((item) => item.status === 'completed' && item.label_id != null))
+const groups = computed<OrganGroup[]>(() => {
+  const map = new Map<string, OrganGroup>()
+  for (const item of organs.value) {
+    const id = item.group_id || item.organ_id || `label_${item.label_id}`
+    const existing = map.get(id)
+    const color = (item.color || [160, 160, 160]) as [number, number, number]
+    const meshName = item.mesh_name || `label_${item.label_id}`
+    if (existing) {
+      if (item.label_id != null) existing.labelIds.push(item.label_id)
+      existing.meshNames.push(meshName)
+      existing.count += 1
+    } else {
+      map.set(id, {
+        id,
+        name: item.group_name || item.display_name || item.name,
+        color: [color[0], color[1], color[2]],
+        labelIds: item.label_id != null ? [item.label_id] : [],
+        meshNames: [meshName],
+        count: 1,
+      })
+    }
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+})
 const visibleNames = computed(() =>
-  organs.value
-    .filter((item) => item.label_id != null && selected.value.includes(item.label_id))
-    .map((item) => item.mesh_name || `label_${item.label_id}`),
+  groups.value.filter((item) => selectedGroups.value.includes(item.id)).flatMap((item) => item.meshNames),
+)
+const visibleLabels = computed(() =>
+  groups.value.filter((item) => selectedGroups.value.includes(item.id)).flatMap((item) => item.labelIds),
 )
 const stainColors = computed(() => {
   const map: Record<number, StainStyle> = {}
@@ -79,13 +110,67 @@ function shapeOf(study?: Examination | null): [number, number, number] {
 
 function sliceCount(study?: Examination | null) {
   if (!study) return 1
-  if (axis.value === 'axial') return study.shape?.[2] || study.sliceCount || 1
-  if (axis.value === 'coronal') return study.shape?.[1] || 1
-  return study.shape?.[0] || 1
+  return axisSliceCount(axis.value, shapeOf(study))
+}
+
+function spacingOf(study?: Examination | null): [number, number, number] {
+  const spacing = study?.spacing || study?.acquisition?.spacing_mm || [1, 1, 1]
+  return [spacing[0] || 1, spacing[1] || 1, spacing[2] || 1]
 }
 
 function affineOf(study?: Examination | null) {
   return study?.acquisition?.affine || null
+}
+
+function axisLayer() {
+  return axis.value === 'axial' ? 2 : axis.value === 'coronal' ? 1 : 0
+}
+
+function applyAffine(affine: number[][], voxel: [number, number, number]): [number, number, number] {
+  return [
+    affine[0][0] * voxel[0] + affine[0][1] * voxel[1] + affine[0][2] * voxel[2] + (affine[0][3] || 0),
+    affine[1][0] * voxel[0] + affine[1][1] * voxel[1] + affine[1][2] * voxel[2] + (affine[1][3] || 0),
+    affine[2][0] * voxel[0] + affine[2][1] * voxel[1] + affine[2][2] * voxel[2] + (affine[2][3] || 0),
+  ]
+}
+
+function worldAtPosition(study: Examination | null | undefined, value: number) {
+  const affine = affineOf(study)
+  if (!study || !affine || affine.length < 3 || affine.some(row => row.length < 4)) return null
+  const shape = shapeOf(study)
+  const voxel: [number, number, number] = [
+    Math.max(0, (shape[0] - 1) / 2),
+    Math.max(0, (shape[1] - 1) / 2),
+    Math.max(0, (shape[2] - 1) / 2),
+  ]
+  const layer = axisLayer()
+  voxel[layer] = Math.max(0, Math.min(shape[layer] - 1, value * Math.max(shape[layer] - 1, 1)))
+  return applyAffine(affine, voxel)
+}
+
+function positionAtWorld(study: Examination | null | undefined, ras: [number, number, number]) {
+  const affine = affineOf(study)
+  if (!study || !affine || affine.length < 3 || affine.some(row => row.length < 4)) return null
+  const voxel = invertAffine(affine, ras)
+  const layer = axisLayer()
+  const count = sliceCount(study)
+  if (!Number.isFinite(voxel[layer]) || count <= 1) return 0
+  return Math.max(0, Math.min(1, voxel[layer] / (count - 1)))
+}
+
+function positionFor(study: Examination | null | undefined) {
+  if (!worldAnchor.value) return position.value
+  return positionAtWorld(study, worldAnchor.value) ?? position.value
+}
+
+function onPositionFrom(study: Examination | null | undefined, value: number) {
+  const anchor = worldAtPosition(study, value)
+  worldAnchor.value = anchor
+  position.value = value
+}
+
+function resetWorldAnchor() {
+  worldAnchor.value = worldAtPosition(primary.value, position.value)
 }
 
 function clampPane(width: number) {
@@ -117,31 +202,31 @@ function startResize(event: PointerEvent) {
 
 function persistSelection() {
   if (!primary.value) return
-  localStorage.setItem(`vmrb-3d-organs-${primary.value.id}`, JSON.stringify(selected.value))
+  localStorage.setItem(`vmrb-3d-groups-${primary.value.id}`, JSON.stringify(selectedGroups.value))
 }
 
-function restoreSelection(items: ViewerOrgan[]) {
-  const ids = items.map((item) => item.label_id).filter((id): id is number => id != null)
-  const saved = localStorage.getItem(`vmrb-3d-organs-${primary.value?.id || ''}`)
+function restoreSelection() {
+  const ids = groups.value.map((item) => item.id)
+  const saved = localStorage.getItem(`vmrb-3d-groups-${primary.value?.id || ''}`)
   if (saved) {
     try {
-      const parsed = JSON.parse(saved) as number[]
-      selected.value = parsed.filter((id) => ids.includes(id))
-      if (selected.value.length) return
+      const parsed = JSON.parse(saved) as string[]
+      selectedGroups.value = parsed.filter((id) => ids.includes(id))
+      if (selectedGroups.value.length) return
     } catch { /* default to all */ }
   }
-  selected.value = ids
+  selectedGroups.value = ids
 }
 
-function toggleOrgan(labelId: number, visible: boolean) {
-  selected.value = visible
-    ? [...new Set([...selected.value, labelId])]
-    : selected.value.filter((id) => id !== labelId)
+function toggleOrgan(groupId: string, visible: boolean) {
+  selectedGroups.value = visible
+    ? [...new Set([...selectedGroups.value, groupId])]
+    : selectedGroups.value.filter((id) => id !== groupId)
   persistSelection()
 }
 
 function setAll(visible: boolean) {
-  selected.value = visible ? organs.value.map((item) => item.label_id!) : []
+  selectedGroups.value = visible ? groups.value.map((item) => item.id) : []
   persistSelection()
 }
 
@@ -191,7 +276,7 @@ async function refresh() {
     loadBatch(primary.value.id, batch),
     viewerApi.getCandidates(primary.value.id).then((items) => { candidates.value = items }).catch(() => { candidates.value = [] }),
   ])
-  if (batch.value?.items.length && !selected.value.length) restoreSelection(batch.value.items)
+  if (groups.value.length && !selectedGroups.value.length) restoreSelection()
   await loadLabelsFor(primary.value, labels)
   if (secondary.value) {
     await loadBatch(secondary.value.id, compareBatch)
@@ -228,7 +313,7 @@ async function startBatchSegmentation() {
 function selectStudy(id: string) {
   imageId.value = id
   if (compareId.value === id) compareId.value = ''
-  selected.value = []
+  selectedGroups.value = []
   updateQuery()
 }
 
@@ -245,10 +330,6 @@ function selectCompare(id: string) {
   }
   compareId.value = id
   updateQuery()
-}
-
-function onPosition(value: number) {
-  position.value = value
 }
 
 function invertAffine(affine: number[][], ras: number[]): [number, number, number] {
@@ -296,11 +377,38 @@ function layoutRight() {
   sideBySide.value = right > 720
 }
 
-watch([imageId, compareId], () => { void refresh().then(schedulePoll) })
+watch([imageId, compareId], () => { resetWorldAnchor(); void refresh().then(schedulePoll) })
+watch([axis, () => primary.value?.id], resetWorldAnchor)
 watch(paneWidth, layoutRight)
+watch(groups, (list) => {
+  if (list.length && !selectedGroups.value.length) restoreSelection()
+})
+
+async function loadVolume(study: Examination | null, target: typeof volumeRenderer) {
+  target.value?.dispose()
+  target.value = null
+  if (!study?.shape || study.shape.length !== 3) return
+  const engine = new VolumeRenderer()
+  try {
+    await engine.load(study.id, shapeOf(study), (value) => { volumeProgress.value = value })
+    target.value = engine
+  } catch {
+    engine.dispose()
+  }
+}
+
+watch(
+  () => primary.value?.id,
+  (id) => { void loadVolume(primary.value || null, volumeRenderer); void id },
+)
+watch(
+  () => secondary.value?.id,
+  (id) => { void loadVolume(secondary.value || null, compareRenderer); void id },
+)
 
 onMounted(async () => {
   document.title = '3D 查看器'
+  activeMedicalTool.value = 'ww_wl'
   if (localPreview) {
     error.value = '本地预览没有真实 CT 重建，请连接后端后打开 3D 窗口。'
     return
@@ -317,6 +425,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   finishResize()
   if (pollTimer) clearTimeout(pollTimer)
+  volumeRenderer.value?.dispose()
+  compareRenderer.value?.dispose()
 })
 </script>
 
@@ -349,6 +459,12 @@ onBeforeUnmount(() => {
       <div class="toolbar-block">
         <span>方向</span>
         <button v-for="item in (['X', 'Y', 'Z'] as const)" :key="item" type="button" :class="{ active: xyz === item }" @click="xyz = item">{{ item }}</button>
+        <select v-model="preset" aria-label="窗宽窗位">
+          <option value="lung">肺窗</option>
+          <option value="soft">软组织</option>
+          <option value="bone">骨窗</option>
+          <option value="brain">脑窗</option>
+        </select>
         <label class="opacity">染色
           <input v-model.number="opacity" type="range" min="0" max="1" step="0.05" />
         </label>
@@ -379,8 +495,9 @@ onBeforeUnmount(() => {
             :model-id="batch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
-            :slice-index="positionToSlice(position, sliceCount(primary))"
+            :slice-index="positionToSlice(positionFor(primary), sliceCount(primary))"
             :shape="shapeOf(primary)"
+            :spacing="spacingOf(primary)"
             :affine="affineOf(primary)"
             :status="batch ? `分割${batch.status}` : '尚未分割'"
             @select-label="jumpToOrgan"
@@ -390,13 +507,14 @@ onBeforeUnmount(() => {
             :model-id="compareBatch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
-            :slice-index="positionToSlice(position, sliceCount(secondary))"
+            :slice-index="positionToSlice(positionFor(secondary), sliceCount(secondary))"
             :shape="shapeOf(secondary)"
+            :spacing="spacingOf(secondary)"
             :affine="affineOf(secondary)"
             @select-label="jumpToOrgan"
           />
         </div>
-        <OrganVisibilityList :organs="organs" :selected="selected" @toggle="toggleOrgan" @set-all="setAll" />
+        <OrganVisibilityList :groups="groups" :selected="selectedGroups" @toggle="toggleOrgan" @set-all="setAll" />
       </section>
       <div
         class="pane-resizer"
@@ -410,31 +528,34 @@ onBeforeUnmount(() => {
           v-if="primary"
           :examination="primary"
           :axis="axis"
-          preset="soft"
+          :preset="preset"
           :zoom="1"
-          :renderer="null"
-          :position="position"
+          :renderer="volumeRenderer"
+          :position="positionFor(primary)"
           :label-volume="labels"
-          :visible-labels="selected"
+          :visible-labels="visibleLabels"
           :stain-colors="stainColors"
           :stain-opacity="opacity"
-          compact
-          @position-change="onPosition"
+          :sync-crosshairs="false"
+          :show-crosshairs="false"
+          @position-change="onPositionFrom(primary, $event)"
         />
         <SliceViewport
           v-if="secondary"
           :examination="secondary"
           :axis="axis"
-          preset="soft"
+          :preset="preset"
           :zoom="1"
-          :renderer="null"
-          :position="position"
+          :renderer="compareRenderer"
+          :position="positionFor(secondary)"
           :label-volume="compareLabels"
-          :visible-labels="selected"
+          :visible-labels="visibleLabels"
           :stain-colors="stainColors"
           :stain-opacity="opacity"
+          :sync-crosshairs="false"
+          :show-crosshairs="false"
           compact
-          @position-change="onPosition"
+          @position-change="onPositionFrom(secondary, $event)"
         />
       </section>
     </div>

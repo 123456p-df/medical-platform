@@ -12,7 +12,7 @@ def test_core_and_portal_apis_and_uniform_errors(app_env):
         if path.startswith("/api/v1")
         for method in methods
     ]
-    assert len(operations) == 47  # Core APIs plus 3D viewer batch, labels, comparison, colors.
+    assert len(operations) == 54  # Core APIs, emergency access, and append-only report endpoints.
     assert client.get("/missing").json() == {
         "code": 40401,
         "message": "Resource not found",

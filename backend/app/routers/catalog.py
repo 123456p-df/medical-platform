@@ -5,7 +5,14 @@ from sqlalchemy import func, select
 
 from app.deps import DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import Envelope, success
-from app.models import DoctorPatientAccess, MedicalImage, MedicalRecord, Patient
+from app.models import (
+    DoctorPatientAccess,
+    MedicalImage,
+    MedicalRecord,
+    OrganModel,
+    Patient,
+    SegmentationBatch,
+)
 from app.routers.images import image_out
 from app.routers.records import record_out
 
@@ -17,7 +24,7 @@ def patients(
     db: DB, user: CurrentUser, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 ):
     query = select(Patient).where(Patient.deleted_at.is_(None))
-    if user.role == "doctor":
+    if user.role in {"doctor", "admin"}:
         doctor = require_doctor(db, user)
         query = query.join(DoctorPatientAccess, DoctorPatientAccess.patient_id == Patient.id).where(
             DoctorPatientAccess.doctor_id == doctor.id, DoctorPatientAccess.status == "active"
@@ -25,20 +32,57 @@ def patients(
     else:
         query = query.where(Patient.user_id == user.id)
     total = db.scalar(select(func.count()).select_from(query.subquery()))
-    result = []
-    for patient in db.scalars(
-        query.order_by(Patient.id).offset((page - 1) * page_size).limit(page_size)
-    ):
-        image = db.scalar(
-            select(MedicalImage)
-            .where(MedicalImage.patient_id == patient.id)
-            .order_by(
-                MedicalImage.study_date.desc().nullslast(),
-                MedicalImage.created_at.desc(),
-                MedicalImage.id.desc(),
+    patients_page = list(
+        db.scalars(query.order_by(Patient.id).offset((page - 1) * page_size).limit(page_size))
+    )
+    patient_ids = [patient.id for patient in patients_page]
+    latest_images = {}
+    batch_ids = {}
+    atlas_ids = {}
+    if patient_ids:
+        image_rank = (
+            func.row_number()
+            .over(
+                partition_by=MedicalImage.patient_id,
+                order_by=(
+                    MedicalImage.study_date.desc().nullslast(),
+                    MedicalImage.created_at.desc(),
+                    MedicalImage.id.desc(),
+                ),
             )
-            .limit(1)
+            .label("image_rank")
         )
+        ranked = (
+            select(MedicalImage.id.label("image_id"), image_rank)
+            .where(MedicalImage.patient_id.in_(patient_ids))
+            .subquery()
+        )
+        latest_ids = list(
+            db.scalars(select(ranked.c.image_id).where(ranked.c.image_rank == 1))
+        )
+        if latest_ids:
+            latest_images = {
+                image.id: image
+                for image in db.scalars(select(MedicalImage).where(MedicalImage.id.in_(latest_ids)))
+            }
+            batches = db.scalars(
+                select(SegmentationBatch)
+                .where(SegmentationBatch.image_id.in_(latest_ids))
+                .order_by(SegmentationBatch.created_at.desc(), SegmentationBatch.id.desc())
+            )
+            for batch in batches:
+                batch_ids.setdefault(batch.image_id, batch.id)
+            atlas_ids = dict(
+                db.execute(
+                    select(OrganModel.image_id, OrganModel.id).where(
+                        OrganModel.image_id.in_(latest_ids), OrganModel.kind == "atlas"
+                    )
+                ).all()
+            )
+    latest_by_patient = {image.patient_id: image for image in latest_images.values()}
+    result = []
+    for patient in patients_page:
+        image = latest_by_patient.get(patient.id)
         result.append(
             {
                 "patient_id": patient.id,
@@ -46,7 +90,16 @@ def patients(
                 "birth_date": patient.birth_date,
                 "gender": patient.gender,
                 "blood_type": patient.blood_type,
-                "latest_image": image_out(image, db) if image else None,
+                "latest_image": (
+                    image_out(
+                        image,
+                        db,
+                        segmentation_batch_id=batch_ids.get(image.id),
+                        atlas_id=atlas_ids.get(image.id),
+                    )
+                    if image
+                    else None
+                ),
             }
         )
     return success({"items": result, "total": total, "page": page, "page_size": page_size})

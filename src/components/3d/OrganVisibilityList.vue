@@ -1,41 +1,39 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ViewerOrgan } from '@/api/viewer'
+
+export type OrganGroup = {
+  id: string
+  name: string
+  color: [number, number, number]
+  labelIds: number[]
+  meshNames: string[]
+  count: number
+}
 
 const props = defineProps<{
-  organs: ViewerOrgan[]
-  selected: number[]
+  groups: OrganGroup[]
+  selected: string[]
 }>()
 
 const emit = defineEmits<{
-  toggle: [labelId: number, visible: boolean]
+  toggle: [groupId: string, visible: boolean]
   setAll: [visible: boolean]
 }>()
 
 const query = ref('')
 const selectedSet = computed(() => new Set(props.selected))
-const completed = computed(() =>
-  props.organs.filter((item) => item.status === 'completed' && item.label_id != null),
-)
 const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
-  if (!needle) return completed.value
-  return completed.value.filter((item) =>
-    [item.display_name, item.name, String(item.label_id)].join(' ').toLowerCase().includes(needle),
-  )
+  if (!needle) return props.groups
+  return props.groups.filter((item) => item.name.toLowerCase().includes(needle))
 })
-
-function color(item: ViewerOrgan) {
-  const [r, g, b] = item.color || [160, 160, 160]
-  return `rgb(${r}, ${g}, ${b})`
-}
 </script>
 
 <template>
   <section class="organ-list">
     <header>
       <strong>本检查出现的器官</strong>
-      <span>{{ completed.length }}</span>
+      <span>{{ groups.length }}</span>
     </header>
     <div class="list-tools">
       <input v-model="query" type="search" placeholder="搜索器官" />
@@ -43,15 +41,16 @@ function color(item: ViewerOrgan) {
       <button type="button" @click="emit('setAll', false)">全不选</button>
     </div>
     <ul>
-      <li v-for="item in filtered" :key="item.task_id">
+      <li v-for="item in filtered" :key="item.id">
         <label>
           <input
             type="checkbox"
-            :checked="selectedSet.has(item.label_id!)"
-            @change="emit('toggle', item.label_id!, ($event.target as HTMLInputElement).checked)"
+            :checked="selectedSet.has(item.id)"
+            @change="emit('toggle', item.id, ($event.target as HTMLInputElement).checked)"
           />
-          <span class="swatch" :style="{ background: color(item) }" />
-          <span>{{ item.display_name || item.name }}</span>
+          <span class="swatch" :style="{ background: `rgb(${item.color.join(',')})` }" />
+          <span class="name">{{ item.name }}</span>
+          <span v-if="item.count > 1" class="count">{{ item.count }}</span>
         </label>
       </li>
       <li v-if="!filtered.length" class="empty">当前检查没有可显示的器官</li>
@@ -65,7 +64,8 @@ function color(item: ViewerOrgan) {
   min-height: 180px;
   flex-direction: column;
   border-top: 1px solid var(--border);
-  background: #f7fbfb;
+  background: #101820;
+  color: #d5e4e8;
 }
 .organ-list header {
   display: flex;
@@ -82,17 +82,16 @@ function color(item: ViewerOrgan) {
 .list-tools input,
 .list-tools button {
   min-height: 28px;
-  border: 1px solid var(--border);
+  border: 1px solid #2c3f48;
   border-radius: 6px;
-  background: #fff;
+  background: #172229;
+  color: #d5e4e8;
   font-size: 11px;
 }
-.list-tools button {
-  padding: 0 8px;
-}
+.list-tools button { padding: 0 8px; }
 ul {
   overflow: auto;
-  max-height: 220px;
+  max-height: 240px;
   margin: 0;
   padding: 0 8px 10px;
   list-style: none;
@@ -105,15 +104,20 @@ li label {
   padding: 2px 4px;
   font-size: 12px;
 }
+.name { flex: 1; }
+.count {
+  color: #7f9aa3;
+  font-size: 10px;
+}
 .swatch {
   width: 10px;
   height: 10px;
   border-radius: 99px;
-  box-shadow: 0 0 0 1px rgb(0 0 0 / 12%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 18%);
 }
 .empty {
   padding: 16px;
-  color: var(--text-muted);
+  color: #7f9aa3;
   font-size: 12px;
 }
 </style>

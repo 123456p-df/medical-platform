@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     access_token_minutes: int = Field(default=60, ge=1, le=1440)
     storage_root: Path = Path("data")
     cors_origins: list[str] = ["http://localhost:5173"]
+    api_docs_enabled: bool = True
     max_upload_bytes: int = Field(default=512 * 1024 * 1024, ge=1024)
     max_volume_voxels: int = Field(default=64_000_000, ge=8)
     max_uncompressed_bytes: int = Field(default=768 * 1024 * 1024, ge=1024)
@@ -36,11 +37,18 @@ class Settings(BaseSettings):
     lung_nodule_max_findings: int = Field(default=300, ge=1, le=1000)
     ai_base_url: str | None = None
     ai_api_key: SecretStr | None = None
+    ai_external_deidentify: bool = True
     ai_model: str | None = None
     ai_timeout_seconds: float = Field(default=60, gt=0, le=300)
     ai_max_context_records: int = Field(default=30, ge=1, le=100)
     ai_max_context_chars: int = Field(default=30000, ge=1000, le=100000)
     ai_max_answer_chars: int = Field(default=16000, ge=100, le=50000)
+    orthanc_url: str | None = None
+    orthanc_username: str | None = None
+    orthanc_password: SecretStr | None = None
+    dicom_timeout_seconds: float = Field(default=30, gt=0, le=300)
+    task_queue_url: str | None = None
+    task_queue_enabled: bool = False
 
     @model_validator(mode="after")
     def validate_secrets(self):

@@ -1,6 +1,7 @@
 import hashlib
 import hmac
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import jwt
 from argon2 import PasswordHasher
@@ -31,6 +32,7 @@ def create_token(user: User, settings: Settings) -> str:
     return jwt.encode(
         {
             "sub": str(user.id),
+            "jti": uuid4().hex,
             "iat": now,
             "nbf": now,
             "exp": now + timedelta(minutes=settings.access_token_minutes),
@@ -42,19 +44,22 @@ def create_token(user: User, settings: Settings) -> str:
     )
 
 
-def decode_token(token: str, settings: Settings) -> int:
+def decode_token(token: str, settings: Settings) -> tuple[int, str, datetime]:
     payload = jwt.decode(
         token,
         settings.jwt_secret.get_secret_value(),
         algorithms=["HS256"],
         issuer=settings.jwt_issuer,
         audience=settings.jwt_audience,
-        options={"require": ["sub", "iat", "nbf", "exp", "iss", "aud"]},
+        options={"require": ["sub", "jti", "iat", "nbf", "exp", "iss", "aud"]},
     )
     user_id = int(payload["sub"])
     if not 1 <= user_id <= 2147483647:
         raise ValueError("Invalid user ID")
-    return user_id
+    jti = payload["jti"]
+    if not isinstance(jti, str) or len(jti) > 64 or not jti:
+        raise ValueError("Invalid token ID")
+    return user_id, jti, datetime.fromtimestamp(payload["exp"], UTC)
 
 
 def normalize_id(value: str) -> str:
