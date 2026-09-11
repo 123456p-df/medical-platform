@@ -18,9 +18,9 @@ const tabs = [
   { label: 'Overview', name: 'doctor-patient-overview' },
   { label: 'Imaging', name: 'doctor-patient-imaging' },
   { label: 'Report', name: 'doctor-patient-report' },
-  { label: 'AI 辅助诊断', name: 'doctor-patient-ai' },
-  { label: '3D/2D 分割视口', name: 'doctor-patient-study-viewer' },
-  { label: '3D 器官模型', name: 'doctor-patient-3d' },
+  { label: 'AI Assistant', name: 'doctor-patient-ai' },
+  { label: '3D / 2D segmentation viewport', name: 'doctor-patient-study-viewer' },
+  { label: '3D organ model', name: 'doctor-patient-3d' },
 ]
 
 async function loadPatient() {
@@ -51,19 +51,19 @@ watch(patientId, loadPatient)
             <RiskBadge :level="selectedPatient.risk" />
           </div>
           <p>
-            {{ selectedPatient.id }} · {{ selectedPatient.age === null ? '年龄未登记' : selectedPatient.age + ' 岁' }} · {{ $t(selectedPatient.gender) }} ·
+            {{ selectedPatient.id }} · {{ selectedPatient.age === null ? $t('Age not recorded') : selectedPatient.age + ' ' + $t('years') }} · {{ $t(selectedPatient.gender) }} ·
             {{ selectedPatient.bloodType }}
           </p>
         </div>
       </div>
       <div class="patient-status">
-        <PatientDeleteButton :id="patientId" :name="selectedPatient.name" /><span class="status-label">Current status</span>
+        <PatientDeleteButton :id="patientId" :name="selectedPatient.name" /><span class="status-label">{{ $t('Current status') }}</span>
         <StatusBadge :status="selectedPatient.status" />
-        <span class="latest-label">Latest: {{ selectedPatient.modality }} {{ selectedPatient.organ }}</span>
+        <span class="latest-label">{{ $t('Latest:') }} {{ selectedPatient.modality }} {{ $t(selectedPatient.organ) }}</span>
       </div>
     </section>
 
-    <nav class="detail-tabs" aria-label="Patient record sections">
+    <nav class="detail-tabs" :aria-label="$t('Patient record sections')">
       <RouterLink
         v-for="tab in tabs"
         :key="tab.name"
@@ -71,15 +71,15 @@ watch(patientId, loadPatient)
         class="detail-tab"
         exact-active-class="is-active"
       >
-        {{ tab.label }}
+        {{ $t(tab.label) }}
       </RouterLink>
     </nav>
 
     <div v-if="store.loading && !store.examinations.length" class="loading">
-      Loading patient record...
+      {{ $t('Loading patient record...') }}
     </div>
     <div v-else-if="store.error" class="empty-state">
-      {{ store.error }}
+      {{ $t(store.error) }}
     </div>
     <RouterView v-else :key="patientId" />
   </div>

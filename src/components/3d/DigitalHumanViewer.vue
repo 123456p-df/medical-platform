@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { organNames } from '@/api/mappers'
 import { api } from '@/api/client'
+import { locale, t } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -46,12 +47,12 @@ type CategoryId = 'all' | 'viscera' | 'skeletal' | 'cardiovascular' | 'respirato
 const activeCategory = ref<CategoryId>('all')
 
 const categories: { id: CategoryId; label: string }[] = [
-  { id: 'all', label: '全部 (70项)' },
-  { id: 'viscera', label: '内脏实质' },
-  { id: 'skeletal', label: '骨骼系统' },
-  { id: 'cardiovascular', label: '心血管' },
-  { id: 'respiratory', label: '呼吸系统' },
-  { id: 'muscular', label: '肌群组织' },
+  { id: 'all', label: 'All (70 items)' },
+  { id: 'viscera', label: 'Viscera' },
+  { id: 'skeletal', label: 'Skeletal system' },
+  { id: 'cardiovascular', label: 'Cardiovascular' },
+  { id: 'respiratory', label: 'Respiratory system' },
+  { id: 'muscular', label: 'Muscular tissue' },
 ]
 
 let renderer: THREE.WebGLRenderer | undefined
@@ -95,7 +96,14 @@ function getCategory(name: string): CategoryId {
   return 'viscera'
 }
 
-function getChineseName(name: string): string {
+function getAnatomyName(name: string): string {
+  if (locale.value !== 'zh') {
+    const ribMatch = name.match(/^(left|right)_rib_(\d+)$/)
+    if (ribMatch) return `${ribMatch[1] === 'left' ? 'Left' : 'Right'} rib ${ribMatch[2]}`
+    const vertMatch = name.match(/^vertebrae_([TL])(\d+)$/)
+    if (vertMatch) return `${vertMatch[1] === 'T' ? 'Thoracic' : 'Lumbar'} vertebra ${vertMatch[1]}${vertMatch[2]}`
+    return name.replace(/_/g, ' ').replace(/\b\w/g, value => value.toUpperCase())
+  }
   if (ZH_NAMES[name]) return ZH_NAMES[name]
   const ribMatch = name.match(/^(left|right)_rib_(\d+)$/)
   if (ribMatch) return `${ribMatch[1] === 'left' ? '左' : '右'}第 ${ribMatch[2]} 肋骨`
@@ -236,7 +244,7 @@ function pointerMove(e: PointerEvent) {
   const visibleOrgans = organs.filter(o => o.visible)
   const hit = ray.intersectObjects(visibleOrgans, false)[0]
   if (hit && hit.object.userData.displayName) {
-    hoveredName.value = hit.object.userData.displayName
+    hoveredName.value = hit.object.userData.rawName
     hoveredCategory.value = hit.object.userData.categoryLabel || ''
   } else {
     hoveredName.value = ''
@@ -273,6 +281,7 @@ function animate() {
 watch(() => props.selectedOrganId, updateSelection)
 watch(rotating, value => { if (controls) controls.autoRotate = value })
 watch(shell, value => shells.forEach(mesh => { mesh.visible = value }))
+watch(locale, () => renderer?.domElement.setAttribute('aria-label', t('Rotatable 3D human anatomy navigator')))
 
 async function loadPatientOrgans() {
   if (!props.patientId) return
@@ -300,7 +309,7 @@ onMounted(async () => {
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
-    renderer.domElement.setAttribute('aria-label', '可旋转的三维人体器官导航')
+    renderer.domElement.setAttribute('aria-label', t('Rotatable 3D human anatomy navigator'))
     host.value.appendChild(renderer.domElement)
 
     scene = new THREE.Scene()
@@ -380,12 +389,10 @@ onMounted(async () => {
         child.renderOrder = 3
       } else {
         const category = getCategory(name)
-        const zhName = getChineseName(name)
         const mainOrganId = mapToMainOrganId(name)
 
         child.userData.category = category
         child.userData.rawName = name
-        child.userData.displayName = zhName
         child.userData.categoryLabel = categories.find(c => c.id === category)?.label || ''
         child.userData.organId = mainOrganId
 
@@ -405,7 +412,7 @@ onMounted(async () => {
   } catch (e) {
     if (!disposed) {
       loading.value = false
-      error.value = e instanceof Error ? e.message : '三维视图加载失败'
+      error.value = e instanceof Error ? e.message : t('The 3D view could not load.')
     }
   }
 })
@@ -435,7 +442,7 @@ onBeforeUnmount(() => {
         :class="{ active: activeCategory === cat.id }"
         @click="setCategory(cat.id)"
       >
-        {{ cat.label }}
+        {{ $t(cat.label) }}
       </button>
     </div>
 
@@ -443,27 +450,27 @@ onBeforeUnmount(() => {
 
     <!-- Live hover tooltip -->
     <div v-if="hoveredName" class="hover-badge">
-      <span class="badge-cat">{{ hoveredCategory }}</span>
-      <strong>{{ hoveredName }}</strong>
+      <span class="badge-cat">{{ $t(hoveredCategory) }}</span>
+      <strong>{{ getAnatomyName(hoveredName) }}</strong>
     </div>
 
     <div class="anatomy-caption">
       <span>70+ ANATOMY ATLAS</span>
-      <strong>{{ selectedOrganId && selectedOrganId !== 'other' ? $t(organNames[selectedOrganId]) : '临床 0.75mm 全实心解剖图谱' }}</strong>
+      <strong>{{ selectedOrganId && selectedOrganId !== 'other' ? $t(organNames[selectedOrganId]) : $t('Clinical 0.75 mm solid anatomy atlas') }}</strong>
       <small>
         <Sparkles v-if="hasPatientOrgans" :size="11" class="pulse-icon" />
-        {{ hasPatientOrgans ? '已绑定患者专属 CT 重建 (FMRC)' : '100% 封闭实心 (Watertight) · 0.75mm 亚体素平滑' }}
+        {{ hasPatientOrgans ? $t('Patient-specific CT reconstruction linked (FMRC)') : $t('100% watertight solid · 0.75 mm subvoxel smoothing') }}
       </small>
     </div>
 
     <div class="anatomy-tools">
-      <button :class="{ active: shell }" aria-label="显示或隐藏人体外壳" :aria-pressed="shell" @click="shell = !shell">
+      <button :class="{ active: shell }" :aria-label="$t('Show or hide body shell')" :aria-pressed="shell" @click="shell = !shell">
         <Layers :size="16" />
       </button>
-      <button :class="{ active: rotating }" aria-label="自动旋转人体" :aria-pressed="rotating" @click="rotating = !rotating">
+      <button :class="{ active: rotating }" :aria-label="$t('Auto-rotate body')" :aria-pressed="rotating" @click="rotating = !rotating">
         <Rotate3D :size="16" />
       </button>
-      <button aria-label="恢复人体正面视角" @click="reset">
+      <button :aria-label="$t('Reset to anterior view')" @click="reset">
         <RotateCcw :size="16" />
       </button>
     </div>
@@ -472,9 +479,9 @@ onBeforeUnmount(() => {
     <span class="side-label patient-left">L</span>
 
     <p v-if="loading || error" :role="error ? 'alert' : 'status'" class="anatomy-state">
-      {{ error || '正在载入 70 项 0.75mm 实心解剖大图谱…' }}
+      {{ error || $t('Loading 70-item 0.75 mm solid anatomy atlas…') }}
     </p>
-    <div class="anatomy-hint">悬停探查解剖部位 · 拖动旋转 · 滚轮缩放</div>
+    <div class="anatomy-hint">{{ $t('Hover to inspect anatomy · Drag to rotate · Wheel to zoom') }}</div>
   </div>
 </template>
 

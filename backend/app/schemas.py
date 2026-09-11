@@ -10,11 +10,18 @@ class Input(BaseModel):
 
 class Credentials(Input):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[\w.-]+$")
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
 
 
 class RegisterInput(Credentials):
     role: Literal["doctor", "patient"]
+
+    @field_validator("password")
+    @classmethod
+    def strong_registration_password(cls, value):
+        if len(value) < 8:
+            raise ValueError("Registration passwords require at least 8 characters")
+        return value
 
 
 class UserOut(BaseModel):
@@ -96,6 +103,12 @@ class RecordCreate(Input):
         self.diagnosis = self.diagnosis.strip()
         self.description = self.description.strip()
         self.recommendation = self.recommendation.strip()
+        if any("<!-- vmrb:" in value.lower() for value in (
+            self.diagnosis,
+            self.description,
+            self.recommendation,
+        )):
+            raise ValueError("Report text contains a reserved document marker")
         if self.reviewed and (not self.diagnosis or not self.description):
             raise ValueError("Signed reports require a diagnosis and description")
         if self.organ_ids is not None:
@@ -126,6 +139,8 @@ class RecordPatch(Input):
         for field in ("diagnosis", "description", "recommendation"):
             value = values.get(field)
             if isinstance(value, str):
+                if "<!-- vmrb:" in value.lower():
+                    raise ValueError("Report text contains a reserved document marker")
                 setattr(self, field, value.strip())
         if self.reviewed is not False and any(
             field in values and not values[field].strip() for field in ("diagnosis", "description")

@@ -28,7 +28,7 @@ from app.services.glb import (
 )
 from app.services.imaging import mask_to_glb, prepare_label_cache
 from app.services.label_catalog import LabelCatalog
-from app.services.storage import relative_path, stored_path
+from app.services.storage import relative_path, segmentation_relative_path, stored_path
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +182,10 @@ class SegmentationRunner:
                 self.ensure_available(image.image_type)
                 image_path = stored_path(self.settings, image.file_path)
                 patient_id, organ_id, image_id = image.patient_id, task.organ_id, image.id
-            output_dir = stored_path(self.settings, f"segmentations/{task_id}")
+            output_dir = stored_path(
+                self.settings,
+                segmentation_relative_path(patient_id, image_id, task_id),
+            )
             output_dir.mkdir(parents=True, exist_ok=True)
             returned = self.adapter(
                 image_path=image_path,
@@ -345,7 +348,10 @@ class SegmentationRunner:
                 self.ensure_available(image.image_type)
                 image_path = stored_path(self.settings, image.file_path)
                 patient_id, image_id = image.patient_id, image.id
-            output_dir = stored_path(self.settings, f"segmentations/{batch_id}")
+            output_dir = stored_path(
+                self.settings,
+                segmentation_relative_path(patient_id, image_id, batch_id),
+            )
             output_dir.mkdir(parents=True, exist_ok=True)
             result = self.adapter.run_batch(
                 image_path=image_path,

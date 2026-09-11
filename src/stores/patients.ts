@@ -82,7 +82,7 @@ export const usePatientStore = defineStore('patients', () => {
       const result = await patientApi.getPatients()
       if (revision === generation) patients.value = result
     } catch (reason) {
-      if (revision === generation) { patients.value = []; error.value = reason instanceof Error ? reason.message : '加载患者失败' }
+      if (revision === generation) { patients.value = []; error.value = reason instanceof Error ? reason.message : 'Unable to load patients.' }
     } finally { if (revision === generation) loading.value = false }
   }
   async function selectPatient(id: string) {
@@ -109,19 +109,44 @@ export const usePatientStore = defineStore('patients', () => {
       return
     }
     try {
-      const [images, records, detectedFindings] = await Promise.all([
+      const [images, records, detectedFindings] = await Promise.allSettled([
         examinationApi.getExaminationsByPatient(id),
         reportApi.getReportsByPatient(id),
         findingApi.getFindingsByPatient(id),
       ])
       if (revision !== generation) return
-      examinations.value = images; reports.value = records; findings.value = detectedFindings
-      if (!activeExamId.value || !images.some(item => item.id === activeExamId.value)) {
-        activeExamId.value = images[0]?.id ?? null
+      examinations.value = images.status === 'fulfilled' ? images.value : []
+      reports.value = records.status === 'fulfilled' ? records.value : []
+      findings.value = detectedFindings.status === 'fulfilled' ? detectedFindings.value : []
+      if (!activeExamId.value || !examinations.value.some(item => item.id === activeExamId.value)) {
+        activeExamId.value = examinations.value[0]?.id ?? null
+      }
+      const results = [images, records, detectedFindings]
+      const rejected = results.find(result => result.status === 'rejected')
+      if (rejected?.status === 'rejected' && results.every(result => result.status === 'rejected')) {
+        error.value = rejected.reason instanceof Error ? rejected.reason.message : 'Unable to load the patient record.'
+      }
+    } finally { if (revision === generation) loading.value = false }
+  }
+  async function loadReports(id: string) {
+    const revision = ++generation
+    selectedPatientId.value = id
+    reports.value = []
+    loading.value = true
+    error.value = null
+    try {
+      if (localPreview) {
+        reports.value = structuredClone((readPreviewReports() || mockReports).filter(item => item.patientId === id))
+          .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+      } else {
+        const result = await reportApi.getReportsByPatient(id)
+        if (revision === generation) reports.value = result
       }
     } catch (reason) {
-      if (revision === generation) error.value = reason instanceof Error ? reason.message : '加载病历失败'
-    } finally { if (revision === generation) loading.value = false }
+      if (revision === generation) error.value = reason instanceof Error ? reason.message : 'Unable to load the patient record.'
+    } finally {
+      if (revision === generation) loading.value = false
+    }
   }
   async function updateFindingStatus(id: string, status: Finding['status']) {
     if (localPreview) {
@@ -232,6 +257,6 @@ export const usePatientStore = defineStore('patients', () => {
     if (localPreview) localStorage.setItem(PREVIEW_PATIENTS_KEY, JSON.stringify(patients.value))
   }
   return { patients, selectedPatientId, selectedPatient, examinations, findings, reports, reviewedReports, activeExamId,
-    lastArchivedPatient, loading, error, reset, loadPatients, selectPatient, loadPatientContext,
+    lastArchivedPatient, loading, error, reset, loadPatients, selectPatient, loadPatientContext, loadReports,
     updateFindingStatus, updateFindingBox, saveReport, createPatient, archivePatient, restoreLastPatient, updateExaminationReview }
 })

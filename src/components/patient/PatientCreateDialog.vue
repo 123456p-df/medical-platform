@@ -18,28 +18,28 @@ async function save() {
       blood_type: form.abo ? form.abo + form.rh : null,
     })
     dialog.value?.close(); emit('created', patientId)
-  } catch (e) { error.value = e instanceof Error ? e.message : '录入失败' }
+  } catch (e) { error.value = e instanceof Error ? e.message : 'Patient creation failed.' }
   finally { busy.value = false }
 }
 defineExpose({ open })
 </script>
 <template>
   <dialog ref="dialog" class="patient-dialog" aria-labelledby="new-patient-title" @cancel="busy && $event.preventDefault()">
-    <div class="dialog-heading"><div><span>NEW PATIENT</span><h2 id="new-patient-title">录入患者</h2></div><button class="icon-btn" aria-label="关闭录入窗口" :disabled="busy" @click="close"><X :size="20" /></button></div>
+    <div class="dialog-heading"><div><span>{{ $t('New patient') }}</span><h2 id="new-patient-title">{{ $t('Create patient record') }}</h2></div><button class="icon-btn" :aria-label="$t('Close patient form')" :disabled="busy" @click="close"><X :size="20" /></button></div>
     <form @submit.prevent="save">
-      <p class="muted">建立患者档案后，即可添加病历与上传影像。</p>
+      <p class="muted">{{ $t('After creating the patient record, you can add reports and upload imaging.') }}</p>
       <div class="fields">
-        <label>姓名 *<input v-model="form.name" class="input" autofocus required maxlength="100" /></label>
-        <label>身份证 / 身份标识 *<input v-model="form.id_number" class="input" required minlength="6" maxlength="32" autocomplete="off" /></label>
-        <label>出生日期<input v-model="form.birth_date" class="input" type="date" min="1850-01-01" :max="new Date().toLocaleDateString('sv-SE')" /></label>
-        <label>性别<select v-model="form.gender" class="select"><option value="unknown">未填写</option><option value="male">男</option><option value="female">女</option></select></label>
-        <label>身高（cm）<input v-model="form.height" class="input" type="number" min="1" max="300" step="0.1" /></label>
-        <label>体重（kg）<input v-model="form.weight" class="input" type="number" min="0.1" max="700" step="0.1" /></label>
-        <label>ABO 血型<select v-model="form.abo" class="select"><option value="">未知</option><option>A</option><option>B</option><option>AB</option><option>O</option></select></label>
-        <label>Rh(D)<select v-model="form.rh" class="select" :disabled="!form.abo"><option value="">未知</option><option value="+">阳性 (+)</option><option value="-">阴性 (−)</option></select></label>
+        <label>{{ $t('Full name *') }}<input v-model="form.name" class="input" autofocus required maxlength="100" /></label>
+        <label>{{ $t('Identity number / identifier *') }}<input v-model="form.id_number" class="input" required minlength="6" maxlength="32" autocomplete="off" /></label>
+        <label>{{ $t('Date of birth') }}<input v-model="form.birth_date" class="input" type="date" min="1850-01-01" :max="new Date().toLocaleDateString('sv-SE')" /></label>
+        <label>{{ $t('Gender') }}<select v-model="form.gender" class="select"><option value="unknown">{{ $t('Not specified') }}</option><option value="male">{{ $t('Male') }}</option><option value="female">{{ $t('Female') }}</option></select></label>
+        <label>{{ $t('Height (cm)') }}<input v-model="form.height" class="input" type="number" min="1" max="300" step="0.1" /></label>
+        <label>{{ $t('Weight (kg)') }}<input v-model="form.weight" class="input" type="number" min="0.1" max="700" step="0.1" /></label>
+        <label>{{ $t('ABO blood type') }}<select v-model="form.abo" class="select"><option value="">{{ $t('Unknown') }}</option><option>A</option><option>B</option><option>AB</option><option>O</option></select></label>
+        <label>{{ $t('Rh(D)') }}<select v-model="form.rh" class="select" :disabled="!form.abo"><option value="">{{ $t('Unknown') }}</option><option value="+">{{ $t('Positive (+)') }}</option><option value="-">{{ $t('Negative (−)') }}</option></select></label>
       </div>
-      <p v-if="error" class="error" role="alert">{{ error }}</p>
-      <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="close">取消</button><button class="btn btn-primary" :disabled="busy || !form.name.trim()"><UserPlus :size="16" />{{ busy ? '录入中…' : '创建患者档案' }}</button></footer>
+      <p v-if="error" class="error" role="alert">{{ $t(error) }}</p>
+      <footer><button class="btn btn-secondary" type="button" :disabled="busy" @click="close">{{ $t('Cancel') }}</button><button class="btn btn-primary" :disabled="busy || !form.name.trim()"><UserPlus :size="16" />{{ $t(busy ? 'Creating…' : 'Create patient record') }}</button></footer>
     </form>
   </dialog>
 </template>

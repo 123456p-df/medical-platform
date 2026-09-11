@@ -29,6 +29,7 @@ from app.services.ai import AIProvider
 from app.services.analysis import AnalysisRunner
 from app.services.imaging import release_volume_cache
 from app.services.segmentation import SegmentationRunner
+from app.services.reports import backfill_report_documents
 
 logger = logging.getLogger(__name__)
 SINGLE_INSTANCE_LOCK = 867421309
@@ -114,6 +115,13 @@ def create_app(
                         "BackgroundTasks deployment supports one API process; use --workers 1"
                     )
             settings.storage_root.mkdir(parents=True, exist_ok=True)
+            try:
+                backfill_report_documents(settings, sessions)
+            except Exception:
+                # Legacy rows remain readable from the database until their file
+                # mirror is created; a storage migration issue must not make the
+                # entire clinical API unavailable.
+                logger.exception("Deferred report document migration failed")
             runner.cleanup_label_maps()
             if recover_tasks:
                 runner.recover()

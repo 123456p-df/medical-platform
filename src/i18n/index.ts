@@ -1,6 +1,5 @@
 import { createI18n } from 'vue-i18n'
-import { zhCN } from './locales/zh-CN'
-import { enUS } from './locales/en-US'
+import { localeMessages } from './messages.ts'
 import { computed, type Ref } from 'vue'
 
 export type Locale = 'zh' | 'en'
@@ -23,10 +22,10 @@ export const i18n = createI18n({
   locale: initialLocale,
   fallbackLocale: 'en',
   messages: {
-    zh: zhCN,
-    'zh-CN': zhCN,
-    en: enUS,
-    'en-US': enUS,
+    zh: localeMessages.zh,
+    'zh-CN': localeMessages.zh,
+    en: localeMessages.en,
+    'en-US': localeMessages.en,
   },
   missingWarn: false,
   fallbackWarn: false,
@@ -57,30 +56,15 @@ export function t(value: unknown, ...args: any[]): string {
   const text = String(value)
   const curLocale = (i18n.global.locale as unknown as Ref<string>).value
 
-  if (curLocale === 'en') {
-    if (args.length > 0) {
-      try {
-        // @ts-ignore
-        return i18n.global.t(text, ...args)
-      } catch {
-        return text
-      }
-    }
-    return text
+  const key = text.trim().replace(/\s+/g, ' ')
+  if (curLocale === 'zh') {
+    const queueGreeting = key.match(/^Good morning, (.*)\. Here is today's clinical queue\.$/)
+    if (queueGreeting) return `您好，${queueGreeting[1]}。这是今天的临床工作列表。`
+    const greeting = key.match(/^Good morning, (.*?)(\. Here is your health overview\.)?$/)
+    if (greeting) return `您好，${greeting[1]}${greeting[2] ? '。这是您的健康概览。' : ''}`
+    if (key.startsWith('Uploaded study: ')) return `上传检查：${key.slice(16)}`
   }
 
-  const key = text.trim().replace(/\s+/g, ' ')
-  // Dynamic greetings in Chinese
-  const queueGreeting = key.match(/^Good morning, (.*)\. Here is today's clinical queue\.$/)
-  if (queueGreeting) return `您好，${queueGreeting[1]}。这是今天的临床工作列表。`
-  const greeting = key.match(/^Good morning, (.*?)(\. Here is your health overview\.)?$/)
-  if (greeting) return `您好，${greeting[1]}${greeting[2] ? '。这是您的健康概览。' : ''}`
-  if (key.startsWith('Uploaded study: ')) return `上传检查：${key.slice(16)}`
-
-  // Direct dictionary lookup for best fidelity
-  if (zhCN[key]) return zhCN[key]
-
-  // vue-i18n lookup
   try {
     // @ts-ignore
     const res = i18n.global.t(key, ...args)

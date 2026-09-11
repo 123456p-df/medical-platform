@@ -33,7 +33,7 @@ export class VolumeRenderer {
       this.pump()
     }
     this.worker.onerror = () => {
-      const reason = new Error('浏览器影像工作线程启动失败')
+      const reason = new Error('The browser imaging worker could not start.')
       this.failed?.(reason); this.onFailure(reason)
       this.dispose()
     }
@@ -41,13 +41,13 @@ export class VolumeRenderer {
 
   async load(imageId: string, shape: Shape3D, progress: (value: number) => void) {
     const size = shape.reduce((a, b) => a * b, 1) * 4
-    if (!Number.isSafeInteger(size) || size > MAX_BROWSER_VOLUME_BYTES) throw new Error('此影像超出本地连续浏览的 256 MiB 上限，可使用逐张预览。')
+    if (!Number.isSafeInteger(size) || size > MAX_BROWSER_VOLUME_BYTES) throw new Error('This volume exceeds the 256 MiB continuous-view limit. Single-slice preview remains available.')
     const ready = new Promise<void>((resolve, reject) => { this.loaded = resolve; this.failed = reject })
     // Consume a potential worker error while fetch is still pending.
     void ready.catch(() => {})
     const response = await request('/medical-images/' + imageId + '/volume', { signal: this.controller.signal })
     const reader = response.body?.getReader()
-    if (!reader) throw new Error('浏览器无法读取影像数据流')
+    if (!reader) throw new Error('The browser cannot read the imaging data stream.')
     // Preallocate once; avoid keeping chunks plus a second full-volume concatenation.
     const bytes = new Uint8Array(size + 65548)
     let offset = 0
@@ -55,12 +55,12 @@ export class VolumeRenderer {
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
-        if (offset + value.length > bytes.length) throw new Error('影像数据超过预期大小')
+        if (offset + value.length > bytes.length) throw new Error('The imaging payload is larger than expected.')
         bytes.set(value, offset); offset += value.length
         progress(Math.min(99, Math.floor(offset / (size + 128) * 100)))
       }
     } finally { await reader.cancel().catch(() => {}) }
-    if (offset < size + 10) throw new Error('影像传输不完整，请重试')
+    if (offset < size + 10) throw new Error('The imaging transfer is incomplete. Please retry.')
     if (this.disposed) throw new DOMException('Aborted', 'AbortError')
     this.worker.postMessage({ type: 'load', shape: [...shape], buffer: bytes.buffer, byteLength: offset }, [bytes.buffer])
     await ready

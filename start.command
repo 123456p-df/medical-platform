@@ -21,7 +21,7 @@ if [[ ! -f node_modules/vite/bin/vite.js ]]; then
   pnpm install --frozen-lockfile
 fi
 
-VITE_LOCAL_PREVIEW=true node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 > /tmp/pulmolink-vite.log 2>&1 &
+VITE_LOCAL_PREVIEW=false node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 > /tmp/pulmolink-vite.log 2>&1 &
 SERVER_PID=$!
 trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT INT TERM
 

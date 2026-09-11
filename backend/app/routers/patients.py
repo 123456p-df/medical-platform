@@ -20,6 +20,7 @@ from app.organs import ORGANS, require_organ
 from app.schemas import OrganOut, OverviewOut, PatientCreate, PatientOut, ResolveInput
 from app.security import encrypt_identity, identity_hash
 from app.services.glb import model_available
+from app.services.reports import report_content
 
 router = APIRouter(tags=["Patient / Organ"])
 
@@ -98,10 +99,16 @@ def resolve(body: ResolveInput, db: DB, user: CurrentUser, settings: Config):
 @router.get("/patients/{patient_id}/overview", response_model=Envelope[OverviewOut])
 def overview(patient_id: int, db: DB, user: CurrentUser):
     patient = check_patient_access(db, user, patient_id)
+    record_filters = [
+        MedicalRecord.patient_id == patient_id,
+        MedicalRecord.deleted_at.is_(None),
+    ]
+    if user.role == "patient":
+        record_filters.append(MedicalRecord.reviewed.is_(True))
     record_organs = set(
         db.scalars(
             select(MedicalRecord.organ_id)
-            .where(MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None))
+            .where(*record_filters)
             .distinct()
         )
     )
@@ -109,7 +116,7 @@ def overview(patient_id: int, db: DB, user: CurrentUser):
         db.scalars(
             select(RecordOrgan.organ_id)
             .join(MedicalRecord)
-            .where(MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None))
+            .where(*record_filters)
         )
     )
     image_organs = set(
@@ -184,17 +191,19 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
         .order_by(MedicalRecord.record_date.desc(), MedicalRecord.id.desc())
         .limit(20)
     )
-    records = [
-        {
-            "record_id": r.id,
-            "organ_ids": r.organ_ids,
-            "date": r.record_date,
-            "diagnosis": r.diagnosis,
-            "description": r.description,
-            "doctor_name": name,
-        }
-        for r, name in rows
-    ]
+    records = []
+    for record, name in rows:
+        content = report_content(settings, record)
+        records.append(
+            {
+                "record_id": record.id,
+                "organ_ids": record.organ_ids,
+                "date": record.record_date,
+                "diagnosis": content["diagnosis"],
+                "description": content["description"],
+                "doctor_name": name,
+            }
+        )
     return success(
         {
             "organ_id": organ_id,

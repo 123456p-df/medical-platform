@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
 import { organNames } from '@/api/mappers'
 import { localPreview } from '@/utils/runtime'
+import { t } from '@/i18n'
 const auth = useAuthStore(), patients = usePatientStore(), route = useRoute(), router = useRouter()
 const open = ref(false), question = ref(''), organ = ref('lung'), busy = ref(false), configured = ref<boolean | null>(null), error = ref('')
 const input = ref<HTMLTextAreaElement>(), log = ref<HTMLDivElement>(), launcher = ref<HTMLButtonElement>()
@@ -21,13 +22,13 @@ watch(open, async value => {
   await nextTick(); input.value?.focus()
   if (localPreview) { configured.value = false; error.value = ''; return }
   try { configured.value = (await api<{configured: boolean}>('/ai/status')).configured }
-  catch (e) { error.value = e instanceof Error ? e.message : '连接状态读取失败' }
+  catch (e) { error.value = e instanceof Error ? e.message : t('Connection status could not be read.') }
 })
 async function ask() {
   if (!question.value.trim() || busy.value) return
   error.value = ''
-  if (!patientId.value) { error.value = '请先打开一位患者的档案，以确定本次问答的资料范围。'; return }
-  if (!configured.value) { error.value = 'AI 服务尚未连接。界面与接口已就绪，连接后即可根据当前患者的病历回答。'; return }
+  if (!patientId.value) { error.value = t('Open a patient record first to scope this question.'); return }
+  if (!configured.value) { error.value = t('The AI service is not connected. The interface is ready and can answer from the current patient record after connection.'); return }
   const revision = generation, text = question.value.trim()
   messages.value.push({ role: 'user', text }); question.value = ''; busy.value = true
   controller = new AbortController()
@@ -36,9 +37,9 @@ async function ask() {
       method: 'POST', body: JSON.stringify({ patient_id: Number(patientId.value), organ_id: organ.value, question: text }), signal: controller.signal,
     })
     if (revision !== generation) return
-    messages.value.push({ role: 'assistant', text: response.answer + (response.context_truncated ? '\n\n本次未覆盖全部历史资料。' : ''), references: response.references })
+    messages.value.push({ role: 'assistant', text: response.answer + (response.context_truncated ? `\n\n${t('Not all historical records were included in this response.')}` : ''), references: response.references })
     await nextTick(); log.value?.scrollTo({ top: log.value.scrollHeight, behavior: 'smooth' })
-  } catch (e) { if (revision === generation) { error.value = e instanceof Error ? e.message : '请求失败'; question.value = text } }
+  } catch (e) { if (revision === generation) { error.value = e instanceof Error ? e.message : t('The request failed.'); question.value = text } }
   finally { if (revision === generation) busy.value = false }
 }
 function navigate(suffix: string) { router.push(patientId.value ? '/doctor/patients/' + patientId.value + suffix : '/doctor/patients') }
@@ -47,17 +48,17 @@ onBeforeUnmount(() => { generation++; controller?.abort() })
 </script>
 <template>
   <div class="assistant-anchor" @keydown.esc.stop="open = false">
-    <section v-if="open" class="assistant-panel" role="dialog" aria-label="AI 工作助手">
-      <header><span class="assistant-symbol"><Sparkles :size="22" /></span><div><h2>AI 工作助手</h2><small><i :class="{ connected: configured }" />{{ configured === null ? '检查连接…' : configured ? '已连接' : '待连接 AI 服务' }}</small></div><button class="icon-btn" aria-label="关闭 AI 助手" @click="open = false"><X :size="18" /></button></header>
-      <div class="assistant-context"><span>{{ patient?.name || (patientId ? '当前患者' : '未选择患者') }}<small v-if="patientId"> · ID {{ patientId }}</small></span><select v-model="organ" class="select" aria-label="AI 问答器官"><option v-for="(name, id) in organNames" :key="id" :value="id">{{ $t(name) }}</option></select></div>
+    <section v-if="open" class="assistant-panel" role="dialog" :aria-label="$t('AI Work Assistant')">
+      <header><span class="assistant-symbol"><Sparkles :size="22" /></span><div><h2>{{ $t('AI Work Assistant') }}</h2><small><i :class="{ connected: configured }" />{{ configured === null ? $t('Checking connection…') : configured ? $t('Connected') : $t('AI service not connected') }}</small></div><button class="icon-btn" :aria-label="$t('Close AI assistant')" @click="open = false"><X :size="18" /></button></header>
+      <div class="assistant-context"><span>{{ patient?.name || (patientId ? $t('Current patient') : $t('No patient selected')) }}<small v-if="patientId"> · ID {{ patientId }}</small></span><select v-model="organ" class="select" :aria-label="$t('AI question organ')"><option v-for="(name, id) in organNames" :key="id" :value="id">{{ $t(name) }}</option></select></div>
       <div ref="log" class="assistant-log" aria-live="polite">
-        <div v-if="!messages.length" class="assistant-welcome"><Sparkles :size="28" /><h3>从整理资料开始</h3><p>查看病历、定位影像，或围绕当前患者提问。</p><button @click="question = '请总结当前器官的最近病历，并指出资料不足之处。'; input?.focus()">总结最近病历 <ArrowUpRight :size="14" /></button><button @click="question = '请列出已有记录中需要继续核实的问题。'; input?.focus()">整理待核实问题 <ArrowUpRight :size="14" /></button><template v-if="auth.portal === 'doctor'"><button @click="navigate('/imaging')">打开影像工作台 <ArrowUpRight :size="14" /></button><button @click="navigate('/report')">打开病历记录 <ArrowUpRight :size="14" /></button></template><p v-if="configured === false" class="connection-note">问答入口已准备好。连接 AI 后启用病历总结与问答。</p></div>
-        <article v-for="(message, index) in messages" :key="index" :class="['chat-message', message.role]"><small>{{ message.role === 'user' ? '您' : 'AI 助手' }}</small><p>{{ message.text }}</p><span v-for="reference in message.references" :key="reference.record_id" class="reference">病历 #{{ reference.record_id }} · {{ reference.date }}</span></article>
-        <p v-if="busy" class="muted">正在读取病历…</p>
+        <div v-if="!messages.length" class="assistant-welcome"><Sparkles :size="28" /><h3>{{ $t('Start by organizing records') }}</h3><p>{{ $t('Review records, locate imaging, or ask about the current patient.') }}</p><button @click="question = $t('Summarize the latest records for the current organ and identify missing information.'); input?.focus()">{{ $t('Summarize recent records') }} <ArrowUpRight :size="14" /></button><button @click="question = $t('List the questions in the existing records that still need verification.'); input?.focus()">{{ $t('List questions to verify') }} <ArrowUpRight :size="14" /></button><template v-if="auth.portal === 'doctor'"><button @click="navigate('/imaging')">{{ $t('Open imaging workspace') }} <ArrowUpRight :size="14" /></button><button @click="navigate('/report')">{{ $t('Open medical records') }} <ArrowUpRight :size="14" /></button></template><p v-if="configured === false" class="connection-note">{{ $t('The question interface is ready. Connect the AI service to enable record summaries and Q&A.') }}</p></div>
+        <article v-for="(message, index) in messages" :key="index" :class="['chat-message', message.role]"><small>{{ message.role === 'user' ? $t('You') : $t('AI Assistant') }}</small><p>{{ message.text }}</p><span v-for="reference in message.references" :key="reference.record_id" class="reference">{{ $t('Medical record #{id} · {date}', { id: reference.record_id, date: reference.date }) }}</span></article>
+        <p v-if="busy" class="muted">{{ $t('Reading medical records…') }}</p>
       </div>
-      <form class="assistant-compose" @submit.prevent="ask"><p v-if="error" class="assistant-error" role="alert">{{ error }}</p><textarea ref="input" v-model="question" maxlength="4000" rows="2" placeholder="输入问题，Enter 发送…" aria-label="给 AI 助手的问题" @keydown.enter.exact="enter" /><div><small>当前器官病历 · 每次独立提问</small><button type="button" class="icon-btn" :disabled="busy" aria-label="清空会话" @click="messages = []; error = ''"><RotateCcw :size="15" /></button><button class="send-btn" :disabled="busy || !question.trim()" aria-label="发送问题"><Send :size="16" /></button></div></form>
+      <form class="assistant-compose" @submit.prevent="ask"><p v-if="error" class="assistant-error" role="alert">{{ error }}</p><textarea ref="input" v-model="question" maxlength="4000" rows="2" :placeholder="$t('Enter a question, then press Enter to send…')" :aria-label="$t('Question for the AI assistant')" @keydown.enter.exact="enter" /><div><small>{{ $t('Current organ records · Each question is independent') }}</small><button type="button" class="icon-btn" :disabled="busy" :aria-label="$t('Clear conversation')" @click="messages = []; error = ''"><RotateCcw :size="15" /></button><button class="send-btn" :disabled="busy || !question.trim()" :aria-label="$t('Send question')"><Send :size="16" /></button></div></form>
     </section>
-    <button ref="launcher" :class="['assistant-ball', { active: open }]" aria-label="打开 AI 助手" :aria-expanded="open" @click="open = !open"><X v-if="open" :size="23" /><Sparkles v-else :size="25" /><span v-if="!open" class="ball-label">AI 助手</span></button>
+    <button ref="launcher" :class="['assistant-ball', { active: open }]" :aria-label="$t('Open AI assistant')" :aria-expanded="open" @click="open = !open"><X v-if="open" :size="23" /><Sparkles v-else :size="25" /><span v-if="!open" class="ball-label">{{ $t('AI Assistant') }}</span></button>
   </div>
 </template>
 <style scoped>

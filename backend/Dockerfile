@@ -9,7 +9,7 @@ COPY app ./app
 COPY migrations ./migrations
 COPY alembic.ini .env.example ./
 RUN uv sync --frozen --no-dev && useradd --uid 10001 --create-home appuser \
-    && mkdir -p /data && chown -R appuser:appuser /data /app
+    && mkdir -p /dataset && chown -R appuser:appuser /dataset /app
 ENV PATH="/app/.venv/bin:$PATH"
 USER appuser
 EXPOSE 8000

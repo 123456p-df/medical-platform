@@ -23,9 +23,9 @@ services:
     env_file: ./backend/.env
     environment:
       DATABASE_URL: postgresql+psycopg://vmrb:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/vmrb
-      STORAGE_ROOT: /data
+      STORAGE_ROOT: /dataset
     volumes:
-      - medical-data:/data
+      - medical-data:/dataset
     depends_on:
       db:
         condition: service_healthy
