@@ -13,6 +13,8 @@ type PreviewAccount = {
   session: UserSession
 }
 
+const PREVIEW_ACCOUNTS_KEY = 'pulmolink-preview-accounts-v1'
+
 const previewAccounts: Record<string, PreviewAccount> = {
   admin: {
     password: 'Admin123!',
@@ -29,9 +31,17 @@ const previewAccounts: Record<string, PreviewAccount> = {
 }
 
 function stored(): UserSession | null {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null') }
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || 'null')
+  }
   catch { return null }
 }
+
+function customPreviewAccounts(): Record<string, PreviewAccount> {
+  try { return JSON.parse(localStorage.getItem(PREVIEW_ACCOUNTS_KEY) || '{}') }
+  catch { return {} }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const session = ref<UserSession | null>(stored())
   const isAuthenticated = computed(() => Boolean(session.value?.accessToken))
@@ -39,33 +49,75 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     session.value = null
     sessionStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(SESSION_KEY)
     usePatientStore().reset()
     useProfileStore().reset()
     useWorkflowStore().reset()
     useWorkspaceTabsStore().reset()
   }
-  async function login(username: string, password: string) {
+  function rememberSession(value: UserSession, remember: boolean) {
+    session.value = { ...value }
+    const preferred = remember ? localStorage : sessionStorage
+    const alternate = remember ? sessionStorage : localStorage
+    alternate.removeItem(SESSION_KEY)
+    preferred.setItem(SESSION_KEY, JSON.stringify(session.value))
+  }
+  async function login(username: string, password: string, remember = true) {
     if (localPreview) {
-      const account = previewAccounts[username.trim().toLowerCase()]
+      const account = {
+        ...previewAccounts,
+        ...customPreviewAccounts(),
+      }[username.trim().toLowerCase()]
       if (!account || account.password !== password) throw new Error('用户名或密码错误。')
-      session.value = { ...account.session }
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
-      return session.value.role
+      rememberSession(account.session, remember)
+      return account.session.role
     }
     logout()
     const result = await api<{ access_token: string; role: PortalRole; user_id: number }>('/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }),
     })
-    session.value = { id: String(result.user_id), name: username, role: result.role, accessToken: result.access_token }
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
+    const loginSession: UserSession = {
+      id: String(result.user_id),
+      name: username,
+      role: result.role,
+      accessToken: result.access_token,
+    }
+    rememberSession(loginSession, remember)
     try {
       const me = await api<{ patient_id: number | null; username: string }>('/auth/me')
-      if (me.patient_id) session.value.id = String(me.patient_id)
-      session.value.name = me.username
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session.value))
+      if (me.patient_id) loginSession.id = String(me.patient_id)
+      loginSession.name = me.username
+      rememberSession(loginSession, remember)
     } catch (error) { logout(); throw error }
     return result.role
   }
+  async function register(username: string, password: string, role: PortalRole, remember = true) {
+    const normalized = username.trim().toLowerCase()
+    if (!/^[\w.-]{3,64}$/.test(normalized)) throw new Error('用户名需为 3–64 位字母、数字、点、横线或下划线。')
+    if (password.length < 8 || password.length > 128) throw new Error('密码长度需为 8–128 位。')
+    if (localPreview) {
+      const accounts = customPreviewAccounts()
+      if (previewAccounts[normalized] || accounts[normalized]) throw new Error('该用户名已经被注册。')
+      const account: PreviewAccount = {
+        password,
+        session: {
+          id: role === 'patient' ? `P${Date.now()}` : `D${Date.now()}`,
+          name: username.trim(),
+          role,
+          accessToken: 'local-preview',
+        },
+      }
+      accounts[normalized] = account
+      localStorage.setItem(PREVIEW_ACCOUNTS_KEY, JSON.stringify(accounts))
+      rememberSession(account.session, remember)
+      return role
+    }
+    await api('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username: username.trim(), password, role }),
+    })
+    return login(username.trim(), password, remember)
+  }
   window.addEventListener('vmrb-session-expired', () => { logout(); window.location.assign('/login') })
-  return { session, isAuthenticated, portal, login, logout }
+  return { session, isAuthenticated, portal, login, register, logout }
 })

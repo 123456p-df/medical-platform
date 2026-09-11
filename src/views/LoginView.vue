@@ -1,23 +1,37 @@
 <script setup lang="ts">
-import { ArrowRight, HeartPulse, ShieldCheck, Stethoscope, Activity } from 'lucide-vue-next'
+import { ArrowRight, HeartPulse, ShieldCheck, Stethoscope, Activity, UserPlus } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ref } from 'vue'
 import { localPreview } from '@/utils/runtime'
+import type { PortalRole } from '@/types'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-const username = ref('')
+const REMEMBERED_USERNAME_KEY = 'pulmolink-remembered-username'
+const mode = ref<'login' | 'signup'>('login')
+const username = ref(localStorage.getItem(REMEMBERED_USERNAME_KEY) || '')
 const password = ref('')
+const confirmPassword = ref('')
+const role = ref<PortalRole>('patient')
+const remember = ref(true)
 const busy = ref(false)
 const error = ref('')
 const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
 type PreviewAccount = 'admin' | 'doctor' | 'patient'
 
-async function login(previewAccount?: PreviewAccount) {
+function switchMode(next: 'login' | 'signup') {
+  mode.value = next
+  password.value = ''
+  confirmPassword.value = ''
+  error.value = ''
+}
+
+async function submit(previewAccount?: PreviewAccount) {
   if (busy.value) return
   if (previewAccount) {
+    mode.value = 'login'
     const credentials = {
       admin: ['admin', 'Admin123!'],
       doctor: ['demo_doctor', 'DemoDoctor123!'],
@@ -28,8 +42,15 @@ async function login(previewAccount?: PreviewAccount) {
   busy.value = true
   error.value = ''
   try {
-    const role = await auth.login(username.value, password.value)
-    await router.push(role === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard')
+    if (mode.value === 'signup' && password.value !== confirmPassword.value) {
+      throw new Error('两次输入的密码不一致。')
+    }
+    const destinationRole = mode.value === 'signup'
+      ? await auth.register(username.value, password.value, role.value, remember.value)
+      : await auth.login(username.value, password.value, remember.value)
+    if (remember.value) localStorage.setItem(REMEMBERED_USERNAME_KEY, username.value.trim())
+    else localStorage.removeItem(REMEMBERED_USERNAME_KEY)
+    await router.push(destinationRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard')
   } catch (reason) { error.value = reason instanceof Error ? reason.message : '登录失败' }
   finally { busy.value = false }
 }
@@ -61,21 +82,44 @@ async function login(previewAccount?: PreviewAccount) {
 
     <section class="login-panel">
       <div class="login-heading">
-        <span class="kicker">Select workspace</span>
-        <h2>Sign in to PulmoLink</h2>
-        <p>Sign in with your account to access authorized medical records.</p>
+        <span class="kicker">PulmoLink account</span>
+        <h2>{{ mode === 'login' ? 'Sign in to PulmoLink' : 'Create your account' }}</h2>
+        <p>{{ mode === 'login' ? 'Sign in to access your authorized medical records.' : 'Register once, then return with the same account on this device.' }}</p>
       </div>
 
-      <form class="login-form" @submit.prevent="login()">
+      <div class="auth-switch" aria-label="Account action">
+        <button type="button" :class="{ active: mode === 'login' }" @click="switchMode('login')">Sign in</button>
+        <button type="button" :class="{ active: mode === 'signup' }" @click="switchMode('signup')">Sign up</button>
+      </div>
+
+      <form class="login-form" @submit.prevent="submit()">
         <label class="label" for="username">Username</label>
         <input id="username" v-model="username" class="input" autocomplete="username" required />
+        <template v-if="mode === 'signup'">
+          <label class="label" for="role">Account type</label>
+          <select id="role" v-model="role" class="select" required>
+            <option value="patient">Patient</option>
+            <option value="doctor">Doctor</option>
+          </select>
+        </template>
         <label class="label" for="password">Password</label>
-        <input id="password" v-model="password" class="input" type="password" autocomplete="current-password" required />
+        <input id="password" v-model="password" class="input" type="password" :autocomplete="mode === 'signup' ? 'new-password' : 'current-password'" minlength="8" required />
+        <template v-if="mode === 'signup'">
+          <label class="label" for="confirm-password">Confirm password</label>
+          <input id="confirm-password" v-model="confirmPassword" class="input" type="password" autocomplete="new-password" minlength="8" required />
+        </template>
+        <label class="remember-row">
+          <input v-model="remember" type="checkbox" />
+          <span>Remember me on this device</span>
+        </label>
         <p v-if="error" role="alert" class="login-error">{{ error }}</p>
-        <button type="submit" class="btn btn-primary" :disabled="busy">{{ busy ? 'Signing in…' : 'Sign in' }}</button>
+        <button type="submit" class="btn btn-primary" :disabled="busy">
+          <UserPlus v-if="mode === 'signup'" :size="16" />
+          {{ busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account' }}
+        </button>
       </form>
-      <div v-if="preview" class="role-options">
-        <button class="role-card admin" type="button" @click="login('admin')">
+      <div v-if="preview && mode === 'login'" class="role-options">
+        <button class="role-card admin" type="button" @click="submit('admin')">
           <span class="role-icon"><ShieldCheck :size="24" /></span>
           <span class="role-copy">
             <strong>Administrator</strong>
@@ -83,7 +127,7 @@ async function login(previewAccount?: PreviewAccount) {
           </span>
           <ArrowRight :size="19" />
         </button>
-        <button class="role-card doctor" type="button" @click="login('doctor')">
+        <button class="role-card doctor" type="button" @click="submit('doctor')">
           <span class="role-icon"><Stethoscope :size="24" /></span>
           <span class="role-copy">
             <strong>Doctor Portal</strong>
@@ -91,7 +135,7 @@ async function login(previewAccount?: PreviewAccount) {
           </span>
           <ArrowRight :size="19" />
         </button>
-        <button class="role-card patient" type="button" @click="login('patient')">
+        <button class="role-card patient" type="button" @click="submit('patient')">
           <span class="role-icon"><HeartPulse :size="24" /></span>
           <span class="role-copy">
             <strong>Patient Portal</strong>
@@ -102,7 +146,7 @@ async function login(previewAccount?: PreviewAccount) {
       </div>
 
       <div class="login-footnote">
-        {{ preview ? '本地演示 · 以下快捷入口使用合成患者数据' : '仅能访问本人或已授权患者的资料' }}
+        {{ preview && mode === 'login' ? '本地演示 · 以下快捷入口使用合成患者数据' : '账号会安全保存在服务端；勾选后本设备保持登录' }}
       </div>
     </section>
   </main>
@@ -111,6 +155,37 @@ async function login(previewAccount?: PreviewAccount) {
 <style scoped>
 .login-form { display: grid; gap: 10px; margin-bottom: 24px; }
 .login-error { color: #aa4f55; font-size: 13px; }
+.auth-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 22px;
+  padding: 4px;
+  border-radius: 9px;
+  background: #f1f6f5;
+}
+.auth-switch button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.auth-switch button.active {
+  background: #ffffff;
+  color: var(--accent-strong);
+  box-shadow: 0 2px 8px rgb(31 67 69 / 10%);
+}
+.remember-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 3px 0 2px;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+.remember-row input { width: 15px; height: 15px; accent-color: var(--accent); }
 .login-page {
   display: grid;
   min-height: 100vh;

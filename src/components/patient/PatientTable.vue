@@ -12,7 +12,6 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: [patient: Patient]
   open: [patient: Patient]
   removed: [id: string]
 }>()
@@ -50,9 +49,8 @@ function formatDate(date: string) {
           :key="patient.id"
           :class="{ 'is-selected': patient.id === selectedId }"
           tabindex="0"
-          @click="emit('select', patient)"
-          @keydown.enter="emit('select', patient)"
-          @dblclick="emit('open', patient)"
+          @click="emit('open', patient)"
+          @keydown.enter="emit('open', patient)"
         >
           <td>
             <div class="patient-cell">
