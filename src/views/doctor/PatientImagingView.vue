@@ -140,6 +140,14 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
         <div>
           <button class="btn btn-sm" :class="viewerMode === 'compare' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('compare')"><Columns2 :size="15" /> 同屏比较</button>
           <button class="btn btn-sm" :class="viewerMode === 'mpr' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('mpr')"><ScanLine :size="15" /> MPR 三平面</button>
+          <RouterLink
+            v-if="active && active.type === 'CT'"
+            class="btn btn-sm btn-secondary"
+            :to="{ path: '/viewer/study/' + patientId, query: { image: active.id } }"
+            target="_blank"
+          >
+            <Box :size="15" /> 3D 全景重构
+          </RouterLink>
         </div>
       </div>
       <StudyComparisonViewer
@@ -149,7 +157,12 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
         :initial-id="active.id"
         @select-study="selectStudy"
       />
-      <RemoteSliceViewer v-else-if="active" :key="active.id" :examination="active" />
+      <RemoteSliceViewer
+        v-else-if="active"
+        :key="active.id"
+        :examination="active"
+        :findings="activeFindings"
+      />
       <div v-else class="card empty-state">No medical images uploaded yet.</div>
       <p v-if="error" class="integration-error" role="alert">{{ error }}</p>
       <div v-if="active" class="task-grid">

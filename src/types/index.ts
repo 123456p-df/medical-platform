@@ -36,6 +36,7 @@ export interface Examination {
   shape?: number[]
   spacing?: number[]
   organId?: string
+  acquisition?: { affine?: number[][]; [key: string]: any }
   id: string
   patientId: string
   type: ExaminationType

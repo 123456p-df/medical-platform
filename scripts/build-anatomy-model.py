@@ -11,7 +11,7 @@ from scipy.ndimage import gaussian_filter
 from skimage.measure import marching_cubes
 from trimesh.visual.material import PBRMaterial
 
-OUT = Path(__file__).resolve().parents[1] / "medical-platform/Medical/public/models"
+OUT = Path(__file__).resolve().parents[1] / "public/models"
 scene = trimesh.Scene()
 step = 0.012
 origin = np.array([-0.85, -1.45, -0.35])

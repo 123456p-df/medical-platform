@@ -2,6 +2,36 @@ export const SESSION_KEY = 'vmrb-session-v1'
 export class ApiError extends Error {
   constructor(public status: number, public code: number, message: string) { super(message) }
 }
+export function readSession(): string | null {
+  try {
+    return sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY)
+  } catch {
+    return null
+  }
+}
+export function writeSession(value: string | null) {
+  try {
+    if (value) {
+      sessionStorage.setItem(SESSION_KEY, value)
+      localStorage.setItem(SESSION_KEY, value)
+    } else {
+      sessionStorage.removeItem(SESSION_KEY)
+      localStorage.removeItem(SESSION_KEY)
+    }
+  } catch { /* private mode */ }
+}
+export function inheritSessionFromOpener() {
+  try {
+    if (!sessionStorage.getItem(SESSION_KEY) && window.opener?.sessionStorage) {
+      const inherited = window.opener.sessionStorage.getItem(SESSION_KEY)
+      if (inherited) sessionStorage.setItem(SESSION_KEY, inherited)
+    }
+    if (!sessionStorage.getItem(SESSION_KEY)) {
+      const stored = localStorage.getItem(SESSION_KEY)
+      if (stored) sessionStorage.setItem(SESSION_KEY, stored)
+    }
+  } catch { /* opener blocked */ }
+}
 export function token(): string | null {
   try {
     const stored = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY)

@@ -2,7 +2,14 @@ import { request } from '@/api/client'
 import { MAX_BROWSER_VOLUME_BYTES } from './volumePixels'
 import type { Shape3D, SliceAxis, SlicePixels } from './volumePixels'
 
-type Job = { id: number; axis: SliceAxis; index: number; preset: string; resolve: (result: SlicePixels | null) => void }
+type Job = {
+  id: number
+  axis: SliceAxis
+  index: number
+  preset: string
+  customWindow?: [number, number]
+  resolve: (result: SlicePixels | null) => void
+}
 export class VolumeRenderer {
   private worker: Worker
   private controller = new AbortController()
@@ -60,12 +67,12 @@ export class VolumeRenderer {
     progress(100)
   }
 
-  render(axis: SliceAxis, index: number, preset: string): Promise<SlicePixels | null> {
+  render(axis: SliceAxis, index: number, preset: string, customWindow?: [number, number]): Promise<SlicePixels | null> {
     if (this.disposed || !this.ready) return Promise.resolve(null)
     return new Promise(resolve => {
       // Only the latest destination per plane waits behind the single active frame.
       this.pending.get(axis)?.resolve(null)
-      this.pending.set(axis, { id: ++this.nextId, axis, index, preset, resolve })
+      this.pending.set(axis, { id: ++this.nextId, axis, index, preset, customWindow, resolve })
       this.pump()
     })
   }
@@ -75,8 +82,8 @@ export class VolumeRenderer {
     const next = this.pending.values().next().value as Job | undefined
     if (!next) return
     this.pending.delete(next.axis); this.active = next
-    const { id, axis, index, preset } = next
-    this.worker.postMessage({ type: 'render', id, axis, index, preset })
+    const { id, axis, index, preset, customWindow } = next
+    this.worker.postMessage({ type: 'render', id, axis, index, preset, customWindow })
   }
 
   dispose() {

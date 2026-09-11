@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -135,6 +135,7 @@ class MedicalImage(CreatedMixin, Base):
     spacing: Mapped[list] = mapped_column(JSON)
     size_bytes: Mapped[int]
     study_date: Mapped[date | None]
+    acquisition: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
 
 
 class OrganModel(CreatedMixin, Base):
@@ -142,11 +143,20 @@ class OrganModel(CreatedMixin, Base):
     __table_args__ = (
         CheckConstraint("source IN ('segmentation', 'default')", name="ck_model_source"),
         CheckConstraint("format = 'glb'", name="ck_model_format"),
+        CheckConstraint("kind IN ('organ', 'atlas')", name="ck_model_kind"),
         CheckConstraint(
             "(source = 'default' AND patient_id IS NULL) OR (source = 'segmentation' AND patient_id IS NOT NULL AND image_id IS NOT NULL)",
             name="ck_model_owner",
         ),
         Index("ix_models_patient_organ", "patient_id", "organ_id"),
+        Index("ix_models_image_label", "image_id", "label_id"),
+        Index(
+            "uq_image_atlas",
+            "image_id",
+            unique=True,
+            postgresql_where=text("kind = 'atlas'"),
+            sqlite_where=text("kind = 'atlas'"),
+        ),
     )
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     patient_id: Mapped[int | None] = mapped_column(ForeignKey("patients.id"))
@@ -154,8 +164,63 @@ class OrganModel(CreatedMixin, Base):
     organ_id: Mapped[str] = mapped_column(String(64))
     source: Mapped[str] = mapped_column(String(16))
     format: Mapped[str] = mapped_column(String(16), default="glb")
-    file_path: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(16), default="organ")
+    file_path: Mapped[str | None] = mapped_column(Text)
+    label_id: Mapped[int | None]
+    label_name: Mapped[str | None] = mapped_column(String(200))
+    group_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    face_count: Mapped[int | None]
+    size_bytes: Mapped[int | None]
+    volume_cm3: Mapped[float | None]
+    is_watertight: Mapped[bool | None]
+    bounds: Mapped[dict | None] = mapped_column(JSON)
     mask_path: Mapped[str | None] = mapped_column(Text)
+    blob: Mapped["OrganModelBlob | None"] = relationship(uselist=False, cascade="all, delete-orphan")
+
+
+class OrganModelBlob(Base):
+    __tablename__ = "organ_model_blobs"
+    model_id: Mapped[str] = mapped_column(
+        ForeignKey("organ_models.id", ondelete="CASCADE"), primary_key=True
+    )
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int]
+    content_type: Mapped[str] = mapped_column(String(64), default="model/gltf-binary")
+
+
+class SegmentationBatch(CreatedMixin, Base):
+    __tablename__ = "segmentation_batches"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'completed', 'partial', 'failed', 'unavailable')",
+            name="ck_batch_status",
+        ),
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_batch_progress"),
+        Index(
+            "uq_active_segmentation_batch",
+            "image_id",
+            "model_fingerprint",
+            unique=True,
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
+        ),
+        Index("ix_batches_image_created", "image_id", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    image_id: Mapped[str] = mapped_column(ForeignKey("medical_images.id"))
+    requested_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    model_fingerprint: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(16), default="queued")
+    progress: Mapped[int] = mapped_column(default=0)
+    total_labels: Mapped[int] = mapped_column(default=0)
+    recognized_count: Mapped[int] = mapped_column(default=0)
+    completed_count: Mapped[int] = mapped_column(default=0)
+    failed_count: Mapped[int] = mapped_column(default=0)
+    label_map_path: Mapped[str | None] = mapped_column(Text)
+    native_label_map_path: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class SegmentationTask(CreatedMixin, Base):
@@ -176,7 +241,11 @@ class SegmentationTask(CreatedMixin, Base):
     )
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     image_id: Mapped[str] = mapped_column(ForeignKey("medical_images.id"))
+    batch_id: Mapped[str | None] = mapped_column(ForeignKey("segmentation_batches.id"), index=True)
     organ_id: Mapped[str] = mapped_column(String(64))
+    label_id: Mapped[int | None]
+    label_name: Mapped[str | None] = mapped_column(String(200))
+    group_id: Mapped[str | None] = mapped_column(String(64))
     requested_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     status: Mapped[str] = mapped_column(String(16), default="queued")
     progress: Mapped[int] = mapped_column(default=0)

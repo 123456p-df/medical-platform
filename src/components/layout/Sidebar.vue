@@ -47,7 +47,8 @@ const clinicalItems = computed(() => currentPatientId.value ? [
   { label: '医学影像', name: 'doctor-patient-imaging', icon: ScanLine },
   { label: 'AI 辅助诊断', name: 'doctor-patient-ai', icon: Sparkles },
   { label: '临床报告', name: 'doctor-patient-report', icon: FileText },
-  { label: '3D 影像', name: 'doctor-patient-3d', icon: Box },
+  { label: '3D/2D 分割视口', name: 'doctor-patient-study-viewer', icon: ScanLine },
+  { label: '3D 器官模型', name: 'doctor-patient-3d', icon: Box },
 ] : [])
 
 const patientNav = computed(() => [

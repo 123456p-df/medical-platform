@@ -23,14 +23,18 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      '/api': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: true },
-      '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8000', changeOrigin: true },
+      '/api': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
+      '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
     },
   },
   preview: {
-    host: '127.0.0.1',
+    host: '0.0.0.0',
     port: 4173,
     strictPort: true,
+    proxy: {
+      '/api': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
+      '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
+    },
   },
   worker: {
     format: 'es',

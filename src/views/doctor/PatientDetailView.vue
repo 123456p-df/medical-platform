@@ -14,6 +14,15 @@ const store = usePatientStore()
 const patientId = computed(() => String(route.params.id))
 const selectedPatient = computed(() => store.selectedPatient)
 
+const tabs = [
+  { label: 'Overview', name: 'doctor-patient-overview' },
+  { label: 'Imaging', name: 'doctor-patient-imaging' },
+  { label: 'Report', name: 'doctor-patient-report' },
+  { label: 'AI 辅助诊断', name: 'doctor-patient-ai' },
+  { label: '3D/2D 分割视口', name: 'doctor-patient-study-viewer' },
+  { label: '3D 器官模型', name: 'doctor-patient-3d' },
+]
+
 async function loadPatient() {
   if (!store.patients.length) {
     await store.loadPatients()
@@ -53,6 +62,18 @@ watch(patientId, loadPatient)
         <span class="latest-label">Latest: {{ selectedPatient.modality }} {{ selectedPatient.organ }}</span>
       </div>
     </section>
+
+    <nav class="detail-tabs" aria-label="Patient record sections">
+      <RouterLink
+        v-for="tab in tabs"
+        :key="tab.name"
+        :to="{ name: tab.name, params: { id: patientId } }"
+        class="detail-tab"
+        exact-active-class="is-active"
+      >
+        {{ tab.label }}
+      </RouterLink>
+    </nav>
 
     <div v-if="store.loading && !store.examinations.length" class="loading">
       Loading patient record...
@@ -140,6 +161,42 @@ watch(patientId, loadPatient)
 
 .latest-label {
   font-size: 12px;
+}
+
+.detail-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 18px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-tab {
+  position: relative;
+  padding: 10px 13px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.detail-tab:hover {
+  color: var(--text);
+}
+
+.detail-tab.is-active {
+  color: var(--accent-strong);
+}
+
+.detail-tab.is-active::after {
+  position: absolute;
+  right: 12px;
+  bottom: -1px;
+  left: 12px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  content: '';
 }
 
 @media (max-width: 760px) {

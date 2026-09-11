@@ -8,7 +8,7 @@ const source = ts.transpileModule(fs.readFileSync('src/utils/volumePixels.ts', '
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText
 const pixelsModule = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
-const { parseVolume, renderVolumeSlice } = await import(pixelsModule)
+const { parseVolume, renderVolumeSlice, parseLabelVolume, extractLabelPlane, compositeStain } = await import(pixelsModule)
 function fixture(shape = [2, 3, 4]) {
   const prefix = "{'descr': '<f4', 'fortran_order': False, 'shape': (" + shape.join(', ') + "), }"
   const header = prefix.padEnd(117) + '\n'
@@ -37,7 +37,29 @@ assert.throws(() => renderVolumeSlice(volume, 'axial', 4, 'lung'), /超出范围
 assert.throws(() => renderVolumeSlice(volume, 'axial', -1, 'lung'), /超出范围/)
 const uniform = { shape: [2, 3, 4], voxels: new Float32Array(24).fill(5) }
 assert.ok(renderVolumeSlice(uniform, 'axial', 0, 'auto').pixels.filter((_, i) => i % 4 !== 3).every(v => v === 0))
-console.log('PASS: NPY validation, truncation, orientation, windowing, opacity and bounds.')
+function labelFixture(shape = [2, 3, 4]) {
+  const prefix = "{'descr': '<u2', 'fortran_order': False, 'shape': (" + shape.join(', ') + "), }"
+  const header = prefix.padEnd(117) + '\n'
+  const count = shape.reduce((a, b) => a * b, 1)
+  const buffer = new ArrayBuffer(128 + count * 2)
+  const bytes = new Uint8Array(buffer)
+  bytes.set([147, 78, 85, 77, 80, 89, 1, 0]); new DataView(buffer).setUint16(8, 118, true)
+  bytes.set(new TextEncoder().encode(header), 10)
+  const labels = new Uint16Array(buffer, 128)
+  labels[0] = 1
+  labels[1] = 1
+  labels[2] = 3
+  return buffer
+}
+const labels = parseLabelVolume(labelFixture(), [2, 3, 4])
+assert.equal(labels.labels[0], 1)
+assert.equal(extractLabelPlane(labels, 'axial', 0).plane.length, 6)
+const stained = { width: 2, height: 1, data: new Uint8ClampedArray([10, 10, 10, 255, 10, 10, 10, 255]) }
+const colors = new Map([[1, { color: [200, 0, 0], outlineOnly: false }], [3, { color: [8, 8, 8], outlineOnly: true }]])
+compositeStain(stained, new Uint16Array([1, 3]), new Set([1, 3]), colors, 0.5)
+assert.ok(stained.data[0] > 10)
+assert.equal(stained.data[4], 8)
+console.log('PASS: NPY validation, truncation, orientation, windowing, opacity, bounds and stain overlay.')
 const fortran = fixture(), fortranBytes = new Uint8Array(fortran)
 const originalHeader = new TextDecoder().decode(fortranBytes.subarray(10, 128))
 fortranBytes.set(new TextEncoder().encode(originalHeader.replace('False', 'True ').padEnd(118)), 10)

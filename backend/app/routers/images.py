@@ -1,24 +1,31 @@
 from datetime import date
+import logging
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, Query, Response, UploadFile
+from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 
 from app.audit import audit
 from app.deps import DB, Config, CurrentUser, check_patient_access
 from app.errors import APIError, Envelope, success
-from app.models import MedicalImage
+from app.models import MedicalImage, OrganModel, SegmentationBatch
 from app.organs import require_organ
-from app.schemas import ImageOut
+from app.schemas import ComparisonCandidateOut, ImageOut
+from app.services.comparison import compare_studies
 from app.services.imaging import (
+    acquisition_from_volume,
+    canonical_labels,
     canonical_voxels,
+    label_cache_path,
     load_volume,
     prepare_slice_cache,
     slice_cache_path,
     slice_png,
 )
 from app.services.storage import relative_path, stored_path
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Medical Image"])
 
@@ -31,7 +38,42 @@ def accessible_image(db, user, image_id, *, write=False):
     return image
 
 
-def image_out(image):
+def latest_batch_id(db, image_id):
+    return db.scalar(
+        select(SegmentationBatch.id)
+        .where(SegmentationBatch.image_id == image_id)
+        .order_by(SegmentationBatch.created_at.desc())
+        .limit(1)
+    )
+
+
+def atlas_model_id(db, image_id):
+    return db.scalar(
+        select(OrganModel.id).where(OrganModel.image_id == image_id, OrganModel.kind == "atlas")
+    )
+
+
+def native_label_path(db, settings, image_id):
+    batch = db.scalar(
+        select(SegmentationBatch)
+        .where(
+            SegmentationBatch.image_id == image_id,
+            SegmentationBatch.native_label_map_path.is_not(None),
+        )
+        .order_by(SegmentationBatch.created_at.desc())
+    )
+    if batch is None or not batch.native_label_map_path:
+        return None
+    path = stored_path(settings, batch.native_label_map_path)
+    return path if path.is_file() else None
+
+
+def image_out(image, db=None, segmentation_batch_id=None):
+    atlas = None
+    if db is not None:
+        if segmentation_batch_id is None:
+            segmentation_batch_id = latest_batch_id(db, image.id)
+        atlas = atlas_model_id(db, image.id)
     return {
         "image_id": image.id,
         "patient_id": image.patient_id,
@@ -43,6 +85,9 @@ def image_out(image):
         "slice_count": image.shape[2],
         "study_date": image.study_date,
         "created_at": image.created_at,
+        "segmentation_batch_id": segmentation_batch_id,
+        "atlas_model_id": atlas,
+        "acquisition": image.acquisition or None,
     }
 
 
@@ -50,6 +95,7 @@ def image_out(image):
     "/patients/{patient_id}/medical-images", status_code=201, response_model=Envelope[ImageOut]
 )
 def upload_image(
+    request: Request,
     patient_id: int,
     db: DB,
     user: CurrentUser,
@@ -92,8 +138,9 @@ def upload_image(
             file_path=relative_path(settings, path),
             shape=list(canonical.shape),
             size_bytes=size,
-            spacing=[float(x) for x in canonical.header.get_zooms()],
+            spacing=[float(x) for x in canonical.header.get_zooms()[:3]],
             study_date=study_date,
+            acquisition=acquisition_from_volume(volume, data),
         )
         db.add(record)
         audit(db, user.id, patient_id, "image.upload", "medical_image", image_id)
@@ -105,12 +152,34 @@ def upload_image(
         raise
     finally:
         file.file.close()
-    return success(image_out(record))
+    try:
+        batch_id = request.app.state.segmentation_runner.enqueue_batch_for_image(image_id, user.id)
+    except Exception as exc:
+        logger.error("Unable to enqueue segmentation batch (%s)", type(exc).__name__)
+        batch_id = None
+    return success(image_out(record, db, batch_id))
 
 
 @router.get("/medical-images/{image_id}", response_model=Envelope[ImageOut])
 def get_image(image_id: str, db: DB, user: CurrentUser):
-    return success(image_out(accessible_image(db, user, image_id)))
+    return success(image_out(accessible_image(db, user, image_id), db))
+
+
+@router.get(
+    "/medical-images/{image_id}/comparison-candidates",
+    response_model=Envelope[list[ComparisonCandidateOut]],
+)
+def comparison_candidates(image_id: str, db: DB, user: CurrentUser):
+    image = accessible_image(db, user, image_id)
+    others = db.scalars(
+        select(MedicalImage)
+        .where(MedicalImage.patient_id == image.patient_id, MedicalImage.id != image.id)
+        .order_by(
+            MedicalImage.study_date.desc().nullslast(),
+            MedicalImage.created_at.desc(),
+        )
+    )
+    return success([compare_studies(image, other) for other in others])
 
 
 @router.get("/medical-images/{image_id}/volume", response_class=FileResponse)
@@ -125,6 +194,20 @@ def get_volume(image_id: str, db: DB, user: CurrentUser, settings: Config):
         slice_cache_path(path),
         media_type="application/octet-stream",
         headers={"X-Image-Orientation": "RAS"},
+    )
+
+
+@router.get("/medical-images/{image_id}/label-volume", response_class=FileResponse)
+def get_label_volume(image_id: str, db: DB, user: CurrentUser, settings: Config):
+    accessible_image(db, user, image_id)
+    path = native_label_path(db, settings, image_id)
+    if path is None:
+        raise APIError(404, 40409, "Segmentation label map is not available")
+    canonical_labels(path, settings)
+    return FileResponse(
+        label_cache_path(path),
+        media_type="application/octet-stream",
+        headers={"X-Image-Orientation": "RAS", "X-Volume-Kind": "labels"},
     )
 
 

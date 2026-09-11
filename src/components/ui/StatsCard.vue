@@ -23,7 +23,7 @@ withDefaults(
     </div>
     <div class="stats-copy">
       <span class="stats-label">{{ $t(label) }}</span>
-      <strong>{{ $t(value) }}</strong>
+      <strong>{{ typeof value === 'number' ? value : $t(String(value)) }}</strong>
       <small>{{ $t(note) }}</small>
     </div>
   </article>
