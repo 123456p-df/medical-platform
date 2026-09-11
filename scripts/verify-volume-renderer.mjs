@@ -107,7 +107,7 @@ assert.equal(requests, 1, 'Local navigation must not make a network request per 
 console.log('PASS: latest-frame queue, single volume download, disposal and pending-frame cleanup.')
 
 if (process.argv.includes('--real')) {
-  const root = path.resolve('../../.cache/real-imaging/validation')
+  const root = path.resolve('.cache/real-imaging/validation')
   const results = JSON.parse(fs.readFileSync(path.join(root, 'results.json'), 'utf8'))
   const report = []
   for (const sample of results) {

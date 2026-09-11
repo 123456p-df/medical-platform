@@ -115,6 +115,7 @@ export interface Doctor {
 export interface UserSession {
   accessToken: string
   id: string
+  username: string
   name: string
   role: PortalRole
   title?: string

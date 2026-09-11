@@ -146,8 +146,8 @@ onMounted(async () => {
     <WorkflowQueue />
 
     <div v-if="store.lastArchivedPatient" class="undo-banner" role="status">
-      <span>已从工作台移除患者 <strong>{{ store.lastArchivedPatient.name }}</strong></span>
-      <button class="btn btn-secondary btn-sm" type="button" @click="store.restoreLastPatient()">撤销</button>
+      <span>{{ $t('Patient {name} was removed from the workspace.', { name: store.lastArchivedPatient.name }) }}</span>
+      <button class="btn btn-secondary btn-sm" type="button" @click="store.restoreLastPatient()">{{ $t('Undo') }}</button>
     </div>
 
     <section class="dashboard-grid">
@@ -155,37 +155,37 @@ onMounted(async () => {
         <div class="card">
           <div class="card-header">
             <div>
-              <h2>All Patients</h2>
-              <p class="muted">搜索、添加或管理患者档案。</p>
+              <h2>{{ $t('All Patients') }}</h2>
+              <p class="muted">{{ $t('Search, add, or manage patient records.') }}</p>
             </div>
             <div class="roster-heading-actions">
               <span class="patient-count">{{ filteredPatients.length }} / {{ totalPatients }}</span>
-              <button class="btn btn-primary" type="button" @click="patientDialog?.open()"><UserPlus :size="16" /> 加入患者</button>
+              <button class="btn btn-primary" type="button" @click="patientDialog?.open()"><UserPlus :size="16" /> {{ $t('Add patient') }}</button>
             </div>
           </div>
           <div class="patient-search-row">
-            <SearchBar v-model="filters.search" placeholder="搜索患者姓名或患者 ID…" />
-            <span v-if="filters.search">正在显示与“{{ filters.search }}”匹配的患者</span>
-            <span v-else>输入姓名或患者 ID 即可快速查找</span>
+            <SearchBar v-model="filters.search" :placeholder="$t('Search patient name or patient ID…')" />
+            <span v-if="filters.search">{{ $t('Showing patients matching “{query}”', { query: filters.search }) }}</span>
+            <span v-else>{{ $t('Enter a name or patient ID to search quickly.') }}</span>
           </div>
           <div class="filter-row">
             <FilterBar>
-              <select v-model="filters.modality" class="select" aria-label="Modality filter">
-                <option v-for="option in modalityOptions" :key="option" :value="option">{{ option }}</option>
+              <select v-model="filters.modality" class="select" :aria-label="$t('Modality filter')">
+                <option v-for="option in modalityOptions" :key="option" :value="option">{{ $t(option) }}</option>
               </select>
-              <select v-model="filters.organ" class="select" aria-label="Organ filter">
-                <option v-for="option in organOptions" :key="option" :value="option">{{ option }}</option>
+              <select v-model="filters.organ" class="select" :aria-label="$t('Organ filter')">
+                <option v-for="option in organOptions" :key="option" :value="option">{{ $t(option) }}</option>
               </select>
-              <select v-model="filters.status" class="select" aria-label="Status filter">
+              <select v-model="filters.status" class="select" :aria-label="$t('Status filter')">
                 <option v-for="option in statusOptions" :key="option" :value="option">{{ $t(option) }}</option>
               </select>
-              <select v-model="filters.risk" class="select" aria-label="Risk filter">
+              <select v-model="filters.risk" class="select" :aria-label="$t('Risk filter')">
                 <option v-for="option in riskOptions" :key="option" :value="option">{{ $t(option) }}</option>
               </select>
-              <select v-model="filters.date" class="select" aria-label="Date filter">
-                <option value="All">All dates</option>
-                <option value="Today">Today</option>
-                <option value="Recent">Last 7 days</option>
+              <select v-model="filters.date" class="select" :aria-label="$t('Date filter')">
+                <option value="All">{{ $t('All dates') }}</option>
+                <option value="Today">{{ $t('Today') }}</option>
+                <option value="Recent">{{ $t('Last 7 days') }}</option>
               </select>
               <button v-if="hasActiveFilters" type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
                 <RotateCcw :size="14" /> {{ $t('Clear filters') }}
@@ -193,10 +193,10 @@ onMounted(async () => {
             </FilterBar>
           </div>
           <p v-if="store.error" class="roster-message error-message" role="alert">
-            {{ store.error }}
-            <button type="button" class="btn btn-secondary btn-sm" @click="store.loadPatients()">重试</button>
+            {{ $t(store.error) }}
+            <button type="button" class="btn btn-secondary btn-sm" @click="store.loadPatients()">{{ $t('Retry') }}</button>
           </p>
-          <p v-else-if="store.loading" class="roster-message">正在加载患者列表…</p>
+          <p v-else-if="store.loading" class="roster-message">{{ $t('Loading patient list…') }}</p>
           <PatientTable
             v-else
             :patients="filteredPatients"
@@ -205,15 +205,15 @@ onMounted(async () => {
             @removed="patientRemoved"
           />
           <div v-if="!store.loading && !store.error && !filteredPatients.length" class="empty-state">
-            没有找到匹配的患者。
-            <button v-if="hasActiveFilters" type="button" class="btn btn-secondary btn-sm" @click="resetFilters">清除筛选</button>
+            {{ $t('No matching patients found.') }}
+            <button v-if="hasActiveFilters" type="button" class="btn btn-secondary btn-sm" @click="resetFilters">{{ $t('Clear filters') }}</button>
           </div>
         </div>
       </div>
 
       <aside class="selected-panel card">
         <div class="card-header">
-          <h3>Selected Patient</h3>
+          <h3>{{ $t('Selected Patient') }}</h3>
         </div>
         <div v-if="selectedPatient" class="selected-content">
           <div class="selected-person">
@@ -226,7 +226,7 @@ onMounted(async () => {
             </div>
           </div>
           <div class="selected-meta">
-            <span>{{ selectedPatient.age === null ? '年龄未登记' : selectedPatient.age + ' ' + $t('years') }}</span>
+            <span>{{ selectedPatient.age === null ? $t('Age not recorded') : selectedPatient.age + ' ' + $t('years') }}</span>
             <span>{{ $t(selectedPatient.gender) }}</span>
             <span>{{ $t(selectedPatient.modality) }} · {{ $t(selectedPatient.organ) }}</span>
           </div>
@@ -234,7 +234,7 @@ onMounted(async () => {
             <ScanLine :size="48" style="color:#83b5b8;position:absolute;left:calc(50% - 24px);top:calc(50% - 24px)" />
           </div>
           <div class="preview-caption">
-            <span><ScanLine :size="14" /> Latest examination</span>
+            <span><ScanLine :size="14" /> {{ $t('Latest examination') }}</span>
             <span>{{ selectedPatient.lastExamDate }}</span>
           </div>
           <div class="selected-status">
@@ -243,19 +243,19 @@ onMounted(async () => {
           </div>
           <div class="selected-actions">
             <button type="button" class="btn btn-primary" @click="router.push({ name: 'doctor-patient-imaging', params: { id: selectedPatient.id } })">
-              <ScanLine :size="16" /> View Imaging
+              <ScanLine :size="16" /> {{ $t('View Imaging') }}
             </button>
             <button type="button" class="btn btn-secondary" @click="router.push({ name: 'doctor-patient-report', params: { id: selectedPatient.id } })">
-              <FileText :size="16" /> View Report
+              <FileText :size="16" /> {{ $t('View Report') }}
             </button>
             <button type="button" class="btn btn-secondary" @click="router.push({ name: 'doctor-patient-3d', params: { id: selectedPatient.id } })">
-              <Activity :size="16" /> View 3D
+              <Activity :size="16" /> {{ $t('View 3D') }}
             </button>
             <PatientDeleteButton :id="selectedPatient.id" :name="selectedPatient.name" stay @removed="patientRemoved" />
           </div>
         </div>
         <div v-else class="empty-state">
-          Select a patient to preview their record.
+          {{ $t('Select a patient to preview their record.') }}
         </div>
       </aside>
     </section>

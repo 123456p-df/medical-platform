@@ -43,12 +43,12 @@ const routePatientId = computed(() => typeof route.params.id === 'string' ? rout
 const currentPatientId = computed(() => routePatientId.value || patients.selectedPatientId || '')
 const currentPatient = computed(() => patients.patients.find(patient => patient.id === currentPatientId.value))
 const clinicalItems = computed(() => currentPatientId.value ? [
-  { label: '患者概览', name: 'doctor-patient-overview', icon: ClipboardList },
-  { label: '医学影像', name: 'doctor-patient-imaging', icon: ScanLine },
-  { label: 'AI 辅助诊断', name: 'doctor-patient-ai', icon: Sparkles },
-  { label: '临床报告', name: 'doctor-patient-report', icon: FileText },
-  { label: '3D/2D 分割视口', name: 'doctor-patient-study-viewer', icon: ScanLine },
-  { label: '3D 器官模型', name: 'doctor-patient-3d', icon: Box },
+  { label: 'Patient overview', name: 'doctor-patient-overview', icon: ClipboardList },
+  { label: 'Medical Imaging', name: 'doctor-patient-imaging', icon: ScanLine },
+  { label: 'AI Assistant', name: 'doctor-patient-ai', icon: Sparkles },
+  { label: 'Clinical report', name: 'doctor-patient-report', icon: FileText },
+  { label: '3D / 2D segmentation viewport', name: 'doctor-patient-study-viewer', icon: ScanLine },
+  { label: '3D organ model', name: 'doctor-patient-3d', icon: Box },
 ] : [])
 
 const patientNav = computed(() => [
@@ -82,9 +82,9 @@ function logout() {
       <span class="brand-mark"><Activity :size="20" /></span>
       <span class="brand-copy">
         <strong>PulmoLink</strong>
-        <small>Medical AI Platform</small>
+        <small>{{ $t('Medical AI Platform') }}</small>
       </span>
-      <button class="sidebar-close" type="button" aria-label="Close navigation" @click="emit('close')">
+      <button class="sidebar-close" type="button" :aria-label="$t('Close navigation')" @click="emit('close')">
         <X :size="18" />
       </button>
     </div>
@@ -92,27 +92,27 @@ function logout() {
     <button
       class="desktop-collapse"
       type="button"
-      :aria-label="props.collapsed ? '展开侧边栏' : '收起侧边栏'"
-      :title="props.collapsed ? '展开侧边栏' : '收起侧边栏'"
+      :aria-label="$t(props.collapsed ? 'Expand sidebar' : 'Collapse sidebar')"
+      :title="$t(props.collapsed ? 'Expand sidebar' : 'Collapse sidebar')"
       @click="emit('toggle')"
     >
       <PanelLeftOpen v-if="props.collapsed" :size="15" />
       <PanelLeftClose v-else :size="15" />
     </button>
 
-    <div class="sidebar-label">{{ auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health' }}</div>
+    <div class="sidebar-label">{{ $t(auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health') }}</div>
 
-    <nav v-if="auth.portal === 'doctor'" class="nav doctor-tree" aria-label="医生工作区导航">
+    <nav v-if="auth.portal === 'doctor'" class="nav doctor-tree" :aria-label="$t('Doctor workspace navigation')">
       <section class="tree-group">
-        <button class="tree-toggle" type="button" :aria-expanded="managementExpanded" title="患者管理" @click="toggleGroup('management')">
+        <button class="tree-toggle" type="button" :aria-expanded="managementExpanded" :title="$t('Patient management')" @click="toggleGroup('management')">
           <UsersRound :size="18" />
-          <span>患者管理</span>
+          <span>{{ $t('Patient management') }}</span>
           <ChevronDown v-if="managementExpanded" class="tree-chevron" :size="15" />
           <ChevronRight v-else class="tree-chevron" :size="15" />
         </button>
         <div v-if="managementExpanded" class="tree-children">
           <RouterLink to="/doctor/dashboard" class="tree-item" active-class="is-active" @click="emit('close')">
-            <LayoutDashboard :size="16" /><span>患者工作台</span>
+            <LayoutDashboard :size="16" /><span>{{ $t('Patient Workspace') }}</span>
           </RouterLink>
         </div>
       </section>
@@ -123,13 +123,13 @@ function logout() {
           :class="{ disabled: !currentPatientId }"
           type="button"
           :aria-expanded="clinicalExpanded && Boolean(currentPatientId)"
-          :title="currentPatientId ? '当前患者临床工作流' : '请先打开一名患者'"
+          :title="$t(currentPatientId ? 'Current patient clinical workflow' : 'Open a patient first')"
           @click="toggleGroup('clinical')"
         >
           <Stethoscope :size="18" />
           <span class="tree-label">
-            <strong>临床工作流</strong>
-            <small>{{ currentPatient?.name || (currentPatientId ? currentPatientId : '请先打开患者') }}</small>
+            <strong>{{ $t('Clinical workflow') }}</strong>
+            <small>{{ currentPatient?.name || (currentPatientId ? currentPatientId : $t('Open a patient first')) }}</small>
           </span>
           <ChevronDown v-if="clinicalExpanded && currentPatientId" class="tree-chevron" :size="15" />
           <ChevronRight v-else class="tree-chevron" :size="15" />
@@ -144,13 +144,13 @@ function logout() {
             @click="emit('close')"
           >
             <component :is="item.icon" :size="16" />
-            <span>{{ item.label }}</span>
+            <span>{{ $t(item.label) }}</span>
           </RouterLink>
         </div>
       </section>
     </nav>
 
-    <nav v-else class="nav" aria-label="患者门户导航">
+    <nav v-else class="nav" :aria-label="$t('Patient portal navigation')">
       <RouterLink v-for="item in patientNav" :key="item.label" :to="item.to" class="nav-item" active-class="is-active" @click="emit('close')">
         <component :is="item.icon" :size="18" />
         <span>{{ $t(item.label) }}</span>
@@ -162,10 +162,10 @@ function logout() {
         <span class="avatar">{{ auth.session?.name?.split(' ').map((part) => part[0]).join('').slice(0, 2) }}</span>
         <span class="session-copy">
           <strong>{{ auth.session?.name }}</strong>
-          <small>{{ auth.portal === 'doctor' ? 'Doctor Portal' : 'Patient Portal' }}</small>
+          <small>{{ $t(auth.portal === 'doctor' ? 'Doctor Portal' : 'Patient Portal') }}</small>
         </span>
       </div>
-      <button class="logout-btn" type="button" title="Sign out" @click="logout">
+      <button class="logout-btn" type="button" :title="$t('Sign out')" @click="logout">
         <LogOut :size="18" />
       </button>
     </div>

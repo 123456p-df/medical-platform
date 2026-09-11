@@ -44,6 +44,9 @@ setLocale('en')
 assert.equal(locale.value, 'en', 'Locale should be en')
 assert.equal(t('Age'), 'Age', 't("Age") in en should return Age')
 assert.equal(t('Doctor Dashboard'), 'Doctor Dashboard', 't("Doctor Dashboard") in en should return Doctor Dashboard')
+assert.equal(t('患者管理'), 'Patient management', 'Chinese UI keys should reverse to English')
+assert.equal(t('医学影像'), 'Medical Imaging', 'Chinese navigation keys should reverse to English')
+assert.equal(t('资料加载失败。'), 'Unable to load profile.', 'Chinese errors should reverse to English')
 assert.equal(
   t("Good morning, Dr. Alice. Here is today's clinical queue."),
   "Good morning, Dr. Alice. Here is today's clinical queue.",

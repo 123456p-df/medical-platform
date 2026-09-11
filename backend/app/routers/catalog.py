@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
-from app.deps import DB, CurrentUser, check_patient_access, require_doctor
+from app.deps import Config, DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import Envelope, success
 from app.models import DoctorPatientAccess, MedicalImage, MedicalRecord, Patient
 from app.routers.images import image_out
@@ -87,6 +87,7 @@ def records(
     patient_id: int,
     db: DB,
     user: CurrentUser,
+    settings: Config,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
@@ -104,7 +105,7 @@ def records(
     )
     return success(
         {
-            "items": [record_out(db, row) for row in rows],
+            "items": [record_out(db, row, settings) for row in rows],
             "total": total,
             "page": page,
             "page_size": page_size,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import { request } from '@/api/client'
+import { ApiError, request } from '@/api/client'
 import type { Examination, Finding } from '@/types'
 import type { VolumeRenderer } from '@/utils/volumeRenderer'
 import type { LabelVolume, Shape3D, SliceAxis, StainStyle } from '@/utils/volumePixels'
@@ -13,6 +13,7 @@ import CrosshairsOverlay from './CrosshairsOverlay.vue'
 import { useCrosshairs } from '@/composables/useCrosshairs'
 import { useViewportGestures, activeMedicalTool } from '@/composables/useViewportGestures'
 import { useMeasurementTools } from '@/composables/useMeasurementTools'
+import { acquireVolumeRenderer, type VolumeRendererHandle } from '@/utils/volumeRendererPool'
 
 const props = withDefaults(
   defineProps<{
@@ -65,6 +66,47 @@ const shape = computed<Shape3D>(() => {
   return [s[0], s[1], s[2]]
 })
 
+const ownRenderer = shallowRef<VolumeRenderer | null>(null)
+const poolBlocked = ref(false)
+const activeRenderer = computed(() => props.renderer || ownRenderer.value)
+
+watch(
+  [() => props.examination.id, () => props.renderer, () => props.blocked, retry],
+  async (_, __, onCleanup) => {
+    ownRenderer.value = null
+    poolBlocked.value = false
+    if (localPreview || props.renderer || props.blocked || !props.examination.shape) return
+    let disposed = false
+    let handle: VolumeRendererHandle | undefined
+    onCleanup(() => {
+      disposed = true
+      handle?.release()
+    })
+    try {
+      handle = await acquireVolumeRenderer(
+        props.examination.id,
+        shape.value,
+        () => {},
+        reason => {
+          if (disposed) return
+          ownRenderer.value = null
+          if (reason instanceof ApiError && [401, 403, 404].includes(reason.status)) {
+            poolBlocked.value = true
+          }
+        },
+      )
+      if (!disposed) ownRenderer.value = handle.renderer
+    } catch (reason) {
+      if (reason instanceof ApiError && [401, 403, 404].includes(reason.status)) {
+        poolBlocked.value = true
+      }
+      // A volume too large for the browser or a worker failure keeps the existing
+      // server-side single-slice fallback available.
+    }
+  },
+  { immediate: true },
+)
+
 const spacing = computed<[number, number, number]>(() => {
   const sp = props.examination.spacing || [1, 1, 1]
   return [sp[0], sp[1], sp[2]]
@@ -88,9 +130,9 @@ const geometry = computed(() => {
 })
 
 const label = computed(() => ({
-  axial: '轴向 · Axial (Z)',
-  coronal: '冠状 · Coronal (Y)',
-  sagittal: '矢状 · Sagittal (X)',
+  axial: 'Axial (Z)',
+  coronal: 'Coronal (Y)',
+  sagittal: 'Sagittal (X)',
 })[props.axis])
 
 const syntheticPreset = computed(() => {
@@ -242,7 +284,7 @@ function render() {
     return
   }
 
-  if (props.blocked) {
+  if (props.blocked || poolBlocked.value) {
     canvas.value?.getContext('2d')?.clearRect(0, 0, canvas.value.width, canvas.value.height)
     displayed.value = -1
     busy.value = false
@@ -258,8 +300,8 @@ function render() {
       const context = canvas.value?.getContext('2d')
       if (!context || !canvas.value) return
 
-      if (props.renderer) {
-        const result = await props.renderer.render(
+      if (activeRenderer.value) {
+        const result = await activeRenderer.value.render(
           props.axis,
           index,
           props.preset,
@@ -312,7 +354,7 @@ function render() {
 
       if (current === revision) displayed.value = index
     } catch (e) {
-      if (current === revision) error.value = e instanceof Error ? e.message : '加载失败'
+      if (current === revision) error.value = e instanceof Error ? e.message : 'Slice loading failed.'
     } finally {
       if (current === revision) busy.value = false
     }
@@ -342,7 +384,7 @@ watch(
     () => props.examination.id,
     slice,
     () => props.preset,
-    () => props.renderer,
+    activeRenderer,
     () => props.blocked,
     retry,
     () => props.labelVolume,
@@ -421,7 +463,7 @@ defineExpose({
     <div class="pane-heading" @dblclick="emit('toggleMaximize')">
       <div class="heading-left">
         <span :class="['axis-indicator', axis]" />
-        <strong>{{ label }}</strong>
+        <strong>{{ $t(label) }}</strong>
       </div>
       <div class="heading-right">
         <span class="meta-tag">{{ geometry.spacing.toFixed(2) }} mm</span>
@@ -433,7 +475,7 @@ defineExpose({
       ref="stage"
       :class="['slice-stage', cursorClass]"
       tabindex="0"
-      :aria-label="label + '视图，方向键切层，右键调窗，中键平移'"
+      :aria-label="$t('{axis} view. Use arrow keys to change slices, right-drag to adjust the window, and middle-drag to pan.', { axis: $t(label) })"
       @contextmenu.prevent
       @wheel="gestureHandleWheel"
       @pointerdown="onStagePointerDown"
@@ -469,9 +511,9 @@ defineExpose({
           v-else
           ref="canvas"
           role="img"
-          :aria-label="examination.type + ' ' + axis + ' 切片'"
+          :aria-label="examination.type + ' ' + $t(label)"
           :data-slice-index="displayed"
-          :data-render-mode="renderer ? 'local' : 'preview'"
+          :data-render-mode="activeRenderer ? 'local' : 'preview'"
         />
 
         <!-- 3D 十字准星与专业量测矢量叠加层 -->
@@ -499,34 +541,34 @@ defineExpose({
       </div>
 
       <!-- 加载中与错误提示 -->
-      <span v-if="busy && displayed < 0" class="slice-message">加载体素切片…</span>
+      <span v-if="busy && displayed < 0" class="slice-message">{{ $t('Loading voxel slice…') }}</span>
       <div v-if="error" role="alert" class="slice-message error">
-        {{ error }}
-        <button @click="retry++">重试</button>
+        {{ $t(error) }}
+        <button @click="retry++">{{ $t('Retry') }}</button>
       </div>
     </div>
 
     <!-- 底部切片微调滑块 -->
     <div class="slice-controls">
       <button
-        :disabled="slice === 0 || blocked"
-        :aria-label="label + '上一层'"
+        :disabled="slice === 0 || blocked || poolBlocked"
+        :aria-label="$t('{axis} previous slice', { axis: $t(label) })"
         @click="move(slice - 1)"
       >
         <ChevronLeft :size="14" />
       </button>
       <input
         :value="slice"
-        :disabled="blocked"
-        :aria-label="label + '切片位置'"
+        :disabled="blocked || poolBlocked"
+        :aria-label="$t('Slice position')"
         type="range"
         min="0"
         :max="geometry.count - 1"
         @input="move(Number(($event.target as HTMLInputElement).value))"
       />
       <button
-        :disabled="slice >= geometry.count - 1 || blocked"
-        :aria-label="label + '下一层'"
+        :disabled="slice >= geometry.count - 1 || blocked || poolBlocked"
+        :aria-label="$t('{axis} next slice', { axis: $t(label) })"
         @click="move(slice + 1)"
       >
         <ChevronRight :size="14" />

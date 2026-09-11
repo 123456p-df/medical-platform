@@ -11,15 +11,15 @@ const store = usePatientStore()
 const patientId = computed(() => auth.session?.id ?? '')
 
 onMounted(async () => {
-  await store.loadPatientContext(patientId.value)
+  await store.loadReports(patientId.value)
 })
 </script>
 
 <template>
   <div class="page">
-    <PageHeader title="My Reports" subtitle="Medical records entered by your authorized doctors.">
+    <PageHeader :title="$t('My Reports')" :subtitle="$t('Medical records entered by your authorized doctors.')">
       <template #actions>
-        <span class="report-count"><FileCheck2 :size="15" /> {{ store.reviewedReports.length }} records</span>
+        <span class="report-count"><FileCheck2 :size="15" /> {{ store.reviewedReports.length }} {{ $t('records') }}</span>
       </template>
     </PageHeader>
 
@@ -33,7 +33,7 @@ onMounted(async () => {
     </section>
 
     <div v-if="!store.reviewedReports.length && !store.loading" class="card empty-state">
-      No medical records are available yet.
+      {{ $t('No medical records are available yet.') }}
     </div>
   </div>
 </template>

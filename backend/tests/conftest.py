@@ -114,6 +114,7 @@ def app_env(tmp_path):
         id_hash_key="h" * 48,
         id_encryption_key=Fernet.generate_key().decode(),
         storage_root=tmp_path / "storage",
+        allow_registration=True,
         max_upload_bytes=1024 * 1024,
         max_uncompressed_bytes=4 * 1024 * 1024,
         max_volume_voxels=1000000,

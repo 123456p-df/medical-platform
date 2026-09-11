@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from app.errors import APIError
 from app.models import MedicalImage, MedicalRecord, OrganModel, SegmentationTask
 from app.organs import ORGANS
+from app.services.reports import report_content
 
 
 class AIAnswer(BaseModel):
@@ -33,12 +34,14 @@ def build_context(db, patient, organ_id, settings, *, include_drafts=True):
     )
     records, used_chars = [], 0
     for record in rows:
+        content = report_content(settings, record)
         item = {
             "record_id": record.id,
             "organ_ids": record.organ_ids,
             "date": record.record_date.isoformat(),
-            "diagnosis": record.diagnosis,
-            "description": record.description,
+            "diagnosis": content["diagnosis"],
+            "description": content["description"],
+            "recommendation": content["recommendation"],
         }
         length = len(json.dumps(item, ensure_ascii=False))
         if used_chars + length > settings.ai_max_context_chars:

@@ -72,24 +72,24 @@ function findingsFor(id: string) {
 <template>
   <section class="comparison-viewer">
     <header class="comparison-toolbar">
-      <div class="toolbar-group layout-controls" aria-label="对比布局">
-        <span>布局</span>
-        <button type="button" :class="{ active: layout === 1 }" aria-label="单屏" @click="setLayout(1)"><Square :size="15" /> 1</button>
-        <button type="button" :class="{ active: layout === 2 }" aria-label="二分屏" @click="setLayout(2)"><Columns2 :size="15" /> 2</button>
-        <button type="button" :class="{ active: layout === 4 }" aria-label="四分屏" @click="setLayout(4)"><Grid2X2 :size="15" /> 4</button>
+      <div class="toolbar-group layout-controls" :aria-label="$t('Comparison layout')">
+        <span>{{ $t('Layout') }}</span>
+        <button type="button" :class="{ active: layout === 1 }" :aria-label="$t('Single pane')" @click="setLayout(1)"><Square :size="15" /> 1</button>
+        <button type="button" :class="{ active: layout === 2 }" :aria-label="$t('Split pane')" @click="setLayout(2)"><Columns2 :size="15" /> 2</button>
+        <button type="button" :class="{ active: layout === 4 }" :aria-label="$t('Four panes')" @click="setLayout(4)"><Grid2X2 :size="15" /> 4</button>
       </div>
       <div class="toolbar-group">
-        <label>方向
-          <select v-model="axis"><option value="axial">轴向</option><option value="coronal">冠状</option><option value="sagittal">矢状</option></select>
+        <label>{{ $t('Orientation') }}
+          <select v-model="axis"><option value="axial">{{ $t('Axial') }}</option><option value="coronal">{{ $t('Coronal') }}</option><option value="sagittal">{{ $t('Sagittal') }}</option></select>
         </label>
-        <label>窗位
-          <select v-model="preset"><option value="lung">肺窗</option><option value="soft">软组织</option><option value="bone">骨窗</option><option value="auto">自动</option></select>
+        <label>{{ $t('Window') }}
+          <select v-model="preset"><option value="lung">{{ $t('Lung window') }}</option><option value="soft">{{ $t('Soft tissue') }}</option><option value="bone">{{ $t('Bone window') }}</option><option value="auto">{{ $t('Auto') }}</option></select>
         </label>
       </div>
       <div class="toolbar-group">
-        <button type="button" aria-label="缩小" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - .25)"><Minus :size="15" /></button>
+        <button type="button" :aria-label="$t('Zoom out')" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - .25)"><Minus :size="15" /></button>
         <span>{{ Math.round(zoom * 100) }}%</span>
-        <button type="button" aria-label="放大" :disabled="zoom >= 2" @click="zoom = Math.min(2, zoom + .25)"><Plus :size="15" /></button>
+        <button type="button" :aria-label="$t('Zoom in')" :disabled="zoom >= 2" @click="zoom = Math.min(2, zoom + .25)"><Plus :size="15" /></button>
         <button
           type="button"
           class="sync-button"
@@ -97,14 +97,14 @@ function findingsFor(id: string) {
           :aria-pressed="syncEnabled"
           :disabled="layout === 1"
           @click="syncEnabled = !syncEnabled"
-        ><Link2 v-if="syncEnabled" :size="15" /><Unlink2 v-else :size="15" />{{ syncEnabled ? '同步滚动' : '独立滚动' }}</button>
+        ><Link2 v-if="syncEnabled" :size="15" /><Unlink2 v-else :size="15" />{{ $t(syncEnabled ? 'Synchronized scrolling' : 'Independent scrolling') }}</button>
       </div>
     </header>
 
     <div class="comparison-note">
-      <span>{{ available.length }} 个 CT 检查可比较</span>
-      <span v-if="layout > 1 && syncEnabled">按各检查的相对切片位置同步，适配不同切片数量。</span>
-      <span v-else-if="layout > 1">每个窗口可单独滚轮、方向键或拖动滑块。</span>
+      <span>{{ $t('{count} CT studies available for comparison', { count: available.length }) }}</span>
+      <span v-if="layout > 1 && syncEnabled">{{ $t('Slices are synchronized by relative position across studies with different depths.') }}</span>
+      <span v-else-if="layout > 1">{{ $t('Each pane can use its own wheel, arrow keys, or slider.') }}</span>
     </div>
 
     <div v-if="available.length" class="comparison-grid" :class="`layout-${layout}`">
@@ -117,10 +117,10 @@ function findingsFor(id: string) {
       >
         <template v-if="study">
           <div class="study-heading">
-            <label :for="'study-slot-' + index">窗口 {{ index + 1 }}</label>
+            <label :for="'study-slot-' + index">{{ $t('Pane {number}', { number: index + 1 }) }}</label>
             <select :id="'study-slot-' + index" :value="study.id" @change="setStudy(index, ($event.target as HTMLSelectElement).value)">
               <option v-for="candidate in available" :key="candidate.id" :value="candidate.id">
-                {{ candidate.date }} · {{ candidate.organ }} · {{ candidate.sliceCount }} slices
+                {{ candidate.date }} · {{ $t(candidate.organ) }} · {{ candidate.sliceCount }} {{ $t('slices') }}
               </option>
             </select>
           </div>
@@ -138,11 +138,11 @@ function findingsFor(id: string) {
         </template>
         <div v-else class="empty-pane">
           <Grid2X2 :size="24" />
-          <span>请再上传一个 CT 检查</span>
+          <span>{{ $t('Upload another CT study to fill this pane.') }}</span>
         </div>
       </article>
     </div>
-    <div v-else class="empty-comparison">当前患者还没有 CT 检查，请先上传。</div>
+    <div v-else class="empty-comparison">{{ $t('This patient has no CT studies yet. Upload one first.') }}</div>
   </section>
 </template>
 

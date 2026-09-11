@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $previewRoot = Join-Path $projectRoot '.cache\preview'
 $backendRoot = Join-Path $projectRoot 'backend'
-$frontendRoot = Join-Path $projectRoot 'medical-platform\Medical'
+$frontendRoot = $projectRoot
 $pythonExe = Join-Path $backendRoot '.venv\Scripts\python.exe'
 $pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $clusterRoot = Join-Path $previewRoot 'postgres'
@@ -57,6 +57,7 @@ $backendArgs = @('-m', 'uvicorn', 'app.main:create_app', '--factory', '--host', 
 $backendProcess = Start-Process -FilePath $pythonExe -ArgumentList $backendArgs -WorkingDirectory $backendRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $previewRoot 'backend.log') -RedirectStandardError (Join-Path $previewRoot 'backend-error.log')
 $backendProcess.Id | Set-Content -LiteralPath $backendPidPath
 $env:VITE_PREVIEW = 'true'
+$env:VITE_LOCAL_PREVIEW = 'false'
 $env:VMRB_BACKEND_URL = 'http://127.0.0.1:' + $BackendPort
 $nodeExe = (Get-Command node.exe).Source
 $viteEntry = Join-Path $frontendRoot 'node_modules\vite\bin\vite.js'
@@ -72,5 +73,7 @@ for ($i = 0; $i -lt 40; $i++) {
 if (-not $previewReady) { throw 'Preview startup failed; inspect logs in .cache/preview and run stop-preview.ps1.' }
 Write-Output "Preview starting: http://127.0.0.1:$FrontendPort"
 Write-Output "Backend docs: http://127.0.0.1:$BackendPort/docs"
-Write-Output 'Demo doctor: demo_doctor / DemoDoctor123!'
-Write-Output 'Demo patient: demo_patient / DemoPatient123!'
+Write-Output 'Administrator: admin / 123456'
+Write-Output 'Demo doctor: demo_doctor / 123456'
+Write-Output 'Complete patient: demo_patient_full / 123456'
+Write-Output 'Report test patient: demo_patient_test / 123456'

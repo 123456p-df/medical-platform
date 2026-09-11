@@ -11,6 +11,7 @@ import { api } from '@/api/client'
 import { analysisApi, type AnalysisStatus, type AnalysisTask } from '@/api/analysis'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { localPreview } from '@/utils/runtime'
+import { t } from '@/i18n'
 import type { Examination } from '@/types'
 const route = useRoute(), store = usePatientStore(), workflow = useWorkflowStore()
 const reviewBusy = ref(false)
@@ -30,7 +31,7 @@ async function review() {
     await workflow.complete(active.value.id, completed)
     store.updateExaminationReview(active.value.id, completed)
   }
-  catch (e) { error.value = e instanceof Error ? e.message : '确认失败' }
+  catch (e) { error.value = e instanceof Error ? e.message : t('Review confirmation failed.') }
   finally { reviewBusy.value = false }
 }
 const busy = ref(false), error = ref('')
@@ -48,9 +49,9 @@ async function poll() {
     const updated = await api<NonNullable<typeof segmentationTask.value>>('/segmentation/tasks/' + expectedTask)
     if (disposed || segmentationTask.value?.task_id !== expectedTask) return
     segmentationTask.value = updated
-    if (segmentationTask.value.status === 'failed') error.value = segmentationTask.value.error_message || '分割失败'
+    if (segmentationTask.value.status === 'failed') error.value = segmentationTask.value.error_message || t('Segmentation failed.')
     if (['queued','running'].includes(segmentationTask.value.status) && !disposed) segmentationTimer = setTimeout(poll,1500)
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : '查询任务失败' }
+  } catch (reason) { error.value = reason instanceof Error ? reason.message : t('Task lookup failed.') }
 }
 async function segment() {
   if (!active.value) return
@@ -58,13 +59,13 @@ async function segment() {
   try {
     segmentationTask.value = await api('/medical-images/' + active.value.id + '/segmentation', { method:'POST', body:JSON.stringify({ organ_id:active.value.organId }) })
     await poll()
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : '分割失败' }
+  } catch (reason) { error.value = reason instanceof Error ? reason.message : t('Segmentation failed.') }
   finally { busy.value = false }
 }
 async function loadAnalysisStatus() {
   if (localPreview) return
   try { analysisStatus.value = await analysisApi.getStatus() }
-  catch (reason) { error.value = reason instanceof Error ? reason.message : '读取模型状态失败' }
+  catch (reason) { error.value = reason instanceof Error ? reason.message : t('Model status could not be read.') }
 }
 async function pollAnalysis() {
   if (!analysisTask.value || disposed) return
@@ -74,9 +75,9 @@ async function pollAnalysis() {
     if (disposed || analysisTask.value?.task_id !== expectedTask) return
     analysisTask.value = updated
     if (updated.status === 'completed') await store.loadPatientContext(patientId.value)
-    else if (updated.status === 'failed') error.value = updated.error_message || '肺结节检测失败'
+    else if (updated.status === 'failed') error.value = updated.error_message || t('Lung nodule detection failed.')
     else if (!disposed) analysisTimer = setTimeout(pollAnalysis, 1500)
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : '查询检测任务失败' }
+  } catch (reason) { error.value = reason instanceof Error ? reason.message : t('Detection task lookup failed.') }
 }
 async function analyzeLungNodules() {
   if (!active.value || localPreview || analysisBusy.value) return
@@ -84,7 +85,7 @@ async function analyzeLungNodules() {
   try {
     analysisTask.value = await analysisApi.create(active.value.id)
     await pollAnalysis()
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : '肺结节检测启动失败' }
+  } catch (reason) { error.value = reason instanceof Error ? reason.message : t('Lung nodule detection could not start.') }
   finally { analysisBusy.value = false }
 }
 function selectStudy(id: string) {
@@ -123,30 +124,30 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
     <section>
       <div v-if="active" class="card review-bar" :class="{complete:reviewed}">
         <div class="review-copy">
-          <span class="review-kicker">IMAGING REVIEW</span>
+          <span class="review-kicker">{{ $t('Imaging review') }}</span>
           <div class="review-title"><h2>{{ active.type }} · {{ active.organ }}</h2><StatusBadge :status="reviewed ? 'Reviewed' : 'Pending Review'" /></div>
-          <p>{{ active.date }} · {{ active.sliceCount }} slices · {{ reviewed ? '该影像已完成审核，可重新打开。' : '请浏览影像并核对 AI Findings，完成后确认审核。' }}</p>
+          <p>{{ active.date }} · {{ active.sliceCount }} {{ $t('slices') }} · {{ reviewed ? $t('This image has been reviewed and can be reopened.') : $t('Review the image and AI findings, then confirm completion.') }}</p>
         </div>
         <div class="review-actions">
-          <RouterLink class="btn btn-secondary" :to="{name:'doctor-patient-ai',params:{id:patientId},query:{exam:active.id}}"><Sparkles :size="16" /> 查看 AI Findings</RouterLink>
+          <RouterLink class="btn btn-secondary" :to="{name:'doctor-patient-ai',params:{id:patientId},query:{exam:active.id}}"><Sparkles :size="16" /> {{ $t('View AI findings') }}</RouterLink>
           <button class="btn" :class="reviewed ? 'btn-secondary' : 'btn-primary'" :disabled="reviewBusy" @click="review">
             <RotateCcw v-if="reviewed" :size="16" /><CheckCircle2 v-else :size="16" />
-            {{ reviewBusy ? '处理中…' : reviewed ? '重新打开审核' : '确认审核完成' }}
+            {{ reviewBusy ? $t('Processing…') : reviewed ? $t('Reopen review') : $t('Confirm review') }}
           </button>
         </div>
       </div>
       <div v-if="active" class="viewer-mode-bar card">
-        <div><strong>影像显示</strong><span>多期 CT 可选择单屏、二分屏或四分屏比较</span></div>
+        <div><strong>{{ $t('Imaging display') }}</strong><span>{{ $t('Compare multiple CT studies in one, two, or four panes.') }}</span></div>
         <div>
-          <button class="btn btn-sm" :class="viewerMode === 'compare' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('compare')"><Columns2 :size="15" /> 同屏比较</button>
-          <button class="btn btn-sm" :class="viewerMode === 'mpr' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('mpr')"><ScanLine :size="15" /> MPR 三平面</button>
+          <button class="btn btn-sm" :class="viewerMode === 'compare' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('compare')"><Columns2 :size="15" /> {{ $t('Side-by-side comparison') }}</button>
+          <button class="btn btn-sm" :class="viewerMode === 'mpr' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('mpr')"><ScanLine :size="15" /> {{ $t('MPR three-plane') }}</button>
           <RouterLink
             v-if="active && active.type === 'CT'"
             class="btn btn-sm btn-secondary"
             :to="{ path: '/viewer/study/' + patientId, query: { image: active.id } }"
             target="_blank"
           >
-            <Box :size="15" /> 3D 全景重构
+            <Box :size="15" /> {{ $t('3D panoramic reconstruction') }}
           </RouterLink>
         </div>
       </div>
@@ -167,39 +168,39 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
       <p v-if="error" class="integration-error" role="alert">{{ error }}</p>
       <div v-if="active" class="task-grid">
         <div class="card task-card">
-          <div><h3>Organ segmentation</h3><p class="muted">CT 使用已配置的模型分割；MRI 当前支持浏览。</p></div>
-          <button class="btn btn-primary" :disabled="active.type !== 'CT' || ['eye','other'].includes(active.organId || '') || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> Start segmentation</button>
-          <p v-if="segmentationTask">Task: {{ segmentationTask.status }} · {{ segmentationTask.progress || 0 }}%</p>
-          <RouterLink v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :to="'/doctor/patients/' + patientId + '/3d'"><Box :size="16" /> View 3D result</RouterLink>
+          <div><h3>{{ $t('Organ segmentation') }}</h3><p class="muted">{{ $t('CT uses the configured segmentation model; MRI currently supports viewing.') }}</p></div>
+          <button class="btn btn-primary" :disabled="active.type !== 'CT' || ['eye','other'].includes(active.organId || '') || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> {{ $t('Start segmentation') }}</button>
+          <p v-if="segmentationTask">{{ $t('Task: {status} · {progress}%', { status: segmentationTask.status, progress: segmentationTask.progress || 0 }) }}</p>
+          <RouterLink v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :to="'/doctor/patients/' + patientId + '/3d'"><Box :size="16" /> {{ $t('View 3D result') }}</RouterLink>
         </div>
         <div class="card task-card analysis-card">
           <div>
-            <h3><Sparkles :size="17" /> 肺结节候选检测</h3>
-            <p v-if="localPreview" class="muted">当前为合成数据预览；真实模型任务需启动后端模式。</p>
-            <p v-else-if="analysisStatus?.configured" class="muted">{{ analysisStatus.model_name }} · 输出候选框，需医生审核。</p>
-            <p v-else class="muted">模型接口已就绪，等待配置模型服务地址。</p>
+            <h3><Sparkles :size="17" /> {{ $t('Lung nodule candidate detection') }}</h3>
+            <p v-if="localPreview" class="muted">{{ $t('This is synthetic preview data; start backend mode for real model tasks.') }}</p>
+            <p v-else-if="analysisStatus?.configured" class="muted">{{ $t('{model} · Candidate boxes require physician review.', { model: analysisStatus.model_name }) }}</p>
+            <p v-else class="muted">{{ $t('The model interface is ready and waiting for a model service URL.') }}</p>
           </div>
           <button
             class="btn btn-primary"
             :disabled="localPreview || !analysisStatus?.configured || active.type !== 'CT' || active.organId !== 'lung' || analysisBusy || ['queued','running'].includes(analysisTask?.status || '')"
             @click="analyzeLungNodules"
-          ><Sparkles :size="16" /> {{ analysisBusy ? '正在启动…' : '开始肺结节检测' }}</button>
-          <p v-if="analysisTask">任务：{{ analysisTask.status }} · {{ analysisTask.progress || 0 }}%</p>
-          <p v-else-if="activeFindings.length" class="finding-summary">当前影像有 {{ activeFindings.length }} 个候选 finding</p>
+          ><Sparkles :size="16" /> {{ analysisBusy ? $t('Starting…') : $t('Start lung nodule detection') }}</button>
+          <p v-if="analysisTask">{{ $t('Task: {status} · {progress}%', { status: analysisTask.status, progress: analysisTask.progress || 0 }) }}</p>
+          <p v-else-if="activeFindings.length" class="finding-summary">{{ $t('This image has {count} candidate findings', { count: activeFindings.length }) }}</p>
           <RouterLink
             v-if="analysisTask?.status === 'completed' || activeFindings.length"
             class="btn btn-secondary"
             :to="{name:'doctor-patient-ai',params:{id:patientId},query:{exam:active.id}}"
-          >查看并审核 {{ analysisTask?.result?.findings_count ?? activeFindings.length }} 个结果</RouterLink>
+          >{{ $t('Review {count} results', { count: analysisTask?.result?.findings_count ?? activeFindings.length }) }}</RouterLink>
         </div>
       </div>
     </section>
     <aside class="stack">
       <section class="card">
-        <div class="card-header"><h3>Imaging studies</h3><span class="muted">{{ store.examinations.length }}</span></div>
+        <div class="card-header"><h3>{{ $t('Imaging studies') }}</h3><span class="muted">{{ store.examinations.length }}</span></div>
         <div class="study-list">
           <button v-for="image in store.examinations" :key="image.id" class="study-item" :class="{ active:image.id === active?.id }" @click="selectStudy(image.id)">
-            <strong>{{ image.type }} · {{ image.organ }}</strong><span>{{ image.date }} · {{ image.sliceCount }} slices</span>
+            <strong>{{ image.type }} · {{ image.organ }}</strong><span>{{ image.date }} · {{ image.sliceCount }} {{ $t('slices') }}</span>
           </button>
         </div>
       </section>

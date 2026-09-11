@@ -1,4 +1,10 @@
-export const SESSION_KEY = 'vmrb-session-v1'
+export const SESSION_KEY = 'vmrb-session-v2'
+const LEGACY_SESSION_KEY = 'vmrb-session-v1'
+
+try {
+  sessionStorage.removeItem(LEGACY_SESSION_KEY)
+  localStorage.removeItem(LEGACY_SESSION_KEY)
+} catch { /* private mode */ }
 export class ApiError extends Error {
   constructor(public status: number, public code: number, message: string) { super(message) }
 }

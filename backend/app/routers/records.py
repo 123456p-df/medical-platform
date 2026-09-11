@@ -4,30 +4,37 @@ from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
 from app.audit import audit
-from app.deps import DB, CurrentUser, check_patient_access, require_doctor
+from app.deps import Config, DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import APIError, Envelope, success
 from app.models import Doctor, MedicalImage, MedicalRecord, User, utcnow
 from app.organs import require_organ
 from app.schemas import RecordCreate, RecordOut, RecordPage, RecordPatch
+from app.services.reports import (
+    finalize_report_document,
+    report_content,
+    rollback_report_document,
+    write_report_document,
+)
 
 router = APIRouter(tags=["Medical Record"])
 
 
-def record_out(db, record):
+def record_out(db, record, settings):
     name = db.scalar(
         select(User.username)
         .join(Doctor, Doctor.user_id == User.id)
         .where(Doctor.id == record.doctor_id)
     )
+    content = report_content(settings, record)
     return {
         "record_id": record.id,
         "patient_id": record.patient_id,
         "organ_id": record.organ_id,
         "organ_ids": record.organ_ids,
         "examination_id": record.examination_id,
-        "diagnosis": record.diagnosis,
-        "description": record.description,
-        "recommendation": record.recommendation,
+        "diagnosis": content["diagnosis"],
+        "description": content["description"],
+        "recommendation": content["recommendation"],
         "reviewed": record.reviewed,
         "signed_at": record.signed_at,
         "record_date": record.record_date,
@@ -45,6 +52,7 @@ def snapshot(record):
         "diagnosis": record.diagnosis,
         "description": record.description,
         "recommendation": record.recommendation,
+        "content_path": record.content_path,
         "reviewed": record.reviewed,
         "signed_at": record.signed_at.isoformat() if record.signed_at else None,
         "record_date": record.record_date.isoformat(),
@@ -78,6 +86,7 @@ def list_records(
     organ_id: str,
     db: DB,
     user: CurrentUser,
+    settings: Config,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     start_date: date | None = None,
@@ -108,7 +117,7 @@ def list_records(
     )
     return success(
         {
-            "items": [record_out(db, r) for r in records],
+            "items": [record_out(db, r, settings) for r in records],
             "page": page,
             "page_size": page_size,
             "total": total,
@@ -117,14 +126,16 @@ def list_records(
 
 
 @router.get("/medical-records/{record_id}", response_model=Envelope[RecordOut])
-def get_record(record_id: int, db: DB, user: CurrentUser):
-    return success(record_out(db, accessible_record(db, user, record_id)))
+def get_record(record_id: int, db: DB, user: CurrentUser, settings: Config):
+    return success(record_out(db, accessible_record(db, user, record_id), settings))
 
 
 @router.post(
     "/patients/{patient_id}/medical-records", status_code=201, response_model=Envelope[RecordOut]
 )
-def create_record(patient_id: int, body: RecordCreate, db: DB, user: CurrentUser):
+def create_record(
+    patient_id: int, body: RecordCreate, db: DB, user: CurrentUser, settings: Config
+):
     check_patient_access(db, user, patient_id, write=True)
     doctor = require_doctor(db, user)
     require_organ(body.organ_id)
@@ -134,23 +145,39 @@ def create_record(patient_id: int, body: RecordCreate, db: DB, user: CurrentUser
     record = MedicalRecord(patient_id=patient_id, doctor_id=doctor.id, **body.model_dump())
     record.signed_at = utcnow() if record.reviewed else None
     db.add(record)
-    db.flush()
-    audit(
-        db,
-        user.id,
-        patient_id,
-        "record.create",
-        "medical_record",
-        record.id,
-        after=snapshot(record),
-    )
-    db.commit()
-    return success(record_out(db, record))
+    change = None
+    try:
+        db.flush()
+        change = write_report_document(settings, record)
+        audit(
+            db,
+            user.id,
+            patient_id,
+            "record.create",
+            "medical_record",
+            record.id,
+            after=snapshot(record),
+        )
+        db.commit()
+        finalize_report_document(change)
+    except Exception:
+        db.rollback()
+        rollback_report_document(change)
+        raise
+    return success(record_out(db, record, settings))
 
 
 @router.patch("/medical-records/{record_id}", response_model=Envelope[RecordOut])
-def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
+def update_record(
+    record_id: int, body: RecordPatch, db: DB, user: CurrentUser, settings: Config
+):
     record = accessible_record(db, user, record_id, write=True)
+    # Markdown is primary once a pointer exists. Hydrate the database mirror before
+    # applying a partial patch so metadata-only changes cannot erase agent edits.
+    content = report_content(settings, record)
+    record.diagnosis = content["diagnosis"]
+    record.description = content["description"]
+    record.recommendation = content["recommendation"]
     if body.organ_id is not None:
         require_organ(body.organ_id)
     for organ_id in body.organ_ids or []:
@@ -172,18 +199,26 @@ def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
     if record.reviewed and (not record.diagnosis.strip() or not record.description.strip()):
         raise APIError(422, 42203, "Signed reports require a diagnosis and description")
     record.updated_at = utcnow()
-    audit(
-        db,
-        user.id,
-        record.patient_id,
-        "record.update",
-        "medical_record",
-        record.id,
-        before=before,
-        after=snapshot(record),
-    )
-    db.commit()
-    return success(record_out(db, record))
+    change = None
+    try:
+        change = write_report_document(settings, record)
+        audit(
+            db,
+            user.id,
+            record.patient_id,
+            "record.update",
+            "medical_record",
+            record.id,
+            before=before,
+            after=snapshot(record),
+        )
+        db.commit()
+        finalize_report_document(change)
+    except Exception:
+        db.rollback()
+        rollback_report_document(change)
+        raise
+    return success(record_out(db, record, settings))
 
 
 @router.delete("/medical-records/{record_id}", response_model=Envelope[None])

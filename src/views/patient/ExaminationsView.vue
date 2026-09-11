@@ -34,7 +34,7 @@ async function handleUploaded(studies: Examination[]) {
 
 <template>
   <div class="page">
-    <PageHeader title="My Examinations" subtitle="上传并比较多个时期的 CT 检查。" />
+    <PageHeader :title="$t('My Examinations')" :subtitle="$t('Upload and compare CT examinations from multiple dates.')" />
 
     <section class="comparison-layout">
       <StudyComparisonViewer
@@ -56,7 +56,7 @@ async function handleUploaded(studies: Examination[]) {
     </section>
 
     <div v-if="!store.examinations.length && !store.loading" class="card empty-state">
-      No examinations are available.
+      {{ $t('No examinations are available.') }}
     </div>
   </div>
 </template>

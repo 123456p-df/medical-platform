@@ -14,16 +14,16 @@ async function run(action: () => Promise<unknown>, message: string) {
   if (busy.value) return
   busy.value = true; error.value = ''; success.value = ''
   try { await action(); await profile.load(); success.value = message }
-  catch (e) { error.value = e instanceof Error ? e.message : '操作失败' }
+  catch (e) { error.value = e instanceof Error ? e.message : 'Operation failed.' }
   finally { busy.value = false }
 }
-async function save() { await run(() => profile.save(form), '个人资料已保存') }
+async function save() { await run(() => profile.save(form), 'Profile saved.') }
 async function upload(event: Event, avatar: boolean) {
   const input = event.target as HTMLInputElement, file = input.files?.[0]
   if (!file) return
-  if (file.size > (avatar ? 5 : 10) * 1024 * 1024) { error.value = avatar ? '头像请小于 5 MB' : '附件请小于 10 MB'; input.value = ''; return }
+  if (file.size > (avatar ? 5 : 10) * 1024 * 1024) { error.value = avatar ? 'Avatar must be smaller than 5 MB.' : 'Attachment must be smaller than 10 MB.'; input.value = ''; return }
   const body = new FormData(); body.append('file', file)
-  await run(() => api('/auth/profile/' + (avatar ? 'avatar' : 'files'), { method: 'POST', body }), avatar ? '头像已更新' : '附件已上传')
+  await run(() => api('/auth/profile/' + (avatar ? 'avatar' : 'files'), { method: 'POST', body }), avatar ? 'Avatar updated.' : 'Attachment uploaded.')
   input.value = ''
 }
 async function download(file: ProfileFile) {
@@ -31,47 +31,47 @@ async function download(file: ProfileFile) {
     const blob = await (await request('/auth/profile/files/' + file.id)).blob()
     const url = URL.createObjectURL(blob), link = document.createElement('a')
     link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
-  }, '附件已下载')
+  }, 'Attachment downloaded.')
 }
 onMounted(async () => { await run(() => Promise.resolve(), ''); fill() })
 </script>
 <template>
   <div class="page profile-page">
     <header class="profile-heading">
-      <button class="back-link" type="button" @click="router.push('/' + auth.portal + '/dashboard')"><ArrowLeft :size="16" /> 返回工作台</button>
-      <div><span class="profile-eyebrow">YOUR PROFILE</span><h1>个人资料</h1><p class="muted">您的头像、联系方式与专业信息。</p></div>
+      <button class="back-link" type="button" @click="router.push('/' + auth.portal + '/dashboard')"><ArrowLeft :size="16" /> {{ $t('Back to Workspace') }}</button>
+      <div><span class="profile-eyebrow">{{ $t('Your Profile') }}</span><h1>{{ $t('Profile') }}</h1><p class="muted">{{ $t('Your avatar, contact details, and professional information.') }}</p></div>
     </header>
     <div class="profile-grid">
       <aside class="card identity-card">
-        <button class="avatar-upload" :disabled="busy" aria-label="上传头像" @click="avatarInput?.click()">
-          <img v-if="profile.data?.avatar_url" :src="profile.data.avatar_url" alt="个人头像" /><UserRound v-else :size="50" /><span><Camera :size="16" /></span>
+        <button class="avatar-upload" :disabled="busy" :aria-label="$t('Upload avatar')" @click="avatarInput?.click()">
+          <img v-if="profile.data?.avatar_url" :src="profile.data.avatar_url" :alt="$t('Personal avatar')" /><UserRound v-else :size="50" /><span><Camera :size="16" /></span>
         </button>
         <input ref="avatarInput" hidden type="file" accept="image/png,image/jpeg,image/webp" @change="upload($event, true)" />
-        <h2>{{ profile.data?.display_name }}</h2><p>{{ profile.data?.role === 'doctor' ? '医生' : '患者' }} · {{ profile.data?.username }}</p>
-        <button class="btn btn-secondary" :disabled="busy" @click="avatarInput?.click()">更换头像</button>
-        <button v-if="profile.data?.avatar_url" class="text-action" :disabled="busy" @click="run(() => api('/auth/profile/avatar', { method: 'DELETE' }), '已移除头像')">移除头像</button>
-        <small>JPG / PNG / WebP · 最大 5 MB</small>
+        <h2>{{ profile.data?.display_name }}</h2><p>{{ $t(profile.data?.role === 'doctor' ? 'Doctor' : 'Patient') }} · {{ profile.data?.username }}</p>
+        <button class="btn btn-secondary" :disabled="busy" @click="avatarInput?.click()">{{ $t('Change avatar') }}</button>
+        <button v-if="profile.data?.avatar_url" class="text-action" :disabled="busy" @click="run(() => api('/auth/profile/avatar', { method: 'DELETE' }), 'Avatar removed.')">{{ $t('Remove avatar') }}</button>
+        <small>{{ $t('JPG / PNG / WebP · Maximum 5 MB') }}</small>
       </aside>
       <div class="stack">
         <form class="card profile-form" @submit.prevent="save">
-          <div class="form-heading"><div><span>ACCOUNT DETAILS</span><h3>基本信息</h3></div><p>这些信息将显示在您的报告和临床协作记录中。</p></div>
+          <div class="form-heading"><div><span>{{ $t('Account details') }}</span><h3>{{ $t('Basic information') }}</h3></div><p>{{ $t('This information appears in your reports and clinical collaboration records.') }}</p></div>
           <div class="profile-fields">
-            <label><span>显示姓名</span><input v-model="form.display_name" class="profile-input" maxlength="100" placeholder="请输入显示姓名" required /></label>
-            <label><span>职称 / 身份</span><input v-model="form.title" class="profile-input" maxlength="100" placeholder="例如：主治医师" /></label>
-            <label><span>科室 / 机构</span><input v-model="form.department" class="profile-input" maxlength="100" placeholder="例如：胸部影像科" /></label>
-            <label><span>联系电话</span><input v-model="form.phone" class="profile-input" type="tel" maxlength="40" placeholder="请输入联系电话" /></label>
-            <label class="wide"><span>邮箱</span><input v-model="form.email" class="profile-input" type="email" maxlength="254" placeholder="name@example.com" /></label>
-            <label class="wide"><span>个人介绍</span><textarea v-model="form.bio" class="profile-input profile-textarea" maxlength="2000" rows="4" placeholder="简要介绍专业方向或工作职责" /></label>
+            <label><span>{{ $t('Display name') }}</span><input v-model="form.display_name" class="profile-input" maxlength="100" :placeholder="$t('Enter a display name')" required /></label>
+            <label><span>{{ $t('Title / identity') }}</span><input v-model="form.title" class="profile-input" maxlength="100" :placeholder="$t('For example: attending physician')" /></label>
+            <label><span>{{ $t('Department / organization') }}</span><input v-model="form.department" class="profile-input" maxlength="100" :placeholder="$t('For example: thoracic radiology')" /></label>
+            <label><span>{{ $t('Phone') }}</span><input v-model="form.phone" class="profile-input" type="tel" maxlength="40" :placeholder="$t('Enter a phone number')" /></label>
+            <label class="wide"><span>{{ $t('Email') }}</span><input v-model="form.email" class="profile-input" type="email" maxlength="254" placeholder="name@example.com" /></label>
+            <label class="wide"><span>{{ $t('About me') }}</span><textarea v-model="form.bio" class="profile-input profile-textarea" maxlength="2000" rows="4" :placeholder="$t('Briefly describe your specialty or responsibilities')" /></label>
           </div>
-          <div class="form-footer"><span>修改仅影响当前账号资料。</span><button class="btn btn-primary" :disabled="busy || !form.display_name.trim()"><Save :size="16" />{{ busy ? '处理中…' : '保存资料' }}</button></div>
+          <div class="form-footer"><span>{{ $t('Changes only affect this account.') }}</span><button class="btn btn-primary" :disabled="busy || !form.display_name.trim()"><Save :size="16" />{{ $t(busy ? 'Processing…' : 'Save profile') }}</button></div>
         </form>
         <section class="card attachments">
-          <div class="attachment-heading"><div><h3>个人附件</h3><p class="muted">证件、资质或其他资料，仅当前账号可访问。</p></div><button class="btn btn-secondary" :disabled="busy" @click="fileInput?.click()"><Upload :size="16" /> 上传附件</button></div>
+          <div class="attachment-heading"><div><h3>{{ $t('Personal attachments') }}</h3><p class="muted">{{ $t('Documents and credentials are private to this account.') }}</p></div><button class="btn btn-secondary" :disabled="busy" @click="fileInput?.click()"><Upload :size="16" /> {{ $t('Upload attachment') }}</button></div>
           <input ref="fileInput" hidden type="file" accept=".pdf,image/jpeg,image/png,image/webp" @change="upload($event, false)" />
-          <div v-for="file in profile.data?.files" :key="file.id" class="attachment"><FileText :size="22" /><div><strong>{{ file.name }}</strong><small>{{ (file.size_bytes / 1024).toFixed(0) }} KB</small></div><button class="icon-btn" :disabled="busy" :aria-label="'下载 ' + file.name" @click="download(file)"><Download :size="17" /></button><button class="icon-btn" :disabled="busy" :aria-label="'删除 ' + file.name" @click="run(() => api('/auth/profile/files/' + file.id, { method: 'DELETE' }), '附件已删除')"><Trash2 :size="17" /></button></div>
-          <p v-if="!profile.data?.files.length" class="empty-state">尚未上传附件</p><small class="muted">PDF / JPG / PNG / WebP · 每份最大 10 MB · 最多 20 份</small>
+          <div v-for="file in profile.data?.files" :key="file.id" class="attachment"><FileText :size="22" /><div><strong>{{ file.name }}</strong><small>{{ (file.size_bytes / 1024).toFixed(0) }} KB</small></div><button class="icon-btn" :disabled="busy" :aria-label="$t('Download {name}', { name: file.name })" @click="download(file)"><Download :size="17" /></button><button class="icon-btn" :disabled="busy" :aria-label="$t('Delete {name}', { name: file.name })" @click="run(() => api('/auth/profile/files/' + file.id, { method: 'DELETE' }), 'Attachment deleted.')"><Trash2 :size="17" /></button></div>
+          <p v-if="!profile.data?.files.length" class="empty-state">{{ $t('No attachments uploaded.') }}</p><small class="muted">{{ $t('PDF / JPG / PNG / WebP · Maximum 10 MB each · Up to 20 files') }}</small>
         </section>
-        <p v-if="error" role="alert" class="error-message">{{ error }}</p><p v-if="success" role="status" class="success-message">{{ success }}</p>
+        <p v-if="error" role="alert" class="error-message">{{ $t(error) }}</p><p v-if="success" role="status" class="success-message">{{ $t(success) }}</p>
       </div>
     </div>
   </div>

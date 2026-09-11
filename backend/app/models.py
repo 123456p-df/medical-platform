@@ -83,6 +83,10 @@ class MedicalRecord(CreatedMixin, Base):
     diagnosis: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
     recommendation: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
+    content_path: Mapped[str | None] = mapped_column(Text)
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
+    content_size: Mapped[int | None]
+    content_revision: Mapped[int | None]
     reviewed: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_date: Mapped[date]

@@ -24,7 +24,7 @@ from app.services.imaging import (
     slice_cache_path,
     slice_png,
 )
-from app.services.storage import relative_path, stored_path
+from app.services.storage import imaging_relative_path, relative_path, stored_path
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Medical Image"])
@@ -117,7 +117,7 @@ def upload_image(
     if extension is None:
         raise APIError(400, 40004, "Supported image formats: .nii and .nii.gz")
     image_id = f"img_{uuid4().hex}"
-    path = stored_path(settings, f"medical-images/{image_id}{extension}")
+    path = stored_path(settings, imaging_relative_path(patient_id, image_id, extension))
     path.parent.mkdir(parents=True, exist_ok=True)
     size = 0
     try:

@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     jwt_issuer: str = "vmrb"
     jwt_audience: str = "vmrb-api"
     access_token_minutes: int = Field(default=60, ge=1, le=1440)
-    storage_root: Path = Path("data")
+    # One durable tree for records, imaging and derived artifacts. Database rows keep
+    # ownership/search metadata while large or agent-readable content lives here.
+    storage_root: Path = Path("dataset")
+    allow_registration: bool = False
     cors_origins: list[str] = ["http://localhost:5173"]
     max_upload_bytes: int = Field(default=512 * 1024 * 1024, ge=1024)
     max_volume_voxels: int = Field(default=64_000_000, ge=8)

@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.cli import set_access
 from app.models import AuditEvent, MedicalRecord, Patient, User, utcnow
+from app.services.storage import stored_path
 from tests.conftest import record
 
 
@@ -161,6 +162,12 @@ def test_patient_receives_report_only_after_doctor_signs(app_env, people):
         item["record_id"]
         for item in client.get(collection, headers=people["patient_a"]).json()["data"]["items"]
     }
+    draft_overview = client.get(
+        f"/api/v1/patients/{patient_id}/overview", headers=people["patient_a"]
+    ).json()["data"]
+    assert not next(item for item in draft_overview["organs"] if item["organ_id"] == "lung")[
+        "has_record"
+    ]
 
     signed = client.patch(route, json={"reviewed": True}, headers=people["doctor_a"])
     assert signed.status_code == 200
@@ -173,6 +180,53 @@ def test_patient_receives_report_only_after_doctor_signs(app_env, people):
         item["record_id"]
         for item in client.get(collection, headers=people["patient_a"]).json()["data"]["items"]
     }
+    signed_overview = client.get(
+        f"/api/v1/patients/{patient_id}/overview", headers=people["patient_a"]
+    ).json()["data"]
+    assert next(item for item in signed_overview["organs"] if item["organ_id"] == "lung")[
+        "has_record"
+    ]
+
+
+def test_report_markdown_is_primary_and_versions_are_retained(app_env, people):
+    app, client, settings, _ = app_env
+    record_id = record(
+        client,
+        people,
+        diagnosis="文件优先诊断",
+        description="第一版影像所见",
+        recommendation="六个月后复查",
+    )
+    route = f"/api/v1/medical-records/{record_id}"
+    with app.state.session_factory() as db:
+        row = db.get(MedicalRecord, record_id)
+        first_relative = row.content_path
+        assert first_relative.startswith(f"patient/{row.patient_id}/report/{record_id}/")
+        assert row.content_revision == 1
+        first_path = stored_path(settings, first_relative)
+        assert first_path.is_file()
+        assert "文件优先诊断" in first_path.read_text(encoding="utf-8")
+        row.diagnosis = "数据库中的旧镜像"
+        db.commit()
+
+    delivered = client.get(route, headers=people["doctor_a"])
+    assert delivered.status_code == 200
+    assert delivered.json()["data"]["diagnosis"] == "文件优先诊断"
+
+    updated = client.patch(
+        route, json={"description": "第二版影像所见"}, headers=people["doctor_a"]
+    )
+    assert updated.status_code == 200
+    with app.state.session_factory() as db:
+        row = db.get(MedicalRecord, record_id)
+        second_path = stored_path(settings, row.content_path)
+        assert row.content_revision == 2
+        assert row.content_path != first_relative
+        assert first_path.is_file() and second_path.is_file()
+        assert "第二版影像所见" in second_path.read_text(encoding="utf-8")
+
+    second_path.write_text("corrupt", encoding="utf-8")
+    assert client.get(route, headers=people["doctor_a"]).status_code == 500
 
 
 @pytest.mark.parametrize("suffix", ["overview", "organs/lung", "organs/lung/records"])
