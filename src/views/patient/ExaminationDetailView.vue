@@ -19,7 +19,8 @@ const examination = computed(() =>
   store.examinations.find((exam) => exam.id === examId.value),
 )
 const reviewedReport = computed(() =>
-  store.reviewedReports.find((report) => report.organId === examination.value?.organId),
+  store.reviewedReports.find((report) => report.examinationId === examId.value) ||
+  store.reviewedReports.find((report) => !report.examinationId && report.organId === examination.value?.organId),
 )
 
 function formatDate(date?: string) {

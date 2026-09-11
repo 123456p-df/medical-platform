@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ArrowRight, HeartPulse, Stethoscope, Activity } from 'lucide-vue-next'
+import { ArrowRight, HeartPulse, ShieldCheck, Stethoscope, Activity } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import type { PortalRole } from '@/types'
 import { ref } from 'vue'
 import { localPreview } from '@/utils/runtime'
 
@@ -14,12 +13,17 @@ const password = ref('')
 const busy = ref(false)
 const error = ref('')
 const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
+type PreviewAccount = 'admin' | 'doctor' | 'patient'
 
-async function login(demoRole?: PortalRole) {
+async function login(previewAccount?: PreviewAccount) {
   if (busy.value) return
-  if (demoRole) {
-    username.value = demoRole === 'doctor' ? 'demo_doctor' : 'demo_patient'
-    password.value = demoRole === 'doctor' ? 'DemoDoctor123!' : 'DemoPatient123!'
+  if (previewAccount) {
+    const credentials = {
+      admin: ['admin', 'Admin123!'],
+      doctor: ['demo_doctor', 'DemoDoctor123!'],
+      patient: ['demo_patient', 'DemoPatient123!'],
+    } as const
+    ;[username.value, password.value] = credentials[previewAccount]
   }
   busy.value = true
   error.value = ''
@@ -71,6 +75,14 @@ async function login(demoRole?: PortalRole) {
         <button type="submit" class="btn btn-primary" :disabled="busy">{{ busy ? 'Signing in…' : 'Sign in' }}</button>
       </form>
       <div v-if="preview" class="role-options">
+        <button class="role-card admin" type="button" @click="login('admin')">
+          <span class="role-icon"><ShieldCheck :size="24" /></span>
+          <span class="role-copy">
+            <strong>Administrator</strong>
+            <small>查看和管理全部演示患者 · admin / Admin123!</small>
+          </span>
+          <ArrowRight :size="19" />
+        </button>
         <button class="role-card doctor" type="button" @click="login('doctor')">
           <span class="role-icon"><Stethoscope :size="24" /></span>
           <span class="role-copy">
@@ -257,6 +269,11 @@ async function login(demoRole?: PortalRole) {
 .role-card.doctor .role-icon {
   background: #e3f3f3;
   color: #277b7f;
+}
+
+.role-card.admin .role-icon {
+  background: #e8eef9;
+  color: #315d9b;
 }
 
 .role-card.patient .role-icon {

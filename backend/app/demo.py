@@ -23,6 +23,7 @@ def seed(settings):
     engine = make_engine(settings.database_url)
     with make_session_factory(engine)() as db:
         for username, role, password in [
+            ("admin", "doctor", "Admin123!"),
             ("demo_doctor", "doctor", "DemoDoctor123!"),
             ("demo_patient", "patient", "DemoPatient123!"),
             ("demo_patient_2", "patient", "DemoPatient123!"),

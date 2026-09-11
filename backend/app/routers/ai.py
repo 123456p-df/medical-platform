@@ -28,7 +28,9 @@ def status(user: CurrentUser, settings: Config):
 def chat(body: ChatInput, request: Request, db: DB, user: CurrentUser, settings: Config):
     patient = check_patient_access(db, user, body.patient_id)
     require_organ(body.organ_id)
-    context, truncated = build_context(db, patient, body.organ_id, settings)
+    context, truncated = build_context(
+        db, patient, body.organ_id, settings, include_drafts=user.role == "doctor"
+    )
     user_id, role = user.id, user.role
     # Release the database transaction before waiting on the external AI service.
     db.commit()

@@ -160,11 +160,13 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
         "model_id": model.id if model else f"default_{organ_id}",
         "available": bool(model and stored_path(settings, model.file_path).is_file()),
     }
-    filters = (
+    filters = [
         MedicalRecord.patient_id == patient_id,
         MedicalRecord.has_organ(organ_id),
         MedicalRecord.deleted_at.is_(None),
-    )
+    ]
+    if user.role == "patient":
+        filters.append(MedicalRecord.reviewed.is_(True))
     total = db.scalar(select(func.count()).select_from(MedicalRecord).where(*filters))
     rows = db.execute(
         select(MedicalRecord, User.username)

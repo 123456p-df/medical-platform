@@ -141,6 +141,40 @@ def test_record_lifecycle_filters_and_audit(app_env, people):
         assert events[2].after["deleted_at"] is not None
 
 
+def test_patient_receives_report_only_after_doctor_signs(app_env, people):
+    _, client, _, _ = app_env
+    patient_id = people["patient_a_pid"]
+    record_id = record(
+        client,
+        people,
+        diagnosis="待签署诊断",
+        description="待签署影像所见",
+        recommendation="三个月后复查",
+        reviewed=False,
+    )
+    route = f"/api/v1/medical-records/{record_id}"
+    collection = f"/api/v1/patients/{patient_id}/medical-records"
+
+    assert client.get(route, headers=people["doctor_a"]).status_code == 200
+    assert client.get(route, headers=people["patient_a"]).status_code == 404
+    assert record_id not in {
+        item["record_id"]
+        for item in client.get(collection, headers=people["patient_a"]).json()["data"]["items"]
+    }
+
+    signed = client.patch(route, json={"reviewed": True}, headers=people["doctor_a"])
+    assert signed.status_code == 200
+    assert signed.json()["data"]["signed_at"] is not None
+
+    delivered = client.get(route, headers=people["patient_a"])
+    assert delivered.status_code == 200
+    assert delivered.json()["data"]["recommendation"] == "三个月后复查"
+    assert record_id in {
+        item["record_id"]
+        for item in client.get(collection, headers=people["patient_a"]).json()["data"]["items"]
+    }
+
+
 @pytest.mark.parametrize("suffix", ["overview", "organs/lung", "organs/lung/records"])
 def test_all_patient_read_routes_enforce_access(app_env, people, suffix):
     _, client, _, _ = app_env

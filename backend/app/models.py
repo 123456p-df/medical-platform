@@ -78,9 +78,13 @@ class MedicalRecord(CreatedMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
     doctor_id: Mapped[int] = mapped_column(ForeignKey("doctors.id"))
+    examination_id: Mapped[str | None] = mapped_column(ForeignKey("medical_images.id"))
     organ_id: Mapped[str] = mapped_column(String(64))
     diagnosis: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
+    recommendation: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
+    reviewed: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_date: Mapped[date]
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

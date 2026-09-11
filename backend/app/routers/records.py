@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from app.audit import audit
 from app.deps import DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import APIError, Envelope, success
-from app.models import Doctor, MedicalRecord, User, utcnow
+from app.models import Doctor, MedicalImage, MedicalRecord, User, utcnow
 from app.organs import require_organ
 from app.schemas import RecordCreate, RecordOut, RecordPage, RecordPatch
 
@@ -24,8 +24,12 @@ def record_out(db, record):
         "patient_id": record.patient_id,
         "organ_id": record.organ_id,
         "organ_ids": record.organ_ids,
+        "examination_id": record.examination_id,
         "diagnosis": record.diagnosis,
         "description": record.description,
+        "recommendation": record.recommendation,
+        "reviewed": record.reviewed,
+        "signed_at": record.signed_at,
         "record_date": record.record_date,
         "doctor_name": name,
         "created_at": record.created_at,
@@ -37,8 +41,12 @@ def snapshot(record):
     return {
         "organ_id": record.organ_id,
         "organ_ids": record.organ_ids,
+        "examination_id": record.examination_id,
         "diagnosis": record.diagnosis,
         "description": record.description,
+        "recommendation": record.recommendation,
+        "reviewed": record.reviewed,
+        "signed_at": record.signed_at.isoformat() if record.signed_at else None,
         "record_date": record.record_date.isoformat(),
         "deleted_at": record.deleted_at.isoformat() if record.deleted_at else None,
     }
@@ -51,7 +59,17 @@ def accessible_record(db, user, record_id, *, write=False):
     check_patient_access(db, user, record.patient_id, write=write)
     if record.deleted_at is not None:
         raise APIError(404, 40403, "Medical record not found")
+    if user.role == "patient" and not record.reviewed:
+        raise APIError(404, 40403, "Medical record not found")
     return record
+
+
+def validate_examination(db, patient_id, examination_id):
+    if examination_id is None:
+        return
+    image = db.get(MedicalImage, examination_id)
+    if image is None or image.patient_id != patient_id:
+        raise APIError(422, 42202, "Examination does not belong to this patient")
 
 
 @router.get("/patients/{patient_id}/organs/{organ_id}/records", response_model=Envelope[RecordPage])
@@ -74,6 +92,8 @@ def list_records(
         MedicalRecord.has_organ(organ_id),
         MedicalRecord.deleted_at.is_(None),
     ]
+    if user.role == "patient":
+        filters.append(MedicalRecord.reviewed.is_(True))
     if start_date:
         filters.append(MedicalRecord.record_date >= start_date)
     if end_date:
@@ -110,7 +130,9 @@ def create_record(patient_id: int, body: RecordCreate, db: DB, user: CurrentUser
     require_organ(body.organ_id)
     for organ_id in body.organ_ids or []:
         require_organ(organ_id)
+    validate_examination(db, patient_id, body.examination_id)
     record = MedicalRecord(patient_id=patient_id, doctor_id=doctor.id, **body.model_dump())
+    record.signed_at = utcnow() if record.reviewed else None
     db.add(record)
     db.flush()
     audit(
@@ -133,6 +155,8 @@ def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
         require_organ(body.organ_id)
     for organ_id in body.organ_ids or []:
         require_organ(organ_id)
+    if "examination_id" in body.model_fields_set:
+        validate_examination(db, record.patient_id, body.examination_id)
     before = snapshot(record)
     for key, value in body.model_dump(exclude_unset=True, exclude={"organ_ids"}).items():
         setattr(record, key, value)
@@ -143,6 +167,10 @@ def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
         record.organ_ids = organ_ids
     elif body.organ_id is not None:
         record.organ_ids = [body.organ_id]
+    if "reviewed" in body.model_fields_set:
+        record.signed_at = utcnow() if record.reviewed else None
+    if record.reviewed and (not record.diagnosis.strip() or not record.description.strip()):
+        raise APIError(422, 42203, "Signed reports require a diagnosis and description")
     record.updated_at = utcnow()
     audit(
         db,
