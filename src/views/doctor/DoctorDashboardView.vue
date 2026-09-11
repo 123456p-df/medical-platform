@@ -201,7 +201,6 @@ onMounted(async () => {
             v-else
             :patients="filteredPatients"
             :selected-id="selectedPatientId"
-            @select="selectPatient"
             @open="openPatient"
             @removed="patientRemoved"
           />
