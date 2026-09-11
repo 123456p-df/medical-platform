@@ -74,6 +74,7 @@ def seed(settings):
     try:
         with make_session_factory(engine)() as db:
             for username, role, password in (
+                ("admin", "doctor", "Admin123!"),
                 ("demo_doctor", "doctor", "DemoDoctor123!"),
                 ("demo_patient", "patient", "DemoPatient123!"),
                 ("demo_patient_2", "patient", "DemoPatient123!"),
@@ -110,6 +111,7 @@ def seed(settings):
                 patient = db.get(Patient, patient_id)
                 patient.deleted_at = None
                 set_access(db, "demo_doctor", patient_id, "active")
+                set_access(db, "admin", patient_id, "active")
                 image_id = f"img_demo_{index + 1:04d}"
                 is_new = install_demo_image(db, settings, patient_id, image_id, source, index)
                 if is_new:
@@ -138,7 +140,7 @@ def seed(settings):
                     continue
                 asset = (
                     Path(__file__).resolve().parents[2]
-                    / "medical-platform/Medical/public/models"
+                    / "public/models"
                     / f"organ-{organ}.glb"
                 )
                 if asset.is_file():

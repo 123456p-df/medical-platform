@@ -94,6 +94,8 @@ def records(
     query = select(MedicalRecord).where(
         MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None)
     )
+    if user.role == "patient":
+        query = query.where(MedicalRecord.reviewed.is_(True))
     total = db.scalar(select(func.count()).select_from(query.subquery()))
     rows = db.scalars(
         query.order_by(MedicalRecord.record_date.desc(), MedicalRecord.id.desc())

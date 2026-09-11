@@ -11,9 +11,7 @@ const store = usePatientStore()
 const patientId = computed(() => auth.session?.id ?? '')
 
 onMounted(async () => {
-  if (!store.reviewedReports.length) {
-    await store.loadPatientContext(patientId.value)
-  }
+  await store.loadPatientContext(patientId.value)
 })
 </script>
 

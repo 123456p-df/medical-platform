@@ -16,12 +16,14 @@ class AIAnswer(BaseModel):
     used_record_ids: list[StrictInt]
 
 
-def build_context(db, patient, organ_id, settings):
-    filters = (
+def build_context(db, patient, organ_id, settings, *, include_drafts=True):
+    filters = [
         MedicalRecord.patient_id == patient.id,
         MedicalRecord.has_organ(organ_id),
         MedicalRecord.deleted_at.is_(None),
-    )
+    ]
+    if not include_drafts:
+        filters.append(MedicalRecord.reviewed.is_(True))
     total = db.scalar(select(func.count()).select_from(MedicalRecord).where(*filters))
     rows = db.scalars(
         select(MedicalRecord)

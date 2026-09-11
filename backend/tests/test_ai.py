@@ -34,8 +34,10 @@ def test_chat_context_is_authorized_referenced_and_persisted(app_env, people, ni
     )
     assert context["images"][0]["image_type"] == "CT"
     assert provider.calls[0][2] == "doctor"
+    draft = record(client, people, diagnosis="DRAFT-SECRET", reviewed=False)
     assert client.post("/api/v1/ai/chat", json=body, headers=people["patient_a"]).status_code == 200
     assert provider.calls[1][2] == "patient"
+    assert draft not in [item["record_id"] for item in provider.calls[1][0]["records"]]
     with app.state.session_factory() as db:
         messages = list(db.scalars(select(AIMessage).order_by(AIMessage.id)))
         assert len(messages) == 4

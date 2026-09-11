@@ -136,7 +136,6 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
-  auth.ensureLocalSession()
   const isPublic = Boolean(to.meta.public)
 
   if (!isPublic && !auth.isAuthenticated) {

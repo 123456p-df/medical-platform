@@ -84,19 +84,20 @@ class ProfilePatch(Input):
 class RecordCreate(Input):
     organ_id: str = Field(min_length=1, max_length=64)
     organ_ids: list[str] | None = Field(None, min_length=1, max_length=10)
-    diagnosis: str = Field(min_length=1, max_length=10000)
-    description: str = Field(min_length=1, max_length=30000)
+    examination_id: str | None = Field(default=None, max_length=64)
+    diagnosis: str = Field(max_length=10000)
+    description: str = Field(max_length=30000)
+    recommendation: str = Field(default="", max_length=10000)
+    reviewed: bool = True
     record_date: date
-
-    @field_validator("diagnosis", "description")
-    @classmethod
-    def not_blank(cls, value):
-        if not value.strip():
-            raise ValueError("Must not be blank")
-        return value.strip()
 
     @model_validator(mode="after")
     def matching_organs(self):
+        self.diagnosis = self.diagnosis.strip()
+        self.description = self.description.strip()
+        self.recommendation = self.recommendation.strip()
+        if self.reviewed and (not self.diagnosis or not self.description):
+            raise ValueError("Signed reports require a diagnosis and description")
         if self.organ_ids is not None:
             if (
                 len(set(self.organ_ids)) != len(self.organ_ids)
@@ -110,17 +111,26 @@ class RecordCreate(Input):
 class RecordPatch(Input):
     organ_id: str | None = Field(default=None, min_length=1, max_length=64)
     organ_ids: list[str] | None = Field(None, min_length=1, max_length=10)
-    diagnosis: str | None = Field(default=None, min_length=1, max_length=10000)
-    description: str | None = Field(default=None, min_length=1, max_length=30000)
+    examination_id: str | None = Field(default=None, max_length=64)
+    diagnosis: str | None = Field(default=None, max_length=10000)
+    description: str | None = Field(default=None, max_length=30000)
+    recommendation: str | None = Field(default=None, max_length=10000)
+    reviewed: bool | None = None
     record_date: date | None = None
 
     @model_validator(mode="after")
     def nonempty(self):
         values = self.model_dump(exclude_unset=True)
-        if not values or any(
-            v is None or (isinstance(v, str) and not v.strip()) for v in values.values()
+        if not values or any(v is None for v in values.values()):
+            raise ValueError("Provide at least one non-null field")
+        for field in ("diagnosis", "description", "recommendation"):
+            value = values.get(field)
+            if isinstance(value, str):
+                setattr(self, field, value.strip())
+        if self.reviewed is not False and any(
+            field in values and not values[field].strip() for field in ("diagnosis", "description")
         ):
-            raise ValueError("Provide at least one non-null, non-blank field")
+            raise ValueError("Signed reports require a diagnosis and description")
         if self.organ_ids is not None:
             if len(set(self.organ_ids)) != len(self.organ_ids):
                 raise ValueError("Organ list must be unique")
@@ -134,8 +144,12 @@ class RecordOut(BaseModel):
     patient_id: int
     organ_id: str
     organ_ids: list[str]
+    examination_id: str | None
     diagnosis: str
     description: str
+    recommendation: str
+    reviewed: bool
+    signed_at: datetime | None
     record_date: date
     doctor_name: str
     created_at: datetime

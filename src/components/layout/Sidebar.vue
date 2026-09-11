@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   Activity,
   Box,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
   FileText,
   HeartPulse,
   Home,
@@ -10,12 +13,15 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  ScanLine,
   Sparkles,
   Stethoscope,
+  UsersRound,
   X,
 } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { usePatientStore } from '@/stores/patients'
 
 const props = defineProps<{
   open: boolean
@@ -28,11 +34,22 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+const patients = usePatientStore()
+const route = useRoute()
 const router = useRouter()
-
-const doctorNav = computed(() => [
-  { label: 'Patient Workspace', to: '/doctor/dashboard', icon: LayoutDashboard },
-])
+const managementExpanded = ref(localStorage.getItem('pulmolink-nav-patients') !== 'false')
+const clinicalExpanded = ref(localStorage.getItem('pulmolink-nav-clinical') !== 'false')
+const routePatientId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
+const currentPatientId = computed(() => routePatientId.value || patients.selectedPatientId || '')
+const currentPatient = computed(() => patients.patients.find(patient => patient.id === currentPatientId.value))
+const clinicalItems = computed(() => currentPatientId.value ? [
+  { label: '患者概览', name: 'doctor-patient-overview', icon: ClipboardList },
+  { label: '医学影像', name: 'doctor-patient-imaging', icon: ScanLine },
+  { label: 'AI 辅助诊断', name: 'doctor-patient-ai', icon: Sparkles },
+  { label: '临床报告', name: 'doctor-patient-report', icon: FileText },
+  { label: '3D/2D 分割视口', name: 'doctor-patient-study-viewer', icon: ScanLine },
+  { label: '3D 器官模型', name: 'doctor-patient-3d', icon: Box },
+] : [])
 
 const patientNav = computed(() => [
   { label: 'Home', to: '/patient/dashboard', icon: Home },
@@ -43,7 +60,15 @@ const patientNav = computed(() => [
   { label: 'AI Assistant', to: '/patient/assistant', icon: Sparkles },
 ])
 
-const navItems = computed(() => (auth.portal === 'doctor' ? doctorNav.value : patientNav.value))
+watch(managementExpanded, value => localStorage.setItem('pulmolink-nav-patients', String(value)))
+watch(clinicalExpanded, value => localStorage.setItem('pulmolink-nav-clinical', String(value)))
+watch(routePatientId, id => { if (id) clinicalExpanded.value = true })
+
+function toggleGroup(group: 'management' | 'clinical') {
+  if (props.collapsed) emit('toggle')
+  if (group === 'management') managementExpanded.value = !managementExpanded.value
+  else if (currentPatientId.value) clinicalExpanded.value = !clinicalExpanded.value
+}
 
 function logout() {
   auth.logout()
@@ -77,16 +102,56 @@ function logout() {
 
     <div class="sidebar-label">{{ auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health' }}</div>
 
-    <nav class="nav">
-      <RouterLink
-        v-for="item in navItems"
-        :key="item.label"
-        :to="item.to"
-        class="nav-item"
-        active-class="is-active"
-        :title="props.collapsed ? $t(item.label) : undefined"
-        @click="emit('close')"
-      >
+    <nav v-if="auth.portal === 'doctor'" class="nav doctor-tree" aria-label="医生工作区导航">
+      <section class="tree-group">
+        <button class="tree-toggle" type="button" :aria-expanded="managementExpanded" title="患者管理" @click="toggleGroup('management')">
+          <UsersRound :size="18" />
+          <span>患者管理</span>
+          <ChevronDown v-if="managementExpanded" class="tree-chevron" :size="15" />
+          <ChevronRight v-else class="tree-chevron" :size="15" />
+        </button>
+        <div v-if="managementExpanded" class="tree-children">
+          <RouterLink to="/doctor/dashboard" class="tree-item" active-class="is-active" @click="emit('close')">
+            <LayoutDashboard :size="16" /><span>患者工作台</span>
+          </RouterLink>
+        </div>
+      </section>
+
+      <section class="tree-group">
+        <button
+          class="tree-toggle"
+          :class="{ disabled: !currentPatientId }"
+          type="button"
+          :aria-expanded="clinicalExpanded && Boolean(currentPatientId)"
+          :title="currentPatientId ? '当前患者临床工作流' : '请先打开一名患者'"
+          @click="toggleGroup('clinical')"
+        >
+          <Stethoscope :size="18" />
+          <span class="tree-label">
+            <strong>临床工作流</strong>
+            <small>{{ currentPatient?.name || (currentPatientId ? currentPatientId : '请先打开患者') }}</small>
+          </span>
+          <ChevronDown v-if="clinicalExpanded && currentPatientId" class="tree-chevron" :size="15" />
+          <ChevronRight v-else class="tree-chevron" :size="15" />
+        </button>
+        <div v-if="clinicalExpanded && currentPatientId" class="tree-children clinical-children">
+          <RouterLink
+            v-for="item in clinicalItems"
+            :key="item.name"
+            :to="{ name: item.name, params: { id: currentPatientId } }"
+            class="tree-item"
+            active-class="is-active"
+            @click="emit('close')"
+          >
+            <component :is="item.icon" :size="16" />
+            <span>{{ item.label }}</span>
+          </RouterLink>
+        </div>
+      </section>
+    </nav>
+
+    <nav v-else class="nav" aria-label="患者门户导航">
+      <RouterLink v-for="item in patientNav" :key="item.label" :to="item.to" class="nav-item" active-class="is-active" @click="emit('close')">
         <component :is="item.icon" :size="18" />
         <span>{{ $t(item.label) }}</span>
       </RouterLink>
@@ -210,6 +275,113 @@ function logout() {
   padding: 0 10px;
 }
 
+.doctor-tree {
+  gap: 10px;
+}
+
+.tree-group {
+  display: grid;
+  gap: 4px;
+}
+
+.tree-toggle,
+.tree-item {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  gap: 11px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+}
+
+.tree-toggle {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.tree-toggle:hover,
+.tree-item:hover {
+  background: var(--surface-3);
+}
+
+.tree-toggle.disabled {
+  color: var(--text-muted);
+}
+
+.tree-label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.tree-label strong {
+  font-size: 13px;
+}
+
+.tree-label small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.tree-children {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  margin-left: 19px;
+  padding-left: 12px;
+}
+
+.tree-children::before {
+  position: absolute;
+  top: 1px;
+  bottom: 7px;
+  left: 0;
+  width: 1px;
+  background: var(--border-strong);
+  content: '';
+}
+
+.tree-item {
+  position: relative;
+  min-height: 38px;
+  padding-left: 10px;
+  font-size: 12px;
+  font-weight: 580;
+}
+
+.tree-item::before {
+  position: absolute;
+  top: 50%;
+  left: -12px;
+  width: 10px;
+  height: 1px;
+  background: var(--border-strong);
+  content: '';
+}
+
+.tree-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
 .nav-item {
   display: flex;
   min-height: 42px;
@@ -308,6 +480,9 @@ function logout() {
 .sidebar.is-collapsed .brand-copy,
 .sidebar.is-collapsed .sidebar-label,
 .sidebar.is-collapsed .nav-item span,
+.sidebar.is-collapsed .tree-toggle span,
+.sidebar.is-collapsed .tree-chevron,
+.sidebar.is-collapsed .tree-children,
 .sidebar.is-collapsed .session-copy {
   display: none;
 }
@@ -318,6 +493,11 @@ function logout() {
 }
 
 .sidebar.is-collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar.is-collapsed .tree-toggle {
   justify-content: center;
   padding: 0;
 }
@@ -350,6 +530,9 @@ function logout() {
   .sidebar.is-collapsed .brand-copy,
   .sidebar.is-collapsed .sidebar-label,
   .sidebar.is-collapsed .nav-item span,
+  .sidebar.is-collapsed .tree-toggle span,
+  .sidebar.is-collapsed .tree-chevron,
+  .sidebar.is-collapsed .tree-children,
   .sidebar.is-collapsed .session-copy {
     display: flex;
   }
@@ -366,6 +549,15 @@ function logout() {
   .sidebar.is-collapsed .nav-item {
     justify-content: flex-start;
     padding: 0 12px;
+  }
+
+  .sidebar.is-collapsed .tree-toggle {
+    justify-content: flex-start;
+    padding: 0 11px;
+  }
+
+  .sidebar.is-collapsed .tree-children {
+    display: grid;
   }
 
   .sidebar.is-collapsed .sidebar-footer {

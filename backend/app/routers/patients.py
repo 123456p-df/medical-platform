@@ -168,11 +168,13 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
         "is_watertight": model.is_watertight if model else None,
         "bounds": model.bounds if model else None,
     }
-    filters = (
+    filters = [
         MedicalRecord.patient_id == patient_id,
         MedicalRecord.has_organ(organ_id),
         MedicalRecord.deleted_at.is_(None),
-    )
+    ]
+    if user.role == "patient":
+        filters.append(MedicalRecord.reviewed.is_(True))
     total = db.scalar(select(func.count()).select_from(MedicalRecord).where(*filters))
     rows = db.execute(
         select(MedicalRecord, User.username)

@@ -94,6 +94,7 @@ const hasActiveFilters = computed(
 
 function selectPatient(patient: Patient) {
   selectedPatientId.value = patient.id
+  store.selectedPatientId = patient.id
 }
 
 function openPatient(patient: Patient) {
@@ -103,10 +104,14 @@ function openPatient(patient: Patient) {
 
 function patientCreated(id: string) {
   selectedPatientId.value = id
+  store.selectedPatientId = id
 }
 
 function patientRemoved(id: string) {
-  if (selectedPatientId.value === id) selectedPatientId.value = store.patients[0]?.id || null
+  if (selectedPatientId.value === id) {
+    selectedPatientId.value = store.patients[0]?.id || null
+    store.selectedPatientId = selectedPatientId.value
+  }
 }
 
 function resetFilters() {
@@ -118,6 +123,7 @@ onMounted(async () => {
   if (!selectedPatientId.value || !store.patients.some((patient) => patient.id === selectedPatientId.value)) {
     selectedPatientId.value = store.patients[0]?.id || null
   }
+  store.selectedPatientId = selectedPatientId.value
 })
 </script>
 

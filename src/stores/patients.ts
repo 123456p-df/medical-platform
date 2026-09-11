@@ -12,6 +12,7 @@ import { localPreview } from '@/utils/runtime'
 const PREVIEW_PATIENTS_KEY = 'pulmolink-preview-patients'
 const PREVIEW_ARCHIVED_PATIENTS_KEY = 'pulmolink-preview-archived-patients'
 const PREVIEW_REVIEW_KEY = 'pulmolink-preview-review-status'
+const PREVIEW_REPORTS_KEY = 'pulmolink-preview-reports'
 
 export interface PatientDraft {
   name: string
@@ -33,6 +34,15 @@ function readReviewStatus() {
   catch { return {} }
 }
 
+function readPreviewReports() {
+  try { return JSON.parse(localStorage.getItem(PREVIEW_REPORTS_KEY) || 'null') as Report[] | null }
+  catch { return null }
+}
+
+function writePreviewReports(reports: Report[]) {
+  localStorage.setItem(PREVIEW_REPORTS_KEY, JSON.stringify(reports))
+}
+
 function ageFromDate(date: string | null) {
   if (!date) return null
   const birth = new Date(`${date}T00:00:00`), now = new Date()
@@ -48,7 +58,8 @@ export const usePatientStore = defineStore('patients', () => {
   const findings = ref<Finding[]>([])
   const reports = ref<Report[]>([])
   const lastArchivedPatient = ref<Patient | null>(null)
-  const reviewedReports = computed(() => reports.value)
+  const reviewedReports = computed(() => reports.value.filter(report => report.reviewed))
+  const activeExamId = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
   let generation = 0
@@ -56,7 +67,7 @@ export const usePatientStore = defineStore('patients', () => {
   function reset() {
     generation++
     patients.value = []; selectedPatientId.value = null; examinations.value = []
-    findings.value = []; reports.value = []; error.value = null; loading.value = false
+    findings.value = []; reports.value = []; activeExamId.value = null; error.value = null; loading.value = false
   }
   async function loadPatients() {
     const revision = generation
@@ -75,6 +86,7 @@ export const usePatientStore = defineStore('patients', () => {
     } finally { if (revision === generation) loading.value = false }
   }
   async function selectPatient(id: string) {
+    if (selectedPatientId.value !== id) activeExamId.value = null
     selectedPatientId.value = id
     await loadPatientContext(id)
   }
@@ -87,8 +99,12 @@ export const usePatientStore = defineStore('patients', () => {
       examinations.value = structuredClone(mockExaminations.filter(item => item.patientId === id))
       const reviewed = readReviewStatus()
       examinations.value.forEach(item => { if (reviewed[item.id]) item.status = 'Reviewed' })
-      reports.value = structuredClone(mockReports.filter(item => item.patientId === id))
+      reports.value = structuredClone((readPreviewReports() || mockReports).filter(item => item.patientId === id))
+        .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
       findings.value = structuredClone(mockFindings.filter(item => item.patientId === id))
+      if (!activeExamId.value || !examinations.value.some(item => item.id === activeExamId.value)) {
+        activeExamId.value = examinations.value[0]?.id ?? null
+      }
       loading.value = false
       return
     }
@@ -100,6 +116,9 @@ export const usePatientStore = defineStore('patients', () => {
       ])
       if (revision !== generation) return
       examinations.value = images; reports.value = records; findings.value = detectedFindings
+      if (!activeExamId.value || !images.some(item => item.id === activeExamId.value)) {
+        activeExamId.value = images[0]?.id ?? null
+      }
     } catch (reason) {
       if (revision === generation) error.value = reason instanceof Error ? reason.message : '加载病历失败'
     } finally { if (revision === generation) loading.value = false }
@@ -137,9 +156,17 @@ export const usePatientStore = defineStore('patients', () => {
   async function saveReport(report: Report) {
     if (localPreview) {
       const saved = { ...report, id: report.id || `LOCAL-${Date.now()}` }
+      const allReports = structuredClone(readPreviewReports() || mockReports)
+      const storedIndex = allReports.findIndex(item => item.id === saved.id)
+      if (storedIndex < 0) allReports.push(saved)
+      else allReports[storedIndex] = saved
+      writePreviewReports(allReports)
       const index = reports.value.findIndex(r => r.id === saved.id)
       if (index < 0) reports.value.unshift(saved)
       else reports.value[index] = saved
+      examinations.value = examinations.value.map(examination => examination.id === saved.examinationId
+        ? { ...examination, status: saved.reviewed ? 'Reviewed' : 'Pending Review' }
+        : examination)
       return saved
     }
     const saved = await reportApi.saveReport(report)
@@ -204,7 +231,7 @@ export const usePatientStore = defineStore('patients', () => {
     }
     if (localPreview) localStorage.setItem(PREVIEW_PATIENTS_KEY, JSON.stringify(patients.value))
   }
-  return { patients, selectedPatientId, selectedPatient, examinations, findings, reports, reviewedReports,
+  return { patients, selectedPatientId, selectedPatient, examinations, findings, reports, reviewedReports, activeExamId,
     lastArchivedPatient, loading, error, reset, loadPatients, selectPatient, loadPatientContext,
     updateFindingStatus, updateFindingBox, saveReport, createPatient, archivePatient, restoreLastPatient, updateExaminationReview }
 })

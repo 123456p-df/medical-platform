@@ -19,7 +19,8 @@ const tabs = [
   { label: 'Imaging', name: 'doctor-patient-imaging' },
   { label: 'Report', name: 'doctor-patient-report' },
   { label: 'AI 辅助诊断', name: 'doctor-patient-ai' },
-  { label: '3D Viewer', name: 'doctor-patient-3d' },
+  { label: '3D/2D 分割视口', name: 'doctor-patient-study-viewer' },
+  { label: '3D 器官模型', name: 'doctor-patient-3d' },
 ]
 
 async function loadPatient() {

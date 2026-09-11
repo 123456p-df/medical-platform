@@ -13,7 +13,8 @@ export interface PatientDTO {
 }
 export interface RecordDTO {
   organ_ids: string[]; record_id: number; patient_id: number; organ_id: string; diagnosis: string
-  description: string; record_date: string; doctor_name: string
+  description: string; recommendation: string; examination_id: string | null; reviewed: boolean
+  record_date: string; doctor_name: string
 }
 export function mapPatient(p: PatientDTO): Patient {
   let age: number | null = null
@@ -37,6 +38,6 @@ export function mapImage(i: ImageDTO): Examination {
 }
 export function mapRecord(r: RecordDTO): Report {
   return { organIds: r.organ_ids, id: String(r.record_id), patientId: String(r.patient_id), organId: r.organ_id,
-    examinationId: '', diagnosis: r.diagnosis, description: r.description, recommendation: '',
-    doctor: r.doctor_name, date: r.record_date, reviewed: true }
+    examinationId: r.examination_id || '', diagnosis: r.diagnosis, description: r.description, recommendation: r.recommendation,
+    doctor: r.doctor_name, date: r.record_date, reviewed: r.reviewed }
 }
