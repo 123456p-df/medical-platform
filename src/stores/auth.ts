@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { api, SESSION_KEY } from '@/api/client'
+import { api, readSession, SESSION_KEY } from '@/api/client'
 import { usePatientStore } from './patients'
 import { useProfileStore } from './profile'
 import { useWorkflowStore } from './workflow'
@@ -12,7 +12,7 @@ import { clearVolumeRendererPool } from '@/utils/volumeRendererPool'
 
 function stored(): UserSession | null {
   try {
-    const value = JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || 'null') as UserSession | null
+    const value = JSON.parse(readSession() || 'null') as UserSession | null
     if (!value?.accessToken || !value.username) return null
     if (value.accessToken === 'local-preview' && !DEMO_ACCOUNTS_BY_USERNAME[value.username]) return null
     return value

@@ -20,10 +20,14 @@
 Windows 环境先安装前后端依赖，然后运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/start-preview.ps1
+pnpm start
 ```
 
-脚本会升级数据库、写入四个固定账号、导入真实示例 CT，并让前端明确使用后端 API。默认地址是 <http://127.0.0.1:4173>。
+Windows 下该入口会启动 PostgreSQL、FastAPI 和前端，并在数据库及 API 健康检查通过后报告就绪。首次启动会写入四个固定账号和真实 CT，之后保留已有资料；重复执行会复用本项目的健康进程，并修复只启动了前端的情况。默认地址是 <http://127.0.0.1:4173>，后端端口为 `8000`。
+
+也可以直接运行 `powershell -ExecutionPolicy Bypass -File scripts/start-preview.ps1`，通过 `-FrontendPort`、`-BackendPort`、`-DatabasePort` 指定端口。停止服务使用 `scripts/stop-preview.ps1`，数据会保留。
+
+`pnpm dev` 只启动前端，需要后端已运行；默认代理到 `http://127.0.0.1:8000`。使用 Docker 的 `8080` 入口时，设置 `VMRB_BACKEND_URL=http://127.0.0.1:8080`。macOS/Linux 的 `pnpm start` 会先检查配置的后端（默认 Docker `8080` 入口），健康后启动前端。
 
 如缺少真实样本，先运行：
 

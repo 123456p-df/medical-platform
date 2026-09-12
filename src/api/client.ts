@@ -1,19 +1,63 @@
-export const SESSION_KEY = 'vmrb-session-v2'
-const LEGACY_SESSION_KEY = 'vmrb-session-v1'
+import { responseError, ApiError } from './errors.ts'
+import { t } from '../i18n/index.ts'
+export { ApiError } from './errors.ts'
+
+export const SESSION_KEY = 'vmrb-session-v3'
+const OBSOLETE_SESSION_KEYS = ['vmrb-session-v1', 'vmrb-session-v2']
 
 try {
-  sessionStorage.removeItem(LEGACY_SESSION_KEY)
-  localStorage.removeItem(LEGACY_SESSION_KEY)
+  for (const key of OBSOLETE_SESSION_KEYS) {
+    sessionStorage.removeItem(key)
+    localStorage.removeItem(key)
+  }
 } catch { /* private mode */ }
-export class ApiError extends Error {
-  constructor(public status: number, public code: number, message: string) { super(message) }
+
+interface StoredSessionState {
+  serialized: string | null
+  accessToken: string | null
+  expired: boolean
 }
-export function readSession(): string | null {
+
+export function accessTokenExpiresAt(accessToken: string): number | null {
+  if (accessToken === 'local-preview') return null
   try {
-    return sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY)
+    const parts = accessToken.split('.')
+    if (parts.length !== 3) return 0
+    const encoded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')
+    const payload = JSON.parse(globalThis.atob(padded)) as Record<string, unknown>
+    return typeof payload.exp === 'number' && Number.isFinite(payload.exp) ? payload.exp * 1000 : 0
+  } catch { return 0 }
+}
+
+export function isAccessTokenExpired(accessToken: string, now = Date.now()): boolean {
+  const expiresAt = accessTokenExpiresAt(accessToken)
+  return expiresAt !== null && expiresAt <= now
+}
+
+function inspectStoredSession(): StoredSessionState {
+  try {
+    const serialized = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY)
+    if (!serialized) return { serialized: null, accessToken: null, expired: false }
+    const value = JSON.parse(serialized) as Record<string, unknown> | null
+    const accessToken = typeof value?.accessToken === 'string' && value.accessToken ? value.accessToken : null
+    return {
+      serialized,
+      accessToken,
+      expired: !accessToken || isAccessTokenExpired(accessToken),
+    }
   } catch {
+    return { serialized: null, accessToken: null, expired: true }
+  }
+}
+
+export function readSession(): string | null {
+  const stored = inspectStoredSession()
+  if (stored.expired) {
+    writeSession(null)
     return null
   }
+  return stored.serialized
 }
 export function writeSession(value: string | null) {
   try {
@@ -39,45 +83,49 @@ export function inheritSessionFromOpener() {
   } catch { /* opener blocked */ }
 }
 export function token(): string | null {
-  try {
-    const stored = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY)
-    return JSON.parse(stored || 'null')?.accessToken ?? null
-  }
-  catch { return null }
+  const stored = inspectStoredSession()
+  return stored.expired ? null : stored.accessToken
 }
 export async function request(path: string, options: RequestInit = {}): Promise<Response> {
   const headers = new Headers(options.headers)
-  const accessToken = token()
+  const stored = inspectStoredSession()
+  if (stored.expired) {
+    writeSession(null)
+    if (stored.serialized) window.dispatchEvent(new Event('vmrb-session-expired'))
+    throw responseError(401, { code: 40102 })
+  }
+  const accessToken = stored.accessToken
   if (accessToken) headers.set('Authorization', 'Bearer ' + accessToken)
   if (typeof options.body === 'string') headers.set('Content-Type', 'application/json')
   let response: Response
   try { response = await fetch(path.startsWith('/api/') ? path : '/api/v1' + path, { ...options, headers }) }
-  catch { throw new ApiError(0, 0, '无法连接后端，请检查服务是否已启动。') }
+  catch (error) {
+    if (options.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) throw error
+    throw responseError(0)
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
-    if (response.status === 401 && accessToken && accessToken !== 'local-preview') {
-      sessionStorage.removeItem(SESSION_KEY)
-      localStorage.removeItem(SESSION_KEY)
+    if (response.status === 401 && accessToken && accessToken !== 'local-preview' && inspectStoredSession().accessToken === accessToken) {
+      writeSession(null)
       window.dispatchEvent(new Event('vmrb-session-expired'))
     }
-    const messages: Record<number, string> = {
-      40103: '用户名或密码错误。', 40301: '没有访问此患者的权限。',
-      40901: '该用户名已经被注册。',
-      50301: '分割模型尚未配置，请先设置模型目录和 GPU 运行环境。',
-      50302: 'AI 服务尚未配置，请填写 backend/.env 中的 AI 服务信息。',
-      50304: '肺结节检测模型尚未配置，请填写模型服务地址。',
-      40005: '当前分割模型不支持此影像类型。', 42201: '请检查输入格式和必填字段。',
-      40008: '肺结节检测当前只支持 CT 影像。',
-      40009: '肺结节检测只接受器官标记为 lung 的影像。',
-      40010: '检查日期不能晚于今天。',
-      40903: '该影像已有正在排队或运行的肺结节检测任务。',
-    }
-    throw new ApiError(response.status, payload.code, messages[payload.code] || payload.message || '请求失败')
+    throw responseError(response.status, payload)
   }
   return response
 }
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  return (await (await request(path, options)).json()).data as T
+  const response = await request(path, options)
+  let payload
+  try { payload = await response.json() }
+  catch (error) {
+    if (options.signal?.aborted) throw error
+    throw new ApiError(response.status, 0, t('The server returned an invalid response. Please retry.'))
+  }
+  if (!payload || typeof payload !== 'object' || typeof payload.code !== 'number' || !('data' in payload)) {
+    throw new ApiError(response.status, 0, t('The server returned an invalid response. Please retry.'))
+  }
+  if (payload.code !== 0) throw responseError(response.status, payload)
+  return payload.data as T
 }
 export async function collection<T>(path: string): Promise<T[]> {
   const items: T[] = []
