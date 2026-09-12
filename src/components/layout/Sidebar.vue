@@ -47,8 +47,7 @@ const clinicalItems = computed(() => currentPatientId.value ? [
   { label: '医学影像', name: 'doctor-patient-imaging', icon: ScanLine },
   { label: 'AI 辅助诊断', name: 'doctor-patient-ai', icon: Sparkles },
   { label: '临床报告', name: 'doctor-patient-report', icon: FileText },
-  { label: '3D/2D 分割视口', name: 'doctor-patient-study-viewer', icon: ScanLine },
-  { label: '3D 器官模型', name: 'doctor-patient-3d', icon: Box },
+  { label: '3D 器官模型', name: 'doctor-patient-3d', icon: Box, external: true },
 ] : [])
 
 const patientNav = computed(() => [
@@ -135,17 +134,28 @@ function logout() {
           <ChevronRight v-else class="tree-chevron" :size="15" />
         </button>
         <div v-if="clinicalExpanded && currentPatientId" class="tree-children clinical-children">
-          <RouterLink
-            v-for="item in clinicalItems"
-            :key="item.name"
-            :to="{ name: item.name, params: { id: currentPatientId } }"
-            class="tree-item"
-            active-class="is-active"
-            @click="emit('close')"
-          >
-            <component :is="item.icon" :size="16" />
-            <span>{{ item.label }}</span>
-          </RouterLink>
+          <template v-for="item in clinicalItems" :key="item.name">
+            <a
+              v-if="item.external"
+              :href="router.resolve({ name: 'study-viewer', params: { patientId: currentPatientId } }).href"
+              target="_blank"
+              class="tree-item"
+              @click="emit('close')"
+            >
+              <component :is="item.icon" :size="16" />
+              <span>{{ item.label }}</span>
+            </a>
+            <RouterLink
+              v-else
+              :to="{ name: item.name, params: { id: currentPatientId } }"
+              class="tree-item"
+              active-class="is-active"
+              @click="emit('close')"
+            >
+              <component :is="item.icon" :size="16" />
+              <span>{{ item.label }}</span>
+            </RouterLink>
+          </template>
         </div>
       </section>
     </nav>

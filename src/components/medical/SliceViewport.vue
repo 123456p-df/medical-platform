@@ -8,6 +8,7 @@ import type { LabelVolume, Shape3D, SliceAxis, StainStyle } from '@/utils/volume
 import { compositeStain, extractLabelPlane } from '@/utils/volumePixels'
 import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
+import { SLICE_AXES } from '@/utils/sliceAxes'
 import SyntheticSlice from './SyntheticSlice.vue'
 import CrosshairsOverlay from './CrosshairsOverlay.vue'
 import { useCrosshairs } from '@/composables/useCrosshairs'
@@ -33,10 +34,11 @@ const props = withDefaults(
     stainOpacity?: number
     syncCrosshairs?: boolean
     showCrosshairs?: boolean
+    title?: string
   }>(),
   {
     blocked: false,
-    position: undefined,
+    position: 0.5,
     compact: false,
     findings: () => [],
     selectedFindingId: null,
@@ -47,6 +49,7 @@ const props = withDefaults(
     stainOpacity: 0.35,
     syncCrosshairs: true,
     showCrosshairs: true,
+    title: '',
   },
 )
 
@@ -71,7 +74,7 @@ const error = ref('')
 const busy = ref(false)
 const retry = ref(0)
 
-// Volume geometry computation
+// Volume geometry computation based on canonical SLICE_AXES
 const shape = computed<Shape3D>(() => {
   const s = props.examination.shape || [512, 512, props.examination.sliceCount || 100]
   return [s[0], s[1], s[2]]
@@ -85,37 +88,65 @@ const spacing = computed<[number, number, number]>(() => {
 const geometry = computed(() => {
   const sh = shape.value
   const sp = spacing.value
-  const [x, y, z] =
-    props.axis === 'axial' ? [0, 1, 2] : props.axis === 'coronal' ? [0, 2, 1] : [1, 2, 0]
+  const spec = SLICE_AXES[props.axis]
+  const count = sh[spec.layer]
+  const pixelWidth = sh[spec.u]
+  const pixelHeight = sh[spec.v]
+  const spacingU = sp[spec.u]
+  const spacingV = sp[spec.v]
+  const sliceThickness = sp[spec.layer]
+  const physicalWidth = pixelWidth * spacingU
+  const physicalHeight = pixelHeight * spacingV
+
   return {
-    count: sh[z],
-    width: sh[x] * sp[x],
-    height: sh[y] * sp[y],
-    pixelWidth: sh[x],
-    pixelHeight: sh[y],
-    spacing: sp[z],
-    sliceThickness: sp[z],
-    pixelSpacing: sp[x],
+    count,
+    width: physicalWidth,
+    height: physicalHeight,
+    pixelWidth,
+    pixelHeight,
+    spacingU,
+    spacingV,
+    spacing: sliceThickness,
+    sliceThickness,
+    pixelSpacing: spacingU,
   }
 })
 
+const stageSize = ref({ width: 400, height: 400 })
+let stageObserver: ResizeObserver | undefined
+
+// Contain-fit display dimension calculation strictly preserving true physical aspect ratio (FOV mm)
+const fittedDisplay = computed(() => {
+  const { width: physW, height: physH } = geometry.value
+  if (physW <= 0 || physH <= 0) return { width: 300, height: 300 }
+
+  const availW = Math.max(stageSize.value.width * 0.94, 60)
+  const availH = Math.max(stageSize.value.height * 0.94, 60)
+
+  const scale = Math.min(availW / physW, availH / physH)
+  const displayWidth = Math.max(10, Math.round(physW * scale))
+  const displayHeight = Math.max(10, Math.round(physH * scale))
+
+  return { width: displayWidth, height: displayHeight }
+})
+
 const fitStyle = computed(() => {
-  const ratio = Math.max(0.01, geometry.value.width / geometry.value.height)
-  const width = ratio >= 1 ? 96 : Math.max(1, 94 * ratio)
-  const height = ratio >= 1 ? Math.max(1, 94 / ratio) : 94
+  const { width, height } = fittedDisplay.value
   return {
-    width: width + '%',
-    height: height + '%',
-    aspectRatio: String(ratio),
+    width: `${width}px`,
+    height: `${height}px`,
     transform: 'translate(' + pan.value.x + 'px, ' + pan.value.y + 'px) scale(' + (props.zoom * localZoom.value) + ')',
   }
 })
 
-const label = computed(() => ({
-  axial: '轴向 · Axial (Z)',
-  coronal: '冠状 · Coronal (Y)',
-  sagittal: '矢状 · Sagittal (X)',
-})[props.axis])
+const label = computed(() => {
+  if (props.title) return props.title
+  return ({
+    axial: '轴向 · Axial',
+    coronal: '冠状 · Coronal',
+    sagittal: '矢状 · Sagittal',
+  })[props.axis] || props.axis
+})
 
 const syntheticPreset = computed(() => {
   if (props.preset === 'auto') return props.examination.type === 'MRI' ? 'brain' : 'lung'
@@ -144,8 +175,19 @@ const probeState = ref<{
   tissue?: string
 }>({ col: -1, row: -1, hu: null })
 
+const WINDOW_PRESETS: Record<string, [number, number]> = {
+  lung: [-600, 1500],
+  soft: [40, 400],
+  bone: [400, 1800],
+  brain: [40, 80],
+}
+
 // Custom dynamic windowing state
 const customWindow = ref<[number, number] | undefined>(undefined)
+
+let lastBasePixels: ImageData | null = null
+let lastBaseIndex = -1
+let lastBaseAxis = ''
 
 // Computed crosshairs projection on this viewport
 const crosshairProj = computed(() => getCanvasProjection(props.axis, shape.value))
@@ -294,6 +336,9 @@ function render() {
         if (canvas.value.width !== result.width) canvas.value.width = result.width
         if (canvas.value.height !== result.height) canvas.value.height = result.height
 
+        lastBasePixels = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height)
+        lastBaseIndex = index
+        lastBaseAxis = props.axis
         context.putImageData(new ImageData(result.pixels, result.width, result.height), 0, 0)
         applyStain(context, result.width, result.height, index)
         currentRawPlane.value = result.rawPlane
@@ -329,6 +374,9 @@ function render() {
           if (canvas.value.width !== bitmap.width) canvas.value.width = bitmap.width
           if (canvas.value.height !== bitmap.height) canvas.value.height = bitmap.height
           context.drawImage(bitmap, 0, 0)
+          lastBasePixels = context.getImageData(0, 0, canvas.value.width, canvas.value.height)
+          lastBaseIndex = index
+          lastBaseAxis = props.axis
           applyStain(context, canvas.value.width, canvas.value.height, index)
         } finally {
           bitmap.close()
@@ -362,24 +410,85 @@ function applyStain(context: CanvasRenderingContext2D, width: number, height: nu
   }
 }
 
+function reapplyStainOnly() {
+  const context = canvas.value?.getContext('2d')
+  if (!context || !canvas.value || !lastBasePixels) {
+    render()
+    return
+  }
+  if (lastBaseIndex === slice.value && lastBaseAxis === props.axis) {
+    context.putImageData(lastBasePixels, 0, 0)
+    applyStain(context, canvas.value.width, canvas.value.height, slice.value)
+  } else {
+    render()
+  }
+}
+
+watch(
+  () => props.preset,
+  (newPreset) => {
+    customWindow.value = undefined
+    const w = WINDOW_PRESETS[newPreset]
+    if (w) {
+      windowCenter.value = w[0]
+      windowWidth.value = w[1]
+    }
+    lastBasePixels = null
+    render()
+  },
+)
+
+watch(
+  [
+    () => (props.visibleLabels || []).join(','),
+    () => props.stainColors,
+    () => props.stainOpacity,
+    () => props.labelVolume,
+  ],
+  () => {
+    reapplyStainOnly()
+  },
+  { flush: 'post', deep: true },
+)
+
 watch(
   [
     () => props.examination.id,
     slice,
-    () => props.preset,
     () => props.renderer,
     () => props.blocked,
     retry,
-    () => props.labelVolume,
-    () => props.visibleLabels,
-    () => props.stainOpacity,
     () => props.axis,
   ],
-  render,
+  () => {
+    lastBasePixels = null
+    render()
+  },
   { flush: 'post' },
 )
 
-onMounted(render)
+onMounted(() => {
+  if (stage.value) {
+    stageObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+          stageSize.value = {
+            width: entry.contentRect.width,
+            height: entry.contentRect.height,
+          }
+        }
+      }
+    })
+    stageObserver.observe(stage.value)
+    if (stage.value.clientWidth > 0 && stage.value.clientHeight > 0) {
+      stageSize.value = {
+        width: stage.value.clientWidth,
+        height: stage.value.clientHeight,
+      }
+    }
+  }
+  render()
+})
 
 function move(value: number) {
   const next = Math.min(geometry.value.count - 1, Math.max(0, value))
@@ -426,6 +535,7 @@ function keydown(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  stageObserver?.disconnect()
   revision++
   controller?.abort()
   cancelAnimationFrame(frame)
@@ -566,6 +676,8 @@ defineExpose({
 <style scoped>
 .slice-viewport {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
   border: 1px solid #23343f;
   border-radius: 8px;
@@ -593,6 +705,11 @@ defineExpose({
   border-bottom: 1px solid #1a2a34;
   user-select: none;
   cursor: pointer;
+}
+
+.compact .pane-heading {
+  padding: 4px 8px;
+  font-size: 10px;
 }
 
 .heading-left {
@@ -632,7 +749,7 @@ defineExpose({
 .slice-stage {
   position: relative;
   flex: 1;
-  min-height: 280px;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -643,7 +760,7 @@ defineExpose({
 }
 
 .compact .slice-stage {
-  min-height: 230px;
+  min-height: 0;
 }
 
 .slice-stage:focus-visible {
@@ -661,13 +778,12 @@ defineExpose({
 
 .slice-fit {
   position: relative;
-  max-width: 96%;
-  max-height: 94%;
   display: flex;
   align-items: center;
   justify-content: center;
   transform-origin: center center;
   transition: transform 0.05s linear;
+  flex-shrink: 0;
 }
 
 .slice-fit canvas {

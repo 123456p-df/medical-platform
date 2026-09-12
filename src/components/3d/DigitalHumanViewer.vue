@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RotateCcw, Rotate3D, Layers, Sparkles } from 'lucide-vue-next'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RotateCcw, Rotate3D, Layers } from 'lucide-vue-next'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { organNames } from '@/api/mappers'
-import { api } from '@/api/client'
 
 const props = withDefaults(
   defineProps<{
     selectedOrganId?: string | null
     compact?: boolean
-    patientId?: string
     sliceAxis?: string
     slicePosition?: number
     showSlicingPlane?: boolean
@@ -38,8 +36,6 @@ const rotating = ref(false)
 const shell = ref(true)
 const hoveredName = ref('')
 const hoveredCategory = ref('')
-const patientOrgans = ref<Set<string>>(new Set())
-const hasPatientOrgans = computed(() => patientOrgans.value.size > 0)
 
 // System category filters
 type CategoryId = 'all' | 'viscera' | 'skeletal' | 'cardiovascular' | 'respiratory' | 'muscular'
@@ -65,6 +61,10 @@ let disposed = false
 const organs: THREE.Mesh[] = []
 const shells: THREE.Mesh[] = []
 let down: { x: number; y: number } | null = null
+
+function renderScene() {
+  if (scene && camera && renderer) renderer.render(scene, camera)
+}
 
 // Anatomical Chinese mapping dictionary
 const ZH_NAMES: Record<string, string> = {
@@ -189,25 +189,23 @@ function updateCategoryVisibility() {
       }
     }
   }
+  renderScene()
 }
 
 function updateSelection() {
   for (const mesh of organs) {
     const material = mesh.material as THREE.MeshStandardMaterial
     const isSelected = mesh.userData.organId === props.selectedOrganId
-    const isPatientModel = patientOrgans.value.has(mesh.userData.organId)
 
     if (isSelected) {
-      material.emissive.set(isPatientModel ? 0x1f7a68 : 0x5a4220)
+      material.emissive.set(0x5a4220)
       material.emissiveIntensity = 0.55
-    } else if (isPatientModel) {
-      material.emissive.set(0x1a453e)
-      material.emissiveIntensity = 0.2
     } else {
       material.emissive.set(0x000000)
       material.emissiveIntensity = 0
     }
   }
+  renderScene()
 }
 
 function setCategory(id: CategoryId) {
@@ -219,6 +217,7 @@ function reset() {
   camera?.position.set(0, 0.30, 4.65)
   controls?.target.set(0, 0.27, 0)
   controls?.update()
+  renderScene()
 }
 
 function pointerDown(e: PointerEvent) {
@@ -263,34 +262,33 @@ function pointerUp(e: PointerEvent) {
   }
 }
 
-function animate() {
-  if (disposed) return
-  frame = requestAnimationFrame(animate)
+function stopRotation() {
+  if (frame) cancelAnimationFrame(frame)
+  frame = 0
+}
+
+function animateRotation() {
+  if (disposed || !rotating.value) {
+    frame = 0
+    return
+  }
   controls?.update()
-  if (scene && camera) renderer?.render(scene, camera)
+  renderScene()
+  frame = requestAnimationFrame(animateRotation)
 }
 
 watch(() => props.selectedOrganId, updateSelection)
-watch(rotating, value => { if (controls) controls.autoRotate = value })
-watch(shell, value => shells.forEach(mesh => { mesh.visible = value }))
-
-async function loadPatientOrgans() {
-  if (!props.patientId) return
-  try {
-    for (const organKey of Object.keys(organNames)) {
-      if (organKey === 'other') continue
-      try {
-        const res = await api<{ model: { source: string; available: boolean } }>(
-          `/patients/${props.patientId}/organs/${organKey}`
-        )
-        if (res.model?.available && res.model.source !== 'default') {
-          patientOrgans.value.add(organKey)
-        }
-      } catch {}
-    }
-    updateSelection()
-  } catch {}
-}
+watch(rotating, value => {
+  if (!controls) return
+  controls.autoRotate = value
+  stopRotation()
+  if (value) animateRotation()
+  else renderScene()
+})
+watch(shell, value => {
+  shells.forEach(mesh => { mesh.visible = value })
+  renderScene()
+})
 
 onMounted(async () => {
   try {
@@ -334,7 +332,8 @@ onMounted(async () => {
     scene.add(disc)
 
     controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
+    controls.enableDamping = false
+    controls.addEventListener('change', renderScene)
     controls.enablePan = false
     controls.minDistance = 2.0
     controls.maxDistance = 7
@@ -349,6 +348,7 @@ onMounted(async () => {
       renderer.setSize(w, h)
       camera.aspect = w / Math.max(h, 1)
       camera.updateProjectionMatrix()
+      renderScene()
     }
     observer = new ResizeObserver(resize)
     observer.observe(host.value)
@@ -357,7 +357,7 @@ onMounted(async () => {
     renderer.domElement.addEventListener('pointerdown', pointerDown)
     renderer.domElement.addEventListener('pointermove', pointerMove)
     renderer.domElement.addEventListener('pointerup', pointerUp)
-    animate()
+    renderScene()
 
     const gltf = await new GLTFLoader().loadAsync('/models/anatomy-navigation.glb')
     if (disposed) {
@@ -398,7 +398,6 @@ onMounted(async () => {
     })
 
     scene.add(gltf.scene)
-    await loadPatientOrgans()
     updateCategoryVisibility()
     updateSelection()
     loading.value = false
@@ -412,8 +411,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true
-  cancelAnimationFrame(frame)
+  stopRotation()
   observer?.disconnect()
+  controls?.removeEventListener('change', renderScene)
   controls?.dispose()
   renderer?.domElement.removeEventListener('pointerdown', pointerDown)
   renderer?.domElement.removeEventListener('pointermove', pointerMove)
@@ -450,10 +450,7 @@ onBeforeUnmount(() => {
     <div class="anatomy-caption">
       <span>70+ ANATOMY ATLAS</span>
       <strong>{{ selectedOrganId && selectedOrganId !== 'other' ? $t(organNames[selectedOrganId]) : '临床 0.75mm 全实心解剖图谱' }}</strong>
-      <small>
-        <Sparkles v-if="hasPatientOrgans" :size="11" class="pulse-icon" />
-        {{ hasPatientOrgans ? '已绑定患者专属 CT 重建 (FMRC)' : '100% 封闭实心 (Watertight) · 0.75mm 亚体素平滑' }}
-      </small>
+      <small>100% 封闭实心 (Watertight) · 0.75mm 亚体素平滑</small>
     </div>
 
     <div class="anatomy-tools">
@@ -596,15 +593,6 @@ onBeforeUnmount(() => {
   color: #236b66;
   font-weight: 500;
 }
-.pulse-icon {
-  animation: pulse 1.8s infinite;
-  color: #10b981;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
-}
-
 .anatomy-tools {
   position: absolute;
   right: 18px;

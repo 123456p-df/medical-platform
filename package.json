@@ -10,16 +10,10 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "serve": "vite preview --host 127.0.0.1 --port 4173",
     "typecheck": "vue-tsc -b",
-    "test:modalities": "node scripts/verify-modalities.mjs",
     "test:volume": "node scripts/verify-volume-renderer.mjs",
     "test:comparison": "node scripts/verify-comparison.mjs"
   },
   "dependencies": {
-    "@cornerstonejs/core": "^5.8.2",
-    "@cornerstonejs/dicom-image-loader": "^5.8.2",
-    "@cornerstonejs/tools": "^5.8.2",
-    "dicom-parser": "^1.8.21",
-    "events": "^3.3.0",
     "lucide-vue-next": "^0.468.0",
     "pinia": "^2.3.0",
     "three": "^0.172.0",

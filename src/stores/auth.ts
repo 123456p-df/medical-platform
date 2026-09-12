@@ -8,6 +8,8 @@ import { useWorkspaceTabsStore } from './workspaceTabs'
 import { localPreview } from '@/utils/runtime'
 import type { PortalRole, UserSession } from '@/types'
 
+type AccountRole = PortalRole | 'admin'
+
 type PreviewAccount = {
   password: string
   session: UserSession
@@ -30,11 +32,33 @@ const previewAccounts: Record<string, PreviewAccount> = {
   },
 }
 
+function toPortalRole(role: unknown): PortalRole | null {
+  if (role === 'patient') return 'patient'
+  if (role === 'doctor' || role === 'admin') return 'doctor'
+  return null
+}
+
+function clearStoredSession() {
+  sessionStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(SESSION_KEY)
+}
+
 function stored(): UserSession | null {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || 'null')
+    const raw = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY)
+    if (!raw) return null
+    const value = JSON.parse(raw) as Partial<UserSession> & { role?: AccountRole }
+    const role = toPortalRole(value?.role)
+    if (!role || typeof value.accessToken !== 'string' || !value.accessToken) {
+      clearStoredSession()
+      return null
+    }
+    return { ...value, role } as UserSession
   }
-  catch { return null }
+  catch {
+    clearStoredSession()
+    return null
+  }
 }
 
 function customPreviewAccounts(): Record<string, PreviewAccount> {
@@ -48,8 +72,7 @@ export const useAuthStore = defineStore('auth', () => {
   const portal = computed<PortalRole | null>(() => session.value?.role ?? null)
   function logout() {
     session.value = null
-    sessionStorage.removeItem(SESSION_KEY)
-    localStorage.removeItem(SESSION_KEY)
+    clearStoredSession()
     usePatientStore().reset()
     useProfileStore().reset()
     useWorkflowStore().reset()
@@ -73,13 +96,15 @@ export const useAuthStore = defineStore('auth', () => {
       return account.session.role
     }
     logout()
-    const result = await api<{ access_token: string; role: PortalRole; user_id: number }>('/auth/login', {
+    const result = await api<{ access_token: string; role: AccountRole; user_id: number }>('/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }),
     })
+    const role = toPortalRole(result.role)
+    if (!role) throw new Error('账号角色无法识别。')
     const loginSession: UserSession = {
       id: String(result.user_id),
       name: username,
-      role: result.role,
+      role,
       accessToken: result.access_token,
     }
     rememberSession(loginSession, remember)
@@ -89,7 +114,7 @@ export const useAuthStore = defineStore('auth', () => {
       loginSession.name = me.username
       rememberSession(loginSession, remember)
     } catch (error) { logout(); throw error }
-    return result.role
+    return role
   }
   async function register(username: string, password: string, role: PortalRole, remember = true) {
     const normalized = username.trim().toLowerCase()

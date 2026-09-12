@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { Activity, CalendarDays, ChevronRight, FileText, HeartPulse } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import DigitalHumanViewer from '@/components/3d/DigitalHumanViewer.vue'
 import ExaminationCard from '@/components/medical/ExaminationCard.vue'
 import ReportCard from '@/components/medical/ReportCard.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
@@ -13,8 +12,6 @@ import StatusBadge from '@/components/ui/StatusBadge.vue'
 const router = useRouter()
 const auth = useAuthStore()
 const store = usePatientStore()
-const selectedOrganId = ref<string | null>(null)
-
 const patientId = computed(() => auth.session?.id ?? '')
 const latestExam = computed(() => store.examinations[0])
 const latestReviewedReport = computed(() => store.reviewedReports[0])
@@ -45,7 +42,7 @@ onMounted(async () => {
       :subtitle="`Good morning, ${auth.session?.name ?? 'Patient'}. Here is your health overview.`"
     />
 
-    <section class="patient-hero-grid">
+    <section class="patient-hero">
       <article class="health-overview card">
         <div class="card-header">
           <div>
@@ -71,22 +68,6 @@ onMounted(async () => {
               <Activity :size="16" /> My Body
             </button>
           </div>
-        </div>
-      </article>
-
-      <article class="body-preview card">
-        <div class="card-header">
-          <div>
-            <h3>My Body</h3>
-            <p class="muted">Understand your body, starting with your lungs.</p>
-          </div>
-        </div>
-        <div class="card-body body-preview-content">
-          <DigitalHumanViewer
-            compact
-            :selected-organ-id="selectedOrganId"
-            @select="router.push({ name: 'patient-body' })"
-          />
         </div>
       </article>
     </section>
@@ -131,10 +112,7 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.patient-hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 18px;
+.patient-hero {
   margin-bottom: 18px;
 }
 
@@ -186,15 +164,6 @@ onMounted(async () => {
   margin-top: 22px;
 }
 
-.body-preview-content {
-  padding: 0;
-}
-
-.body-preview-content :deep(.digital-human) {
-  border: 0;
-  border-radius: 0 0 var(--radius) var(--radius);
-}
-
 .patient-lower-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
@@ -207,7 +176,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 1000px) {
-  .patient-hero-grid,
   .patient-lower-grid {
     grid-template-columns: 1fr;
   }

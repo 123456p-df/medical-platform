@@ -78,10 +78,8 @@ watch(
       <main class="app-content">
         <div v-if="preview" class="preview-banner">本地测试环境 · 包含合成演示档案与明确标注的公开 CT / MRI 测试样本</div>
         <div v-if="patients.error" class="data-error" role="alert">{{ patients.error }}</div>
-        <RouterView v-slot="{ Component, route: currentRoute }">
-          <KeepAlive :max="12">
-            <component :is="Component" :key="currentRoute.fullPath" />
-          </KeepAlive>
+        <RouterView v-slot="{ Component }">
+          <component :is="Component" />
         </RouterView>
       </main>
     </div>

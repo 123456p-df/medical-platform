@@ -13,6 +13,16 @@ import {
 } from '@/utils/sliceAxes'
 import { viewerApi } from '@/api/viewer'
 
+type OrganMetaItem = {
+  label_id?: number | null
+  name?: string
+  display_name?: string | null
+  group_id?: string | null
+  group_name?: string | null
+  color?: number[] | null
+  outline_only?: boolean | null
+}
+
 const props = withDefaults(
   defineProps<{
     modelId?: string | null
@@ -23,8 +33,9 @@ const props = withDefaults(
     spacing?: [number, number, number] | null
     affine?: number[][] | null
     status?: string
+    organMeta?: Record<number, OrganMetaItem> | null
   }>(),
-  { modelId: null, spacing: null, affine: null, status: '' },
+  { modelId: null, spacing: null, affine: null, status: '', organMeta: null },
 )
 
 const emit = defineEmits<{
@@ -43,7 +54,6 @@ let plane: THREE.Mesh | undefined
 let keyLight: THREE.DirectionalLight | undefined
 let pmrem: THREE.PMREMGenerator | undefined
 let observer: ResizeObserver | undefined
-let frame = 0
 let version = 0
 let pointerDown: { x: number; y: number } | null = null
 const meshes = new Map<string, THREE.Mesh[]>()
@@ -54,28 +64,216 @@ const planeColors: Record<SliceAxis, number> = {
   sagittal: 0xc5862f,
 }
 
-const PBR_HINTS: { test: RegExp; color: number; roughness: number; metalness: number }[] = [
-  { test: /rib|vertebra|skull|sternum|sacrum|hip|femur|humerus|scapula|clavicula|bone/i, color: 0xe6e0d2, roughness: 0.62, metalness: 0.04 },
-  { test: /lung/i, color: 0x82b4cd, roughness: 0.5, metalness: 0.0 },
-  { test: /heart|atrial|appendage/i, color: 0xbe2832, roughness: 0.35, metalness: 0.02 },
-  { test: /aorta|artery|carotid|subclavian|brachiocephalic/i, color: 0xe12323, roughness: 0.28, metalness: 0.04 },
-  { test: /vein|vena|cava/i, color: 0x236edc, roughness: 0.32, metalness: 0.04 },
-  { test: /liver/i, color: 0xaf4b41, roughness: 0.38, metalness: 0.0 },
-  { test: /spleen/i, color: 0x8c376e, roughness: 0.35, metalness: 0.0 },
-  { test: /kidney/i, color: 0x9b2a2a, roughness: 0.35, metalness: 0.0 },
-  { test: /iliopsoas|autochthon|gluteus|muscle/i, color: 0xaa4646, roughness: 0.55, metalness: 0.0 },
-  { test: /costal|cartilage/i, color: 0xb9dce6, roughness: 0.32, metalness: 0.0 },
-]
+const FALLBACK_LABELS: Record<number, string> = {
+  1: 'spleen',
+  2: 'right kidney',
+  3: 'left kidney',
+  4: 'gallbladder',
+  5: 'liver',
+  6: 'stomach',
+  7: 'aorta',
+  8: 'inferior vena cava',
+  9: 'portal vein and splenic vein',
+  10: 'pancreas',
+  11: 'right adrenal gland',
+  12: 'left adrenal gland',
+  13: 'left lung',
+  14: 'right lung',
+  15: 'trachea',
+  16: 'airways',
+  17: 'heart',
+  22: 'brain',
+  28: 'left lung',
+  29: 'right lung',
+  30: 'airways',
+  31: 'trachea',
+  32: 'lung',
+  50: 'aorta',
+  51: 'inferior vena cava',
+  52: 'portal vein and splenic vein',
+  53: 'superior vena cava',
+  54: 'pulmonary artery',
+  115: 'heart',
+}
+
+function rgbToThreeColor(rgb?: number[] | null): THREE.Color | null {
+  if (!rgb || rgb.length < 3) return null
+  return new THREE.Color(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255)
+}
+
+function hashHueColor(str: string): THREE.Color {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i)
+    hash |= 0
+  }
+  const hue = Math.abs(hash % 360) / 360
+  const color = new THREE.Color()
+  color.setHSL(hue, 0.55, 0.52)
+  return color
+}
+
+function renderScene() {
+  if (!scene || !camera || !renderer) return
+  renderer.render(scene, camera)
+}
 
 function styleMesh(mesh: THREE.Mesh, name: string) {
-  const hint = PBR_HINTS.find((item) => item.test.test(name))
-  const material = new THREE.MeshStandardMaterial({
-    color: hint?.color ?? 0xb47878,
-    roughness: hint?.roughness ?? 0.42,
-    metalness: hint?.metalness ?? 0.02,
-    envMapIntensity: 0.85,
+  const match = /label_(\d+)/.exec(name)
+  const labelId = match ? Number(match[1]) : null
+  const meta = labelId != null ? props.organMeta?.[labelId] : null
+  const anatomicalName = (
+    meta?.name ||
+    meta?.group_id ||
+    meta?.display_name ||
+    (labelId != null ? FALLBACK_LABELS[labelId] : '') ||
+    name
+  ).toLowerCase()
+
+  let color: THREE.Color
+  let roughness = 0.38
+  const metalness = 0.0 // 人体生物组织均为介电质绝缘体，严格为 0
+  let clearcoat = 0.90  // 浆膜/腹膜/外膜表面体液湿润反光层
+  let clearcoatRoughness = 0.10
+  let ior = 1.40        // 软组织物理折射率
+  let transmission = 0.0
+  let thickness = 0.0
+  let transparent = false
+  let opacity = 1.0
+  let depthWrite = true
+
+  if (/rib|vertebra|skull|sternum|sacrum|hip|femur|humerus|scapula|clavicula|bone|spine|pelv/i.test(anatomicalName)) {
+    // 骨骼系统：天然象牙钙质白/暖灰，皮质骨干燥致密，无清漆湿润层，高哑光漫反射
+    color = new THREE.Color(0xdcd5c4)
+    roughness = 0.78
+    clearcoat = 0.0
+    ior = 1.55
+  } else if (/costal|cartilage/i.test(anatomicalName)) {
+    // 软骨系统（肋软骨）：乳白半透光微浅蓝，含大量蛋白聚糖与水，具半透明感
+    color = new THREE.Color(0xc2d7e0)
+    roughness = 0.30
+    clearcoat = 0.50
+    clearcoatRoughness = 0.15
+    transmission = 0.35
+    thickness = 0.5
+    transparent = true
+    opacity = 0.92
+    ior = 1.42
+  } else if (/lung/i.test(anatomicalName)) {
+    // 肺叶组织：健康成人肺呈淡粉灰玫瑰色，富含肺泡海绵多孔质感，微弱透光与微弱胸膜反光
+    color = new THREE.Color(0xb88a8a)
+    roughness = 0.60
+    clearcoat = 0.25
+    clearcoatRoughness = 0.25
+    transmission = 0.20
+    thickness = 0.8
+    transparent = true
+    opacity = 0.85
+    depthWrite = true
+    ior = 1.38
+  } else if (/heart|atrial|ventricle|myocardium/i.test(anatomicalName)) {
+    // 心脏/心肌：深红心肌组织，心外膜被覆心包浆液，高光清亮晶莹
+    color = new THREE.Color(0x7a1f1e)
+    roughness = 0.26
+    clearcoat = 0.96
+    clearcoatRoughness = 0.08
+  } else if (/aorta|artery|carotid|subclavian|brachiocephalic|celiac/i.test(anatomicalName)) {
+    // 动脉系统：充盈含氧血的高压弹性血管，厚壁深红，光滑圆润
+    color = new THREE.Color(0x9e1d1d)
+    roughness = 0.28
+    clearcoat = 0.88
+    clearcoatRoughness = 0.10
+  } else if (/vein|vena|cava|jugular/i.test(anatomicalName)) {
+    // 静脉系统：充盈暗红静脉血的薄壁血管，呈暗蓝灰紫暗调
+    color = new THREE.Color(0x284668)
+    roughness = 0.30
+    clearcoat = 0.85
+    clearcoatRoughness = 0.10
+  } else if (/airway|trachea|bronch/i.test(anatomicalName)) {
+    // 气道/气管：软骨环淡灰黄白，膜部微透光
+    color = new THREE.Color(0xd0d8dc)
+    roughness = 0.35
+    clearcoat = 0.40
+    transmission = 0.15
+    thickness = 0.3
+  } else if (/liver/i.test(anatomicalName)) {
+    // 肝脏：实性大脏器，富含血窦呈深暗红褐色（肝红），腹膜反光光亮湿润
+    color = new THREE.Color(0x5c241c)
+    roughness = 0.35
+    clearcoat = 0.95
+    clearcoatRoughness = 0.10
+  } else if (/spleen/i.test(anatomicalName)) {
+    // 脾脏：质脆血窦器官，呈暗紫李色，表面包膜光滑
+    color = new THREE.Color(0x4a1c2c)
+    roughness = 0.30
+    clearcoat = 0.92
+    clearcoatRoughness = 0.09
+  } else if (/kidney/i.test(anatomicalName)) {
+    // 肾脏：实质深豆红褐色，表面肾纤维膜光滑润泽
+    color = new THREE.Color(0x632828)
+    roughness = 0.32
+    clearcoat = 0.92
+    clearcoatRoughness = 0.10
+  } else if (/pancreas/i.test(anatomicalName)) {
+    // 胰腺：分叶状腺体，呈淡暖赭黄褐
+    color = new THREE.Color(0xb08c50)
+    roughness = 0.42
+    clearcoat = 0.80
+    clearcoatRoughness = 0.15
+  } else if (/gallbladder/i.test(anatomicalName)) {
+    // 胆囊：充盈浓缩胆汁呈暗墨绿/橄榄绿，囊壁极湿润光亮
+    color = new THREE.Color(0x3a5730)
+    roughness = 0.22
+    clearcoat = 0.98
+    clearcoatRoughness = 0.06
+  } else if (/stomach|duodenum|colon|bowel|esophagus|intestine/i.test(anatomicalName)) {
+    // 消化道管壁：粘膜/浆膜暖肉粉色，蠕动湿润
+    color = new THREE.Color(0xb8746c)
+    roughness = 0.36
+    clearcoat = 0.92
+    clearcoatRoughness = 0.12
+  } else if (/bladder/i.test(anatomicalName)) {
+    // 膀胱：肌性囊性脏器，淡粉肌色，湿润
+    color = new THREE.Color(0xb37870)
+    roughness = 0.32
+    clearcoat = 0.92
+    clearcoatRoughness = 0.10
+  } else if (/muscle|iliopsoas|autochthon|gluteus/i.test(anatomicalName)) {
+    // 骨骼肌：条纹肌纤维暗牛肉红，哑光漫散射
+    color = new THREE.Color(0x852d27)
+    roughness = 0.65
+    clearcoat = 0.12
+    clearcoatRoughness = 0.30
+  } else if (/brain/i.test(anatomicalName)) {
+    // 脑组织：灰质淡粉灰，软脑膜湿润
+    color = new THREE.Color(0xbda3a2)
+    roughness = 0.38
+    clearcoat = 0.85
+    clearcoatRoughness = 0.12
+  } else {
+    // 未知/其他器官
+    color = rgbToThreeColor(meta?.color) || hashHueColor(anatomicalName)
+    roughness = 0.38
+    clearcoat = 0.80
+    clearcoatRoughness = 0.12
+  }
+
+  const material = new THREE.MeshPhysicalMaterial({
+    color,
+    roughness,
+    metalness,
+    clearcoat,
+    clearcoatRoughness,
+    ior,
+    transmission,
+    thickness,
+    envMapIntensity: 1.25,
     side: THREE.DoubleSide,
+    transparent,
+    opacity,
+    depthWrite,
   })
+
   const previous = mesh.material
   mesh.material = material
   if (Array.isArray(previous)) previous.forEach((item) => item.dispose())
@@ -105,6 +303,7 @@ function applyVisibility() {
     const visible = allowed.size === 0 ? false : allowed.has(name)
     list.forEach((mesh) => { mesh.visible = visible })
   })
+  renderScene()
 }
 
 function updatePlane() {
@@ -139,6 +338,7 @@ function updatePlane() {
   plane.position.copy(p00).add(p10).add(p01).add(new THREE.Vector3(...voxelGltf(...voxel(u1, v1)))).multiplyScalar(0.25)
   plane.scale.set(width, height, 1)
   ;(plane.material as THREE.MeshBasicMaterial).color.setHex(planeColors[props.axis])
+  renderScene()
 }
 
 function registerMesh(name: string, mesh: THREE.Mesh) {
@@ -166,6 +366,7 @@ async function load() {
   meshes.clear()
   if (!props.modelId) {
     progress.value = props.status || '等待分割完成…'
+    renderScene()
     return
   }
   progress.value = '正在加载 3D 模型…'
@@ -179,6 +380,7 @@ async function load() {
       if (!(child instanceof THREE.Mesh)) return
       const name = child.name || child.parent?.name || ''
       if (!name) return
+      child.geometry.computeVertexNormals()
       styleMesh(child, name)
       registerMesh(name, child)
     })
@@ -195,6 +397,7 @@ async function load() {
     emit('loaded')
   } catch (reason) {
     if (revision === version) progress.value = reason instanceof Error ? reason.message : '模型加载失败'
+    renderScene()
   }
 }
 
@@ -231,19 +434,31 @@ onMounted(() => {
   host.value.appendChild(renderer.domElement)
   camera = new THREE.PerspectiveCamera(40, 1, 0.001, 50)
   camera.position.set(0.4, 0.35, 0.7)
+  scene.add(camera)
+
   controls = new OrbitControls(camera, renderer.domElement)
-  controls.enableDamping = true
+  controls.enableDamping = false
+  controls.addEventListener('change', renderScene)
+
   pmrem = new THREE.PMREMGenerator(renderer)
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
-  scene.add(new THREE.HemisphereLight(0x9eb4c8, 0x1a1210, 0.4))
-  keyLight = new THREE.DirectionalLight(0xfff1dc, 2.3)
-  keyLight.position.set(-2.2, 3.2, 4)
-  scene.add(keyLight)
-  const fill = new THREE.DirectionalLight(0x9bb7ff, 0.85)
-  fill.position.set(3.4, 0.8, 1.6)
-  scene.add(fill)
-  const rim = new THREE.DirectionalLight(0x7ee0d2, 1.7)
-  rim.position.set(0.2, 1.4, -4.2)
+
+  // 1. 全向半球漫反射环境光：天顶浅灰蓝，天底深底色，给背光面柔和轮廓
+  scene.add(new THREE.HemisphereLight(0xddeeff, 0x182026, 1.2))
+
+  // 2. 主高光定向光 (Headlight) 挂载到相机：无论视角如何旋转，始终从观察正面立体照明
+  keyLight = new THREE.DirectionalLight(0xfff6ee, 2.6)
+  keyLight.position.set(0.6, 0.8, 1.4)
+  camera.add(keyLight)
+
+  // 3. 辅助补光灯挂载到相机左下方，柔化暗部阴影
+  const cameraFill = new THREE.DirectionalLight(0x90c5e8, 1.2)
+  cameraFill.position.set(-0.9, -0.5, 1.2)
+  camera.add(cameraFill)
+
+  // 4. 全局背面轮廓光
+  const rim = new THREE.DirectionalLight(0x5eead4, 0.8)
+  rim.position.set(0, 2.0, -3.0)
   scene.add(rim)
   plane = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
@@ -262,19 +477,12 @@ onMounted(() => {
     renderer.setSize(width, height)
     camera.aspect = width / Math.max(height, 1)
     camera.updateProjectionMatrix()
+    renderScene()
   })
   observer.observe(host.value)
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('pointerup', onPointerUp)
-  const animate = () => {
-    frame = requestAnimationFrame(animate)
-    if (keyLight && camera) {
-      keyLight.position.copy(camera.position).add(new THREE.Vector3(-0.4, 0.8, 0.3))
-    }
-    controls?.update()
-    if (scene && camera) renderer?.render(scene, camera)
-  }
-  animate()
+  renderScene()
   void load()
 })
 
@@ -284,13 +492,23 @@ watch(() => props.axis, updatePlane)
 watch(() => props.sliceIndex, updatePlane)
 watch(() => props.spacing?.join(','), updatePlane)
 watch(() => props.affine, updatePlane, { deep: true })
+watch(
+  () => props.organMeta,
+  () => {
+    meshes.forEach((list, name) => {
+      list.forEach((mesh) => styleMesh(mesh, name))
+    })
+    renderScene()
+  },
+  { deep: true },
+)
 
 onBeforeUnmount(() => {
   version++
-  cancelAnimationFrame(frame)
   observer?.disconnect()
   renderer?.domElement.removeEventListener('pointerdown', onPointerDown)
   renderer?.domElement.removeEventListener('pointerup', onPointerUp)
+  controls?.removeEventListener('change', renderScene)
   controls?.dispose()
   pmrem?.dispose()
   renderer?.dispose()
