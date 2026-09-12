@@ -4,18 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { X } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs'
-import { t } from '@/i18n'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspaceTabsStore()
 const visibleTabs = computed(() => workspace.tabs.filter(tab => tab.portal === auth.portal))
-
-function translatedTitle(title: string) {
-  const separator = title.lastIndexOf(' · ')
-  return separator < 0 ? t(title) : `${title.slice(0, separator)} · ${t(title.slice(separator + 3))}`
-}
 
 function closeTab(id: string) {
   const active = route.fullPath === id
@@ -28,18 +22,18 @@ function closeTab(id: string) {
 </script>
 
 <template>
-  <div class="workspace-tabs" role="tablist" :aria-label="$t('Opened work pages')">
+  <div class="workspace-tabs" role="tablist" aria-label="已打开的工作页面">
     <div
       v-for="tab in visibleTabs"
       :key="tab.id"
       class="workspace-tab"
       :class="{ active: route.fullPath === tab.id }"
-      :title="translatedTitle(tab.title)"
+      :title="tab.title"
     >
       <button class="tab-main" type="button" role="tab" :aria-selected="route.fullPath === tab.id" @click="router.push(tab.path)">
-        <span>{{ translatedTitle(tab.title) }}</span>
+        <span>{{ tab.title }}</span>
       </button>
-      <button class="tab-close" type="button" :aria-label="$t('Close {title}', { title: translatedTitle(tab.title) })" @click="closeTab(tab.id)">
+      <button class="tab-close" type="button" :aria-label="`关闭 ${tab.title}`" @click="closeTab(tab.id)">
         <X :size="13" />
       </button>
     </div>

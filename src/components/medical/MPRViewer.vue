@@ -6,9 +6,8 @@ import SliceViewport from './SliceViewport.vue'
 import ViewportToolbar from './ViewportToolbar.vue'
 import DigitalHumanViewer from '@/components/3d/DigitalHumanViewer.vue'
 import { usePatientStore } from '@/stores/patients'
-import { ApiError } from '@/api/client'
+import { ApiError, request } from '@/api/client'
 import { VolumeRenderer } from '@/utils/volumeRenderer'
-import { acquireVolumeRenderer, type VolumeRendererHandle } from '@/utils/volumeRendererPool'
 import type { Shape3D, SliceAxis } from '@/utils/volumePixels'
 import { useCrosshairs } from '@/composables/useCrosshairs'
 import { activeMedicalTool } from '@/composables/useViewportGestures'
@@ -136,36 +135,51 @@ watch(
     blocked.value = false
 
     let disposed = false
-    let handle: VolumeRendererHandle | undefined
+    let engine: VolumeRenderer | undefined
+    const guard = new AbortController()
     const imageId = props.examination.id
 
     function fail(reason: unknown) {
       if (disposed) return
-      error.value = reason instanceof Error ? reason.message : 'Continuous viewing could not load. Please retry.'
+      error.value = reason instanceof Error ? reason.message : '连续浏览加载失败，可重试'
       if (reason instanceof ApiError && [401, 403, 404].includes(reason.status)) {
         blocked.value = true
       }
       renderer.value = null
+      engine?.dispose()
       loading.value = false
     }
 
+    let checking = false
+    const timer = setInterval(async () => {
+      if (checking || disposed) return
+      checking = true
+      try {
+        await request('/medical-images/' + imageId, { signal: guard.signal })
+      } catch (reason) {
+        if (reason instanceof ApiError && [401, 403, 404].includes(reason.status)) fail(reason)
+      } finally {
+        checking = false
+      }
+    }, 30000)
+
     onCleanup(() => {
       disposed = true
-      handle?.release()
+      clearInterval(timer)
+      guard.abort()
+      engine?.dispose()
     })
 
     try {
       const shape = props.examination.shape
       if (!shape || shape.length !== 3) throw new Error('缺少三维体积信息，使用逐张预览')
       initCrosshairs(shape as Shape3D)
-      handle = await acquireVolumeRenderer(
-        imageId,
-        shape as Shape3D,
-        value => { if (!disposed) progress.value = value },
-        fail,
-      )
+      engine = new VolumeRenderer(fail)
+      await engine.load(imageId, shape as Shape3D, value => {
+        if (!disposed) progress.value = value
+      })
       if (!disposed) {
-        renderer.value = handle.renderer
+        renderer.value = engine
         loading.value = false
       }
     } catch (reason) {
@@ -310,13 +324,13 @@ function handleResetView() {
           PACS 连续体素就绪 · 右键调窗 / 中键平移 / 滚轮切层 / 双击全屏
         </span>
         <span v-else class="status-text error">
-          {{ $t(error) }}
+          {{ error }}
           <button v-if="!blocked" class="retry-btn" @click="retry++">重试</button>
         </span>
       </div>
 
       <div v-if="loading" class="status-right">
-        <progress :value="progress" max="100" :aria-label="$t('Imaging loading progress')" />
+        <progress :value="progress" max="100" aria-label="影像加载进度" />
       </div>
     </div>
 

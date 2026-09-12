@@ -227,17 +227,36 @@ function onHandlePointerMove(e: PointerEvent) {
 
   // Convert canvas back to 3D voxel
   const [vx, vy, vz] = canvasToVoxel(props.axis, newCol, newRow, props.sliceIndex, props.shape)
-  const sx = props.spacing[0]
-  const sy = props.spacing[1]
-  const newDiameter = Math.max(newW * sx, newH * sy)
+  const oldBox = target.boxVoxel || [vx, vy, vz, 24, 24, 6]
+  let boxSizeX = 24
+  let boxSizeY = 24
+  let boxSizeZ = 6
+  let newDiameter = 10
+
+  if (props.axis === 'axial') {
+    boxSizeX = newW
+    boxSizeY = newH
+    boxSizeZ = oldBox[5]
+    newDiameter = Math.max(newW * props.spacing[0], newH * props.spacing[1])
+  } else if (props.axis === 'coronal') {
+    boxSizeX = newW
+    boxSizeY = oldBox[4]
+    boxSizeZ = newH
+    newDiameter = Math.max(newW * props.spacing[0], newH * props.spacing[2])
+  } else if (props.axis === 'sagittal') {
+    boxSizeX = oldBox[3]
+    boxSizeY = newW
+    boxSizeZ = newH
+    newDiameter = Math.max(newW * props.spacing[1], newH * props.spacing[2])
+  }
 
   const newBox: [number, number, number, number, number, number] = [
     vx,
     vy,
     vz,
-    newW,
-    newH,
-    target.boxVoxel ? target.boxVoxel[5] : 6,
+    boxSizeX,
+    boxSizeY,
+    boxSizeZ,
   ]
 
   emit('updateFindingBox', target.id, [vx, vy, vz], newBox, Number(newDiameter.toFixed(1)))
@@ -251,7 +270,7 @@ function onHandlePointerUp() {
 </script>
 
 <template>
-  <div class="overlay-container" :style="{ width: width + 'px', height: height + 'px' }">
+  <div class="overlay-container">
     <svg
       class="overlay-svg"
       :viewBox="`0 0 ${width} ${height}`"
@@ -560,6 +579,8 @@ function onHandlePointerUp() {
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   overflow: hidden;
   user-select: none;

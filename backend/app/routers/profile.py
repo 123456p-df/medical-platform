@@ -13,7 +13,7 @@ from app.deps import DB, Config, CurrentUser
 from app.errors import APIError, Envelope, success
 from app.models import ProfileFile
 from app.schemas import ProfilePatch
-from app.services.storage import profile_relative_path, stored_path
+from app.services.storage import stored_path
 
 router = APIRouter(prefix="/auth/profile", tags=["Personal profile"])
 MAX_FILE = 10 * 1024 * 1024
@@ -127,7 +127,7 @@ def upload_file(db: DB, user: CurrentUser, settings: Config, file: UploadFile = 
         name = Path(name).stem[:190] + ".jpg"
         media = "image/jpeg"
     identifier = "file_" + uuid4().hex
-    relative = profile_relative_path(user.id, identifier)
+    relative = f"profiles/{user.id}/{identifier}"
     path = stored_path(settings, relative)
     path.parent.mkdir(parents=True, exist_ok=True)
     row = ProfileFile(

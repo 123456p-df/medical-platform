@@ -1,7 +1,6 @@
-"""Replace the explicitly approved demo database with four accounts and one real CT fixture."""
+"""Replace the explicitly approved demo database with three real CT fixtures."""
 
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -17,16 +16,11 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.config import Settings  # noqa: E402
 from app.db import make_engine, make_session_factory  # noqa: E402
-from app.accounts import FIXED_ACCOUNT_USERNAMES  # noqa: E402
-from app.demo import seed  # noqa: E402
+from app.demo import DEMO_PATIENTS, seed  # noqa: E402
 from app.models import OrganModel, User  # noqa: E402
 
 
-ALLOWED_USERNAMES = set(FIXED_ACCOUNT_USERNAMES) | {
-    "demo_patient",
-    "demo_patient_2",
-    "demo_patient_3",
-}
+ALLOWED_USERNAMES = {"demo_doctor", "demo_patient", "demo_patient_2", "demo_patient_3"}
 
 
 def assert_demo_only(db):
@@ -47,9 +41,9 @@ def clear_demo_rows(db):
         "DELETE FROM image_reviews",
         "DELETE FROM segmentation_tasks",
         "DELETE FROM organ_models WHERE source = 'segmentation'",
+        "DELETE FROM medical_images",
         "DELETE FROM record_organs",
         "DELETE FROM medical_records",
-        "DELETE FROM medical_images",
         "DELETE FROM audit_events",
         "DELETE FROM profile_files",
         "DELETE FROM doctor_patient_access",
@@ -66,15 +60,6 @@ def clear_image_storage(settings):
     for path in image_root.rglob("*"):
         if path.is_file():
             path.unlink()
-
-
-def clear_patient_storage(settings):
-    storage_root = settings.storage_root.resolve()
-    patient_root = (storage_root / "patient").resolve()
-    if patient_root.parent != storage_root:
-        raise SystemExit(f"Refusing to clear storage outside {storage_root}")
-    if patient_root.is_dir():
-        shutil.rmtree(patient_root)
 
 
 def prune_orphan_default_assets(settings):
@@ -116,10 +101,10 @@ def main():
         engine.dispose()
 
     clear_image_storage(settings)
-    clear_patient_storage(settings)
     seed(settings)
     prune_orphan_default_assets(settings)
-    print("Demo database reset: four fixed accounts and one real CT example seeded.")
+    scans = ", ".join(scan_name for _, _, scan_name, _, _, _ in DEMO_PATIENTS)
+    print(f"Demo database reset: 3 patients seeded with {scans}.")
 
 
 if __name__ == "__main__":

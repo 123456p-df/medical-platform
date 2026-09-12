@@ -9,7 +9,6 @@ import AppTopbar from './Topbar.vue'
 import AIAssistant from './AIAssistant.vue'
 import WorkspaceTabs from './WorkspaceTabs.vue'
 import { localPreview } from '@/utils/runtime'
-import { routeTitleKey } from '@/i18n/routes'
 
 const auth = useAuthStore()
 const patients = usePatientStore()
@@ -19,12 +18,27 @@ const sidebarOpen = ref(false)
 const sidebarCollapsed = ref(localStorage.getItem('pulmolink-sidebar-collapsed') === 'true')
 const shellClass = computed(() => `portal-${auth.portal ?? 'doctor'}`)
 const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
+const tabTitles: Record<string, string> = {
+  'doctor-dashboard': '患者工作台',
+  'doctor-patient-overview': '患者概览',
+  'doctor-patient-imaging': '医学影像',
+  'doctor-patient-ai': 'AI 辅助诊断',
+  'doctor-patient-report': '临床报告',
+  'doctor-patient-3d': '3D 影像',
+  'patient-dashboard': '我的健康',
+  'patient-examinations': '我的检查',
+  'patient-examination-detail': '检查详情',
+  'patient-reports': '我的报告',
+  'patient-body': '我的身体',
+  'patient-ai': 'AI 助手',
+}
 const currentPatientName = computed(() => {
   const id = typeof route.params.id === 'string' ? route.params.id : ''
   return patients.patients.find(patient => patient.id === id)?.name || id
 })
 const currentTabTitle = computed(() => {
-  const base = routeTitleKey(route.name, route.path)
+  if (route.path.endsWith('/profile')) return '个人资料'
+  const base = tabTitles[String(route.name)] || 'PulmoLink'
   return currentPatientName.value && String(route.name).startsWith('doctor-patient-')
     ? `${currentPatientName.value} · ${base}`
     : base
@@ -62,12 +76,10 @@ watch(
       <AppTopbar @open-sidebar="sidebarOpen = true" />
       <WorkspaceTabs />
       <main class="app-content">
-        <div v-if="preview" class="preview-banner">{{ $t('Local test environment · Public de-identified CT example and demo records') }}</div>
-        <div v-if="patients.error" class="data-error" role="alert">{{ $t(patients.error) }}</div>
-        <RouterView v-slot="{ Component, route: currentRoute }">
-          <KeepAlive :max="12">
-            <component :is="Component" :key="currentRoute.fullPath" />
-          </KeepAlive>
+        <div v-if="preview" class="preview-banner">本地测试环境 · 包含合成演示档案与明确标注的公开 CT / MRI 测试样本</div>
+        <div v-if="patients.error" class="data-error" role="alert">{{ patients.error }}</div>
+        <RouterView v-slot="{ Component }">
+          <component :is="Component" />
         </RouterView>
       </main>
     </div>
@@ -75,7 +87,7 @@ watch(
       v-if="sidebarOpen"
       class="sidebar-backdrop"
       type="button"
-      :aria-label="$t('Close navigation')"
+      aria-label="Close navigation"
       @click="sidebarOpen = false"
     />
   </div>

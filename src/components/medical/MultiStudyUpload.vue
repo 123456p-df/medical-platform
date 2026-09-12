@@ -5,7 +5,6 @@ import { examinationApi } from '@/api/examinations'
 import { organNames } from '@/api/mappers'
 import type { Examination } from '@/types'
 import { localPreview } from '@/utils/runtime'
-import { t } from '@/i18n'
 
 interface UploadEntry {
   id: string
@@ -78,7 +77,7 @@ async function uploadAll() {
       ))
     } catch (reason) {
       failed.add(entry.id)
-      const message = reason instanceof Error ? reason.message : t('Upload failed.')
+      const message = reason instanceof Error ? reason.message : '上传失败'
       error.value += `${error.value ? '；' : ''}${entry.file.name}：${message}`
     } finally {
       completed.value += 1
@@ -93,31 +92,31 @@ async function uploadAll() {
 <template>
   <form class="multi-upload" @submit.prevent="uploadAll">
     <div class="upload-heading">
-      <div><h3>{{ $t('Batch upload CT') }}</h3><p>{{ $t('Select multiple NIfTI files and set an examination date for each.') }}</p></div>
+      <div><h3>批量上传 CT</h3><p>可一次选择多份 NIfTI，并为每份设置检查日期。</p></div>
       <Upload :size="18" />
     </div>
     <div class="upload-options">
-      <label class="label">{{ $t('Organ') }}<select v-model="organ" class="select"><option v-for="(name,id) in organNames" :key="id" :value="id">{{ $t(name) }}</option></select></label>
-      <label v-if="!ctOnly" class="label">{{ $t('Modality') }}<select v-model="imageType" class="select"><option value="CT">CT</option><option value="MRI">MRI</option></select></label>
-      <label v-else class="label">{{ $t('Modality') }}<input class="input" value="CT" disabled /></label>
+      <label class="label">Organ<select v-model="organ" class="select"><option v-for="(name,id) in organNames" :key="id" :value="id">{{ name }}</option></select></label>
+      <label v-if="!ctOnly" class="label">Modality<select v-model="imageType" class="select"><option value="CT">CT</option><option value="MRI">MRI</option></select></label>
+      <label v-else class="label">Modality<input class="input" value="CT" disabled /></label>
     </div>
     <label class="file-picker" :class="{ disabled: busy }">
       <Upload :size="19" />
-      <span>{{ $t('Choose multiple .nii / .nii.gz files') }}</span>
+      <span>选择多份 .nii / .nii.gz 文件</span>
       <input type="file" accept=".nii,.nii.gz" multiple :disabled="busy" @change="selectFiles" />
     </label>
     <div v-if="entries.length" class="upload-queue">
       <div v-for="entry in entries" :key="entry.id" class="upload-row">
         <div><strong>{{ entry.file.name }}</strong><small>{{ (entry.file.size / 1024 / 1024).toFixed(1) }} MB</small></div>
-        <label><CalendarDays :size="14" /><span>{{ $t('Examination date') }}</span><input v-model="entry.studyDate" type="date" :max="today" required :disabled="busy" /></label>
-        <button type="button" :aria-label="$t('Remove from upload list')" :disabled="busy" @click="removeEntry(entry.id)"><X :size="15" /></button>
+        <label><CalendarDays :size="14" /><span>检查日期</span><input v-model="entry.studyDate" type="date" :max="today" required :disabled="busy" /></label>
+        <button type="button" aria-label="从上传列表移除" :disabled="busy" @click="removeEntry(entry.id)"><X :size="15" /></button>
       </div>
     </div>
-    <p v-if="localPreview" class="preview-note">{{ $t('Real CT uploads require backend sign-in mode.') }}</p>
-    <p v-if="busy" class="progress-note">{{ $t('Uploading {current} / {total}; keep this page open…', { current: completed + 1, total: entries.length }) }}</p>
+    <p v-if="localPreview" class="preview-note">当前为合成数据预览。真实 CT 上传需要使用后端登录模式。</p>
+    <p v-if="busy" class="progress-note">正在上传 {{ completed + 1 }} / {{ entries.length }}，请保持页面打开…</p>
     <p v-if="error" class="upload-error" role="alert">{{ error }}</p>
     <button class="btn btn-primary" :disabled="busy || !entries.length || localPreview">
-      <Upload :size="16" /> {{ busy ? $t('Completed {completed} / {total}', { completed, total: entries.length }) : $t('Upload {count} studies', { count: entries.length || '' }) }}
+      <Upload :size="16" /> {{ busy ? `已完成 ${completed} / ${entries.length}` : `上传 ${entries.length || ''} 份检查` }}
     </button>
   </form>
 </template>

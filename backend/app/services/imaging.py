@@ -348,8 +348,12 @@ def mask_to_glb(
     vertices = nib.affines.apply_affine(mask_image.affine, vertices - 1)
     unit = source.header.get_xyzt_units()[0]
     scales = {"meter": 1.0, "mm": 0.001, "micron": 0.000001, "unknown": 0.001}
-    vertices *= scales[unit]
-    vertices = vertices[:, [0, 2, 1]] * [1, 1, -1]
+    scale = scales[unit]
+    # Coordinate Conversion: Patient RAS (mm) -> glTF 2.0 (m, Y-Up, camera looks -Z)
+    x_gltf = vertices[:, 0] * scale
+    y_gltf = vertices[:, 2] * scale
+    z_gltf = -vertices[:, 1] * scale
+    vertices = np.column_stack([x_gltf, y_gltf, z_gltf])
     mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
 
     if len(mesh.vertices) > 40:

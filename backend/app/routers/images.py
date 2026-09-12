@@ -24,7 +24,7 @@ from app.services.imaging import (
     slice_cache_path,
     slice_png,
 )
-from app.services.storage import imaging_relative_path, relative_path, stored_path
+from app.services.storage import relative_path, stored_path
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Medical Image"])
@@ -68,12 +68,13 @@ def native_label_path(db, settings, image_id):
     return path if path.is_file() else None
 
 
-def image_out(image, db=None, segmentation_batch_id=None):
-    atlas = None
+def image_out(image, db=None, segmentation_batch_id=None, atlas_id=None):
+    atlas = atlas_id
     if db is not None:
         if segmentation_batch_id is None:
             segmentation_batch_id = latest_batch_id(db, image.id)
-        atlas = atlas_model_id(db, image.id)
+        if atlas_id is None:
+            atlas = atlas_model_id(db, image.id)
     return {
         "image_id": image.id,
         "patient_id": image.patient_id,
@@ -106,7 +107,7 @@ def upload_image(
     study_date: date | None = Form(None),
 ):
     # Doctors need an active assignment; patients may upload only to their own record.
-    check_patient_access(db, user, patient_id, write=user.role == "doctor")
+    check_patient_access(db, user, patient_id, write=user.role in {"doctor", "admin"})
     require_organ(organ_id)
     if study_date and study_date > date.today():
         raise APIError(400, 40010, "Study date cannot be in the future")
@@ -117,7 +118,7 @@ def upload_image(
     if extension is None:
         raise APIError(400, 40004, "Supported image formats: .nii and .nii.gz")
     image_id = f"img_{uuid4().hex}"
-    path = stored_path(settings, imaging_relative_path(patient_id, image_id, extension))
+    path = stored_path(settings, f"medical-images/{image_id}{extension}")
     path.parent.mkdir(parents=True, exist_ok=True)
     size = 0
     try:

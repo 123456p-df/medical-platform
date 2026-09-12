@@ -6,7 +6,6 @@ import { locale, setLocale } from '@/i18n'
 import { Bell, ChevronRight, Menu } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { routeTitleKey } from '@/i18n/routes'
 
 const emit = defineEmits<{
   openSidebar: []
@@ -15,20 +14,35 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 const route = useRoute()
 const profile = useProfileStore(), workflow = useWorkflowStore(), notices = ref(false), profileError = ref('')
-const displayName = computed(() => {
-  const currentProfile = profile.data
-  if (currentProfile && currentProfile.username === auth.session?.username) {
-    return currentProfile.display_name
-  }
-  return auth.session?.name || ''
-})
+const displayName = computed(() => profile.data?.display_name || auth.session?.name || '')
 onMounted(async () => {
-  try { await profile.load() } catch (e) { profileError.value = e instanceof Error ? e.message : 'Unable to load profile.' }
+  try { await profile.load() } catch (e) { profileError.value = e instanceof Error ? e.message : '资料加载失败' }
   if (auth.portal === 'doctor') await workflow.load()
 })
 
-const title = computed(() => routeTitleKey(route.name, route.path))
-const greetingName = computed(() => displayName.value || (auth.portal === 'patient' ? 'Patient' : 'Doctor'))
+const pageTitles: Record<string, string> = {
+  'doctor-dashboard': 'Patient Workspace',
+  'doctor-patients': 'Patient Workspace',
+  'doctor-patient-overview': 'Patient Record',
+  'doctor-patient-imaging': 'Medical Imaging',
+  'doctor-patient-ai': 'AI 辅助诊断',
+  'doctor-patient-report': 'Doctor Report',
+  'doctor-patient-3d': 'Digital Human',
+  'patient-dashboard': 'My Health',
+  'patient-examinations': 'My Examinations',
+  'patient-examination-detail': 'Examination Detail',
+  'patient-reports': 'My Reports',
+  'patient-body': 'My Body',
+  'patient-ai': 'AI Assistant',
+}
+
+const title = computed(() => route.path.endsWith('/profile') ? '个人资料' : pageTitles[String(route.name)] ?? 'PulmoLink')
+const greeting = computed(() => {
+  if (auth.portal === 'patient') {
+    return `Good morning, ${displayName.value || 'Patient'}`
+  }
+  return `Good morning, ${displayName.value || 'Doctor'}`
+})
 
 const initials = computed(() =>
   displayName.value
@@ -42,43 +56,43 @@ const initials = computed(() =>
 <template>
   <header class="topbar">
     <div class="topbar-left">
-      <button class="mobile-menu" type="button" :aria-label="$t('Open navigation')" @click="emit('openSidebar')">
+      <button class="mobile-menu" type="button" aria-label="Open navigation" @click="emit('openSidebar')">
         <Menu :size="20" />
       </button>
       <div class="title-wrap">
-        <span class="eyebrow">{{ $t(auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health') }}</span>
+        <span class="eyebrow">{{ auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health' }}</span>
         <strong>{{ $t(title) }}</strong>
       </div>
     </div>
 
     <div class="topbar-actions">
-      <div class="greeting">{{ $t('Good morning, {name}', { name: greetingName }) }}</div>
-      <button class="btn btn-secondary btn-sm" :aria-label="$t('Switch language')" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? '中文 / EN' : 'EN / 中文' }}</button>
+      <div class="greeting">{{ $t(greeting) }}</div>
+      <button class="btn btn-secondary btn-sm" aria-label="切换界面语言" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? '中文 / EN' : 'EN / 中文' }}</button>
       <div class="notification-wrap" @keydown.esc="notices = false">
-        <button class="icon-btn notification" type="button" :aria-label="$t('Notifications')" :aria-expanded="notices" @click="notices = !notices; notices && auth.portal === 'doctor' && workflow.load()">
+        <button class="icon-btn notification" type="button" aria-label="通知" :aria-expanded="notices" @click="notices = !notices; notices && auth.portal === 'doctor' && workflow.load()">
           <Bell :size="18" /><span v-if="auth.portal === 'doctor' && workflow.pending.length" class="notification-dot" />
         </button>
         <div v-if="notices" class="notice-panel">
-          <div class="notice-heading"><strong>{{ $t('Notifications and tasks') }}</strong><button class="btn btn-secondary btn-sm" @click="notices = false">{{ $t('Close notifications') }}</button></div>
-          <p v-if="workflow.error" role="alert">{{ $t(workflow.error) }}</p>
+          <div class="notice-heading"><strong>通知与待办</strong><button class="btn btn-secondary btn-sm" @click="notices = false">关闭</button></div>
+          <p v-if="workflow.error" role="alert">{{ workflow.error }}</p>
           <template v-if="auth.portal === 'doctor' && workflow.pending.length">
-            <RouterLink v-for="item in workflow.pending.slice(0, 5)" :key="item.image_id" :to="{path:'/doctor/patients/' + item.patient_id + '/imaging',query:{exam:item.image_id}}" @click="notices = false"><strong>{{ item.patient_name }} · {{ item.image_type }}</strong><small>{{ $t('Examination awaiting review') }} · {{ item.created_at.slice(0,10) }}</small></RouterLink>
-            <RouterLink to="/doctor/dashboard" @click="notices = false">{{ $t('View all {count} pending tasks', { count: workflow.pending.length }) }}</RouterLink>
+            <RouterLink v-for="item in workflow.pending.slice(0, 5)" :key="item.image_id" :to="{path:'/doctor/patients/' + item.patient_id + '/imaging',query:{exam:item.image_id}}" @click="notices = false"><strong>{{ item.patient_name }} · {{ item.image_type }}</strong><small>影像待确认 · {{ item.created_at.slice(0,10) }}</small></RouterLink>
+            <RouterLink to="/doctor/dashboard" @click="notices = false">查看全部 {{ workflow.pending.length }} 项待办</RouterLink>
           </template>
-          <p v-else>{{ $t('No pending notifications.') }}</p>
+          <p v-else>当前没有待处理通知</p>
         </div>
       </div>
-      <RouterLink class="topbar-profile" :to="'/' + auth.portal + '/profile'" :aria-label="$t('Open profile')">
-        <span class="profile-avatar"><img v-if="profile.data?.username === auth.session?.username && profile.data?.avatar_url" :src="profile.data.avatar_url" :alt="$t('Avatar')" /><template v-else>{{ initials }}</template></span>
+      <RouterLink class="topbar-profile" :to="'/' + auth.portal + '/profile'" aria-label="打开个人资料">
+        <span class="profile-avatar"><img v-if="profile.data?.avatar_url" :src="profile.data.avatar_url" alt="头像" /><template v-else>{{ initials }}</template></span>
         <span class="profile-copy">
           <strong>{{ displayName }}</strong>
-          <small>{{ $t(auth.portal === 'doctor' ? 'Doctor' : 'Patient') }} · {{ $t('Profile') }}</small>
+          <small>{{ auth.portal === 'doctor' ? 'Doctor' : 'Patient' }} · Profile</small>
         </span>
         <ChevronRight class="profile-chevron" :size="15" />
       </RouterLink>
     </div>
   </header>
-  <p v-if="profileError" role="alert">{{ $t(profileError) }}</p>
+  <p v-if="profileError" role="alert">{{ profileError }}</p>
 </template>
 
 <style scoped>

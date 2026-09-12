@@ -12,7 +12,7 @@ from app.organs import require_organ
 from app.routers.images import accessible_image
 from app.schemas import BatchItemOut, SegmentationBatchOut, SegmentationInput, TaskCreated, TaskOut
 from app.services.geometry_engine import overlay_style
-from app.services.label_catalog import display_name
+from app.services.label_catalog import _group, display_name, group_display_name
 
 router = APIRouter(tags=["Segmentation"])
 
@@ -39,6 +39,7 @@ def batch_payload(batch, db):
         model = models.get(task.result_model_id) if task.result_model_id else None
         name = task.label_name or task.organ_id
         style = overlay_style(name)
+        group_id = _group(name)
         items.append(
             {
                 "task_id": task.id,
@@ -46,7 +47,8 @@ def batch_payload(batch, db):
                 "organ_id": task.organ_id,
                 "name": name,
                 "display_name": display_name(name),
-                "group_id": task.group_id,
+                "group_id": group_id,
+                "group_name": group_display_name(group_id),
                 "status": task.status,
                 "progress": task.progress,
                 "model_id": model.id if model else None,

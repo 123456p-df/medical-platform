@@ -1,3 +1,6 @@
+from datetime import timedelta
+from uuid import uuid4
+
 from fastapi import APIRouter
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -6,6 +9,7 @@ from app.audit import audit
 from app.deps import DB, Config, CurrentUser, check_patient_access, require_doctor
 from app.errors import APIError, Envelope, success
 from app.models import (
+    BreakGlassGrant,
     Doctor,
     DoctorPatientAccess,
     MedicalImage,
@@ -17,10 +21,9 @@ from app.models import (
     utcnow,
 )
 from app.organs import ORGANS, require_organ
-from app.schemas import OrganOut, OverviewOut, PatientCreate, PatientOut, ResolveInput
+from app.schemas import BreakGlassInput, OrganOut, OverviewOut, PatientCreate, PatientOut, ResolveInput
 from app.security import encrypt_identity, identity_hash
 from app.services.glb import model_available
-from app.services.reports import report_content
 
 router = APIRouter(tags=["Patient / Organ"])
 
@@ -72,6 +75,56 @@ def delete_patient(patient_id: int, db: DB, user: CurrentUser):
     return success(None)
 
 
+@router.post("/doctor/patients/{patient_id}/break-glass", status_code=201, response_model=Envelope[dict])
+def create_break_glass(patient_id: int, body: BreakGlassInput, db: DB, user: CurrentUser):
+    doctor = require_doctor(db, user)
+    patient = db.get(Patient, patient_id)
+    if patient is None or patient.deleted_at is not None:
+        raise APIError(404, 40401, "Patient not found")
+    grant = BreakGlassGrant(
+        id=f"bg_{uuid4().hex}",
+        doctor_id=doctor.id,
+        patient_id=patient.id,
+        reason=body.reason,
+        expires_at=utcnow() + timedelta(minutes=body.duration_minutes),
+    )
+    db.add(grant)
+    db.flush()
+    audit(
+        db,
+        user.id,
+        patient.id,
+        "patient.break_glass",
+        "break_glass_grant",
+        grant.id,
+        after={"reason": body.reason, "expires_at": grant.expires_at.isoformat()},
+    )
+    db.commit()
+    return success(
+        {
+            "grant_id": grant.id,
+            "patient_id": patient.id,
+            "expires_at": grant.expires_at,
+            "read_only": True,
+        }
+    )
+
+
+@router.delete("/doctor/break-glass/{grant_id}", response_model=Envelope[None])
+def revoke_break_glass(grant_id: str, db: DB, user: CurrentUser):
+    doctor = require_doctor(db, user)
+    grant = db.get(BreakGlassGrant, grant_id)
+    if grant is None:
+        raise APIError(404, 40404, "Break-glass grant not found")
+    if user.role != "admin" and grant.doctor_id != doctor.id:
+        raise APIError(403, 40301, "No permission to revoke this grant")
+    if grant.revoked_at is None:
+        grant.revoked_at = utcnow()
+        audit(db, user.id, grant.patient_id, "patient.break_glass.revoke", "break_glass_grant", grant.id)
+        db.commit()
+    return success(None)
+
+
 @router.post("/doctor/patients/resolve", response_model=Envelope[PatientOut])
 def resolve(body: ResolveInput, db: DB, user: CurrentUser, settings: Config):
     require_doctor(db, user)
@@ -99,16 +152,10 @@ def resolve(body: ResolveInput, db: DB, user: CurrentUser, settings: Config):
 @router.get("/patients/{patient_id}/overview", response_model=Envelope[OverviewOut])
 def overview(patient_id: int, db: DB, user: CurrentUser):
     patient = check_patient_access(db, user, patient_id)
-    record_filters = [
-        MedicalRecord.patient_id == patient_id,
-        MedicalRecord.deleted_at.is_(None),
-    ]
-    if user.role == "patient":
-        record_filters.append(MedicalRecord.reviewed.is_(True))
     record_organs = set(
         db.scalars(
             select(MedicalRecord.organ_id)
-            .where(*record_filters)
+            .where(MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None))
             .distinct()
         )
     )
@@ -116,7 +163,7 @@ def overview(patient_id: int, db: DB, user: CurrentUser):
         db.scalars(
             select(RecordOrgan.organ_id)
             .join(MedicalRecord)
-            .where(*record_filters)
+            .where(MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None))
         )
     )
     image_organs = set(
@@ -191,19 +238,17 @@ def organ(patient_id: int, organ_id: str, db: DB, user: CurrentUser, settings: C
         .order_by(MedicalRecord.record_date.desc(), MedicalRecord.id.desc())
         .limit(20)
     )
-    records = []
-    for record, name in rows:
-        content = report_content(settings, record)
-        records.append(
-            {
-                "record_id": record.id,
-                "organ_ids": record.organ_ids,
-                "date": record.record_date,
-                "diagnosis": content["diagnosis"],
-                "description": content["description"],
-                "doctor_name": name,
-            }
-        )
+    records = [
+        {
+            "record_id": r.id,
+            "organ_ids": r.organ_ids,
+            "date": r.record_date,
+            "diagnosis": r.diagnosis,
+            "description": r.description,
+            "doctor_name": name,
+        }
+        for r, name in rows
+    ]
     return success(
         {
             "organ_id": organ_id,

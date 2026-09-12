@@ -14,7 +14,7 @@ def main():
     if os.environ.get("VMRB_DEMO_SEED") != "1":
         raise SystemExit("Explicitly set VMRB_DEMO_SEED=1 for this local preview import")
     with httpx.Client(base_url="http://127.0.0.1:8000/api/v1", timeout=180) as client:
-        token = client.post("/auth/login", json={"username": "demo_doctor", "password": "123456"})
+        token = client.post("/auth/login", json={"username": "demo_doctor", "password": "DemoDoctor123!"})
         token.raise_for_status()
         client.headers["Authorization"] = "Bearer " + token.json()["data"]["access_token"]
         rows = []

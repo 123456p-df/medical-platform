@@ -7,16 +7,16 @@ const workflow = useWorkflowStore(), showCompleted = ref(false), busy = ref(''),
 const visible = computed(() => workflow.items.filter(i => showCompleted.value ? i.completed_at : !i.completed_at))
 async function toggle(id: string, complete: boolean) {
   busy.value = id; error.value = ''
-  try { await workflow.complete(id, complete) } catch (e) { error.value = e instanceof Error ? e.message : 'Operation failed.' }
+  try { await workflow.complete(id, complete) } catch (e) { error.value = e instanceof Error ? e.message : '操作失败' }
   finally { busy.value = '' }
 }
 </script>
 <template>
   <section class="card workflow-card">
-    <div class="card-header"><div><h2>{{ $t('My tasks') }} <span>{{ workflow.pending.length }}</span></h2><p class="muted">{{ $t('Completed tasks are hidden automatically and remain available in the completed list.') }}</p></div><div class="queue-tabs"><button :class="{ active: !showCompleted }" @click="showCompleted = false">{{ $t('To review') }}</button><button :class="{ active: showCompleted }" @click="showCompleted = true">{{ $t('Completed items') }}</button></div></div>
-    <p v-if="workflow.error || error" role="alert" class="queue-error">{{ $t(error || workflow.error) }} <button class="btn btn-secondary btn-sm" @click="workflow.load()">{{ $t('Retry') }}</button></p>
-    <div v-for="item in visible" :key="item.image_id" class="queue-row"><span class="queue-modality">{{ item.image_type }}</span><div class="queue-copy"><strong>{{ item.patient_name }} <small>· {{ $t(organNames[item.organ_id]) }}</small></strong><small>{{ item.created_at.slice(0, 10) }} · {{ $t(item.completed_at ? 'Confirmed' : 'Examination awaiting review') }}</small></div><RouterLink class="btn btn-secondary btn-sm" :to="{ path: '/doctor/patients/' + item.patient_id + '/imaging', query: { exam: item.image_id } }">{{ $t('Open') }}<ArrowUpRight :size="14" /></RouterLink><button class="btn btn-secondary btn-sm" :disabled="!!busy" @click="toggle(item.image_id, !item.completed_at)"><RotateCcw v-if="item.completed_at" :size="14" /><CheckCheck v-else :size="14" />{{ $t(item.completed_at ? 'Reopen' : 'Confirm complete') }}</button></div>
-    <div v-if="!visible.length && !workflow.error" class="queue-empty"><CheckCheck :size="24" /><span>{{ $t(workflow.loading ? 'Loading tasks…' : showCompleted ? 'No completed items yet.' : 'No imaging studies need review.') }}</span></div>
+    <div class="card-header"><div><h2>我的待办 <span>{{ workflow.pending.length }}</span></h2><p class="muted">确认完成后自动收起，随时可在已完成中找回。</p></div><div class="queue-tabs"><button :class="{ active: !showCompleted }" @click="showCompleted = false">待确认</button><button :class="{ active: showCompleted }" @click="showCompleted = true">已完成</button></div></div>
+    <p v-if="workflow.error || error" role="alert" class="queue-error">{{ error || workflow.error }} <button class="btn btn-secondary btn-sm" @click="workflow.load()">重试</button></p>
+    <div v-for="item in visible" :key="item.image_id" class="queue-row"><span class="queue-modality">{{ item.image_type }}</span><div class="queue-copy"><strong>{{ item.patient_name }} <small>· {{ $t(organNames[item.organ_id]) }}</small></strong><small>{{ item.created_at.slice(0, 10) }} · {{ item.completed_at ? '已确认' : '影像待确认' }}</small></div><RouterLink class="btn btn-secondary btn-sm" :to="{ path: '/doctor/patients/' + item.patient_id + '/imaging', query: { exam: item.image_id } }">打开<ArrowUpRight :size="14" /></RouterLink><button class="btn btn-secondary btn-sm" :disabled="!!busy" @click="toggle(item.image_id, !item.completed_at)"><RotateCcw v-if="item.completed_at" :size="14" /><CheckCheck v-else :size="14" />{{ item.completed_at ? '重新打开' : '确认完成' }}</button></div>
+    <div v-if="!visible.length && !workflow.error" class="queue-empty"><CheckCheck :size="24" /><span>{{ workflow.loading ? '加载待办…' : showCompleted ? '还没有已完成事项' : '当前没有待确认的影像' }}</span></div>
   </section>
 </template>
 <style scoped>

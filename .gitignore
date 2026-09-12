@@ -18,8 +18,6 @@ htmlcov/
 *.egg-info/
 /data/
 /backend/data/
-/dataset/
-/backend/dataset/
 *.db
 *.db-shm
 *.db-wal

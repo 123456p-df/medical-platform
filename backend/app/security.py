@@ -1,6 +1,7 @@
 import hashlib
 import hmac
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import jwt
 from argon2 import PasswordHasher
@@ -31,10 +32,7 @@ def create_token(user: User, settings: Settings) -> str:
     return jwt.encode(
         {
             "sub": str(user.id),
-            # Bind the token to the stable account identity as well as the numeric
-            # row id. Preview databases can be rebuilt and reuse ids; an old token
-            # must never become a token for the new account that inherited that id.
-            "usr": user.username,
+            "jti": uuid4().hex,
             "iat": now,
             "nbf": now,
             "exp": now + timedelta(minutes=settings.access_token_minutes),
@@ -46,22 +44,22 @@ def create_token(user: User, settings: Settings) -> str:
     )
 
 
-def decode_token(token: str, settings: Settings) -> tuple[int, str]:
+def decode_token(token: str, settings: Settings) -> tuple[int, str, datetime]:
     payload = jwt.decode(
         token,
         settings.jwt_secret.get_secret_value(),
         algorithms=["HS256"],
         issuer=settings.jwt_issuer,
         audience=settings.jwt_audience,
-        options={"require": ["sub", "usr", "iat", "nbf", "exp", "iss", "aud"]},
+        options={"require": ["sub", "jti", "iat", "nbf", "exp", "iss", "aud"]},
     )
     user_id = int(payload["sub"])
     if not 1 <= user_id <= 2147483647:
         raise ValueError("Invalid user ID")
-    username = payload["usr"]
-    if not isinstance(username, str) or not username or len(username) > 100:
-        raise ValueError("Invalid username")
-    return user_id, username
+    jti = payload["jti"]
+    if not isinstance(jti, str) or len(jti) > 64 or not jti:
+        raise ValueError("Invalid token ID")
+    return user_id, jti, datetime.fromtimestamp(payload["exp"], UTC)
 
 
 def normalize_id(value: str) -> str:

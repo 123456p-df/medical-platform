@@ -15,6 +15,7 @@ dependencies = [
   "cryptography>=44,<49",
   "python-multipart>=0.0.20,<1",
   "httpx>=0.28,<1",
+  "celery[redis]>=5.4,<6",
   "numpy>=2.2,<3",
   "nibabel>=5.3,<6",
   "scikit-image>=0.25,<1",

@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import SliceViewport from '@/components/medical/SliceViewport.vue'
 import AnatomyScene from '@/components/3d/AnatomyScene.vue'
-import OrganVisibilityList from '@/components/3d/OrganVisibilityList.vue'
+import OrganVisibilityList, { type OrganGroup } from '@/components/3d/OrganVisibilityList.vue'
 import { examinationApi } from '@/api/examinations'
 import {
-  AXIS_FROM_XYZ,
   viewerApi,
   type ComparisonCandidate,
   type SegmentationBatch,
@@ -14,8 +13,27 @@ import {
 } from '@/api/viewer'
 import type { Examination } from '@/types'
 import type { LabelVolume, SliceAxis, StainStyle } from '@/utils/volumePixels'
+import { sliceCount as axisSliceCount } from '@/utils/sliceAxes'
 import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
+import { VolumeRenderer } from '@/utils/volumeRenderer'
+import { activeMedicalTool } from '@/composables/useViewportGestures'
+
+const ORIENTATION_OPTIONS = [
+  { id: 'axial', label: '轴向 (Axial)' },
+  { id: 'sagittal', label: '矢状 (Sagittal)' },
+  { id: 'coronal', label: '冠状 (Coronal)' },
+] as const
+
+interface MprViewportConfig {
+  key: string
+  study: Examination
+  axis: SliceAxis
+  title: string
+  renderer: VolumeRenderer | null
+  labelVolume: LabelVolume | null
+  compact?: boolean
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -23,32 +41,109 @@ const patientId = computed(() => String(route.params.patientId || route.params.i
 const studies = ref<Examination[]>([])
 const imageId = ref(String(route.query.image || ''))
 const compareId = ref(String(route.query.compare || ''))
-const xyz = ref<'X' | 'Y' | 'Z'>('Z')
-const axis = computed<SliceAxis>(() => AXIS_FROM_XYZ[xyz.value])
+const currentAxis = ref<SliceAxis>('axial')
+const axis = computed<SliceAxis>(() => currentAxis.value)
+const viewMode = ref<'mpr' | 'single'>('mpr')
+const rightPaneRef = ref<HTMLElement | null>(null)
+const rightPaneSize = ref({ width: 800, height: 600 })
+let rightPaneObserver: ResizeObserver | undefined
+
+const rightAspectRatio = computed(() => {
+  return rightPaneSize.value.height > 0 ? rightPaneSize.value.width / rightPaneSize.value.height : 1.33
+})
+
+const mprCompareLayout = computed<'2x3' | '3x2'>(() => {
+  return rightAspectRatio.value >= 1.25 ? '2x3' : '3x2'
+})
 const opacity = ref(0.35)
 const position = ref(0.5)
+const worldAnchor = ref<[number, number, number] | null>(null)
 const error = ref('')
 const batch = ref<SegmentationBatch | null>(null)
 const compareBatch = ref<SegmentationBatch | null>(null)
 const candidates = ref<ComparisonCandidate[]>([])
 const labels = ref<LabelVolume | null>(null)
 const compareLabels = ref<LabelVolume | null>(null)
-const selected = ref<number[]>([])
+const selectedGroups = ref<string[]>([])
+const preset = ref('lung')
+const volumeRenderer = shallowRef<VolumeRenderer | null>(null)
+const compareRenderer = shallowRef<VolumeRenderer | null>(null)
+const volumeProgress = ref(0)
 const workspace = ref<HTMLElement | null>(null)
 const storedWidth = Number(localStorage.getItem('vmrb-3d-pane-width'))
 const paneWidth = ref(Number.isFinite(storedWidth) && storedWidth >= 320 ? storedWidth : 420)
 const resizing = ref(false)
 const sideBySide = ref(true)
 let resizeStartX = 0, resizeStartWidth = 0, pollTimer: ReturnType<typeof setTimeout> | undefined
+let initialized = false
 
 const ctStudies = computed(() => studies.value.filter((item) => item.type === 'CT'))
 const primary = computed(() => ctStudies.value.find((item) => item.id === imageId.value) || ctStudies.value[0])
 const secondary = computed(() => ctStudies.value.find((item) => item.id === compareId.value) || null)
+
+const mprViewports = computed<MprViewportConfig[]>(() => {
+  if (!primary.value) return []
+  const p = primary.value
+  const s = secondary.value
+
+  if (!s) {
+    return [
+      { key: 'p-axial', study: p, axis: 'axial', title: '轴向 (Axial)', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-sagittal', study: p, axis: 'sagittal', title: '矢状 (Sagittal)', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-coronal', study: p, axis: 'coronal', title: '冠状 (Coronal)', renderer: volumeRenderer.value, labelVolume: labels.value },
+    ]
+  }
+
+  if (mprCompareLayout.value === '2x3') {
+    return [
+      { key: 'p-axial', study: p, axis: 'axial', title: '当前检查 · 轴向 (Axial)', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-sagittal', study: p, axis: 'sagittal', title: '当前检查 · 矢状 (Sagittal)', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-coronal', study: p, axis: 'coronal', title: '当前检查 · 冠状 (Coronal)', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-axial', study: s, axis: 'axial', title: '对比检查 · 轴向 (Axial)', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 's-sagittal', study: s, axis: 'sagittal', title: '对比检查 · 矢状 (Sagittal)', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 's-coronal', study: s, axis: 'coronal', title: '对比检查 · 冠状 (Coronal)', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+    ]
+  } else {
+    return [
+      { key: 'p-axial', study: p, axis: 'axial', title: '当前检查 · 轴向', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-axial', study: s, axis: 'axial', title: '对比检查 · 轴向', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 'p-sagittal', study: p, axis: 'sagittal', title: '当前检查 · 矢状', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-sagittal', study: s, axis: 'sagittal', title: '对比检查 · 矢状', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 'p-coronal', study: p, axis: 'coronal', title: '当前检查 · 冠状', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-coronal', study: s, axis: 'coronal', title: '对比检查 · 冠状', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+    ]
+  }
+})
 const organs = computed(() => (batch.value?.items || []).filter((item) => item.status === 'completed' && item.label_id != null))
+const groups = computed<OrganGroup[]>(() => {
+  const map = new Map<string, OrganGroup>()
+  for (const item of organs.value) {
+    const id = item.group_id || item.organ_id || `label_${item.label_id}`
+    const existing = map.get(id)
+    const color = (item.color || [160, 160, 160]) as [number, number, number]
+    const meshName = item.mesh_name || `label_${item.label_id}`
+    if (existing) {
+      if (item.label_id != null) existing.labelIds.push(item.label_id)
+      existing.meshNames.push(meshName)
+      existing.count += 1
+    } else {
+      map.set(id, {
+        id,
+        name: item.group_name || item.display_name || item.name,
+        color: [color[0], color[1], color[2]],
+        labelIds: item.label_id != null ? [item.label_id] : [],
+        meshNames: [meshName],
+        count: 1,
+      })
+    }
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+})
 const visibleNames = computed(() =>
-  organs.value
-    .filter((item) => item.label_id != null && selected.value.includes(item.label_id))
-    .map((item) => item.mesh_name || `label_${item.label_id}`),
+  groups.value.filter((item) => selectedGroups.value.includes(item.id)).flatMap((item) => item.meshNames),
+)
+const visibleLabels = computed(() =>
+  groups.value.filter((item) => selectedGroups.value.includes(item.id)).flatMap((item) => item.labelIds),
 )
 const stainColors = computed(() => {
   const map: Record<number, StainStyle> = {}
@@ -61,6 +156,26 @@ const stainColors = computed(() => {
 })
 const compareHint = computed(() => candidates.value.find((item) => item.image_id === compareId.value))
 const workspaceStyle = computed(() => ({ '--organ-nav-width': `${paneWidth.value}px` }))
+
+const organMetaMap = computed<Record<number, ViewerOrgan>>(() => {
+  const map: Record<number, ViewerOrgan> = {}
+  for (const item of batch.value?.items || []) {
+    if (item.label_id != null) {
+      map[item.label_id] = item
+    }
+  }
+  return map
+})
+
+const compareOrganMetaMap = computed<Record<number, ViewerOrgan>>(() => {
+  const map: Record<number, ViewerOrgan> = {}
+  for (const item of compareBatch.value?.items || []) {
+    if (item.label_id != null) {
+      map[item.label_id] = item
+    }
+  }
+  return map
+})
 
 const primaryShape = computed<[number, number, number]>(() => {
   const shape = primary.value?.shape || [512, 512, primary.value?.sliceCount || 2]
@@ -79,13 +194,103 @@ function shapeOf(study?: Examination | null): [number, number, number] {
 
 function sliceCount(study?: Examination | null) {
   if (!study) return 1
-  if (axis.value === 'axial') return study.shape?.[2] || study.sliceCount || 1
-  if (axis.value === 'coronal') return study.shape?.[1] || 1
-  return study.shape?.[0] || 1
+  return axisSliceCount(axis.value, shapeOf(study))
+}
+
+function spacingOf(study?: Examination | null): [number, number, number] {
+  const spacing = study?.spacing || study?.acquisition?.spacing_mm || [1, 1, 1]
+  return [spacing[0] || 1, spacing[1] || 1, spacing[2] || 1]
+}
+
+function detectPrimaryAxis(study?: Examination | null): SliceAxis {
+  if (!study) return 'axial'
+  const explicitPlane = ((study.acquisition as Record<string, unknown> | undefined)?.plane as string | undefined)?.toLowerCase()
+  if (explicitPlane === 'axial' || explicitPlane === 'sagittal' || explicitPlane === 'coronal') {
+    return explicitPlane
+  }
+  const spacing = spacingOf(study)
+  const [sx, sy, sz] = spacing
+  if (sz > sx * 1.25 && sz > sy * 1.25) {
+    return 'axial'
+  }
+  if (sx > sy * 1.25 && sx > sz * 1.25) {
+    return 'sagittal'
+  }
+  if (sy > sx * 1.25 && sy > sz * 1.25) {
+    return 'coronal'
+  }
+  const shape = shapeOf(study)
+  const [dx, dy, dz] = shape
+  if (dx === dy && dz !== dx) {
+    return 'axial'
+  }
+  if (dy === dz && dx !== dy) {
+    return 'sagittal'
+  }
+  if (dx === dz && dy !== dx) {
+    return 'coronal'
+  }
+  return 'axial'
 }
 
 function affineOf(study?: Examination | null) {
   return study?.acquisition?.affine || null
+}
+
+function axisLayer(targetAxis: SliceAxis = axis.value) {
+  return targetAxis === 'axial' ? 2 : targetAxis === 'coronal' ? 1 : 0
+}
+
+function applyAffine(affine: number[][], voxel: [number, number, number]): [number, number, number] {
+  return [
+    affine[0][0] * voxel[0] + affine[0][1] * voxel[1] + affine[0][2] * voxel[2] + (affine[0][3] || 0),
+    affine[1][0] * voxel[0] + affine[1][1] * voxel[1] + affine[1][2] * voxel[2] + (affine[1][3] || 0),
+    affine[2][0] * voxel[0] + affine[2][1] * voxel[1] + affine[2][2] * voxel[2] + (affine[2][3] || 0),
+  ]
+}
+
+function worldAtPosition(study: Examination | null | undefined, value: number, targetAxis: SliceAxis = axis.value) {
+  const affine = affineOf(study)
+  if (!study || !affine || affine.length < 3 || affine.some(row => row.length < 4)) return null
+  const shape = shapeOf(study)
+  const currentVoxel = worldAnchor.value ? invertAffine(affine, worldAnchor.value) : [
+    Math.max(0, (shape[0] - 1) / 2),
+    Math.max(0, (shape[1] - 1) / 2),
+    Math.max(0, (shape[2] - 1) / 2),
+  ]
+  const voxel: [number, number, number] = [
+    Math.max(0, Math.min(shape[0] - 1, currentVoxel[0])),
+    Math.max(0, Math.min(shape[1] - 1, currentVoxel[1])),
+    Math.max(0, Math.min(shape[2] - 1, currentVoxel[2])),
+  ]
+  const layer = axisLayer(targetAxis)
+  voxel[layer] = Math.max(0, Math.min(shape[layer] - 1, value * Math.max(shape[layer] - 1, 1)))
+  return applyAffine(affine, voxel)
+}
+
+function positionAtWorld(study: Examination | null | undefined, ras: [number, number, number], targetAxis: SliceAxis = axis.value) {
+  const affine = affineOf(study)
+  if (!study || !affine || affine.length < 3 || affine.some(row => row.length < 4)) return null
+  const voxel = invertAffine(affine, ras)
+  const layer = axisLayer(targetAxis)
+  const count = axisSliceCount(targetAxis, shapeOf(study))
+  if (!Number.isFinite(voxel[layer]) || count <= 1) return 0
+  return Math.max(0, Math.min(1, voxel[layer] / (count - 1)))
+}
+
+function positionFor(study: Examination | null | undefined, targetAxis: SliceAxis = axis.value) {
+  if (!worldAnchor.value) return position.value
+  return positionAtWorld(study, worldAnchor.value, targetAxis) ?? position.value
+}
+
+function onPositionFrom(study: Examination | null | undefined, value: number, targetAxis: SliceAxis = axis.value) {
+  const anchor = worldAtPosition(study, value, targetAxis)
+  if (anchor) worldAnchor.value = anchor
+  position.value = value
+}
+
+function resetWorldAnchor() {
+  worldAnchor.value = worldAtPosition(primary.value, position.value, axis.value)
 }
 
 function clampPane(width: number) {
@@ -117,31 +322,31 @@ function startResize(event: PointerEvent) {
 
 function persistSelection() {
   if (!primary.value) return
-  localStorage.setItem(`vmrb-3d-organs-${primary.value.id}`, JSON.stringify(selected.value))
+  localStorage.setItem(`vmrb-3d-groups-${primary.value.id}`, JSON.stringify(selectedGroups.value))
 }
 
-function restoreSelection(items: ViewerOrgan[]) {
-  const ids = items.map((item) => item.label_id).filter((id): id is number => id != null)
-  const saved = localStorage.getItem(`vmrb-3d-organs-${primary.value?.id || ''}`)
+function restoreSelection() {
+  const ids = groups.value.map((item) => item.id)
+  const saved = localStorage.getItem(`vmrb-3d-groups-${primary.value?.id || ''}`)
   if (saved) {
     try {
-      const parsed = JSON.parse(saved) as number[]
-      selected.value = parsed.filter((id) => ids.includes(id))
-      if (selected.value.length) return
+      const parsed = JSON.parse(saved) as string[]
+      selectedGroups.value = parsed.filter((id) => ids.includes(id))
+      if (selectedGroups.value.length) return
     } catch { /* default to all */ }
   }
-  selected.value = ids
+  selectedGroups.value = ids
 }
 
-function toggleOrgan(labelId: number, visible: boolean) {
-  selected.value = visible
-    ? [...new Set([...selected.value, labelId])]
-    : selected.value.filter((id) => id !== labelId)
+function toggleOrgan(groupId: string, visible: boolean) {
+  selectedGroups.value = visible
+    ? [...new Set([...selectedGroups.value, groupId])]
+    : selectedGroups.value.filter((id) => id !== groupId)
   persistSelection()
 }
 
 function setAll(visible: boolean) {
-  selected.value = visible ? organs.value.map((item) => item.label_id!) : []
+  selectedGroups.value = visible ? groups.value.map((item) => item.id) : []
   persistSelection()
 }
 
@@ -191,7 +396,7 @@ async function refresh() {
     loadBatch(primary.value.id, batch),
     viewerApi.getCandidates(primary.value.id).then((items) => { candidates.value = items }).catch(() => { candidates.value = [] }),
   ])
-  if (batch.value?.items.length && !selected.value.length) restoreSelection(batch.value.items)
+  if (groups.value.length && !selectedGroups.value.length) restoreSelection()
   await loadLabelsFor(primary.value, labels)
   if (secondary.value) {
     await loadBatch(secondary.value.id, compareBatch)
@@ -205,7 +410,30 @@ async function refresh() {
 function schedulePoll() {
   if (pollTimer) clearTimeout(pollTimer)
   const running = [batch.value, compareBatch.value].some((item) => item && ['queued', 'running'].includes(item.status))
-  if (running) pollTimer = setTimeout(() => { void refresh().then(schedulePoll) }, 2000)
+  if (running) pollTimer = setTimeout(() => { void pollBatchStatuses() }, 2000)
+}
+
+async function pollBatchStatuses() {
+  const primaryStudy = primary.value
+  const secondaryStudy = secondary.value
+  if (!primaryStudy) return
+  const primaryStatus = batch.value?.status
+  const secondaryStatus = compareBatch.value?.status
+  await Promise.all([
+    loadBatch(primaryStudy.id, batch),
+    secondaryStudy ? loadBatch(secondaryStudy.id, compareBatch) : Promise.resolve(),
+  ])
+  if (primary.value?.id !== primaryStudy.id || secondary.value?.id !== secondaryStudy?.id) return
+  const labelsReady = (status?: string) => status === 'completed' || status === 'partial'
+  const loads: Promise<void>[] = []
+  if (batch.value?.status !== primaryStatus && labelsReady(batch.value?.status)) {
+    loads.push(loadLabelsFor(primaryStudy, labels))
+  }
+  if (secondaryStudy && compareBatch.value?.status !== secondaryStatus && labelsReady(compareBatch.value?.status)) {
+    loads.push(loadLabelsFor(secondaryStudy, compareLabels))
+  }
+  if (loads.length) await Promise.all(loads)
+  schedulePoll()
 }
 
 const batchBusy = ref(false)
@@ -228,7 +456,11 @@ async function startBatchSegmentation() {
 function selectStudy(id: string) {
   imageId.value = id
   if (compareId.value === id) compareId.value = ''
-  selected.value = []
+  selectedGroups.value = []
+  const study = ctStudies.value.find((item) => item.id === id)
+  if (study) {
+    currentAxis.value = detectPrimaryAxis(study)
+  }
   updateQuery()
 }
 
@@ -245,10 +477,6 @@ function selectCompare(id: string) {
   }
   compareId.value = id
   updateQuery()
-}
-
-function onPosition(value: number) {
-  position.value = value
 }
 
 function invertAffine(affine: number[][], ras: number[]): [number, number, number] {
@@ -296,33 +524,102 @@ function layoutRight() {
   sideBySide.value = right > 720
 }
 
-watch([imageId, compareId], () => { void refresh().then(schedulePoll) })
+watch([imageId, compareId], () => {
+  if (!initialized) return
+  if (primary.value) {
+    currentAxis.value = detectPrimaryAxis(primary.value)
+  }
+  resetWorldAnchor()
+  void refresh().then(schedulePoll)
+})
+watch([axis, () => primary.value?.id], resetWorldAnchor)
 watch(paneWidth, layoutRight)
+watch(groups, (list) => {
+  if (list.length && !selectedGroups.value.length) restoreSelection()
+})
+
+async function loadVolume(study: Examination | null, target: typeof volumeRenderer) {
+  target.value?.dispose()
+  target.value = null
+  if (!study?.shape || study.shape.length !== 3) return
+  const engine = new VolumeRenderer()
+  try {
+    await engine.load(study.id, shapeOf(study), (value) => { volumeProgress.value = value })
+    target.value = engine
+  } catch {
+    engine.dispose()
+  }
+}
+
+watch(
+  () => primary.value?.id,
+  (id) => { void loadVolume(primary.value || null, volumeRenderer); void id },
+)
+watch(
+  () => secondary.value?.id,
+  (id) => { void loadVolume(secondary.value || null, compareRenderer); void id },
+)
 
 onMounted(async () => {
   document.title = '3D 查看器'
+  document.documentElement.style.overflow = 'hidden'
+  document.documentElement.style.height = '100%'
+  document.body.style.overflow = 'hidden'
+  document.body.style.height = '100%'
+  document.body.style.overscrollBehavior = 'none'
+
+  activeMedicalTool.value = 'ww_wl'
   if (localPreview) {
     error.value = '本地预览没有真实 CT 重建，请连接后端后打开 3D 窗口。'
     return
   }
   try {
     await loadStudies()
+    if (primary.value) {
+      currentAxis.value = detectPrimaryAxis(primary.value)
+    }
     await refresh()
+    initialized = true
     schedulePoll()
     layoutRight()
+    if (typeof ResizeObserver !== 'undefined' && rightPaneRef.value) {
+      rightPaneObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.contentRect && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+            rightPaneSize.value = {
+              width: entry.contentRect.width,
+              height: entry.contentRect.height,
+            }
+          }
+        }
+      })
+      rightPaneObserver.observe(rightPaneRef.value)
+    }
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : '加载失败'
   }
 })
 onBeforeUnmount(() => {
+  document.documentElement.style.overflow = ''
+  document.documentElement.style.height = ''
+  document.body.style.overflow = ''
+  document.body.style.height = ''
+  document.body.style.overscrollBehavior = ''
+
   finishResize()
   if (pollTimer) clearTimeout(pollTimer)
+  if (rightPaneObserver) {
+    rightPaneObserver.disconnect()
+    rightPaneObserver = undefined
+  }
+  volumeRenderer.value?.dispose()
+  compareRenderer.value?.dispose()
 })
 </script>
 
 <template>
-  <div ref="workspace" class="viewer-window" :class="{ resizing }" :style="workspaceStyle">
-    <header class="viewer-toolbar">
+  <div ref="workspace" class="viewer-window" :class="{ resizing }" :style="workspaceStyle" @wheel.passive.stop>
+    <header class="viewer-toolbar" @wheel.prevent>
       <div class="toolbar-block">
         <strong>3D 查看器</strong>
         <label>检查
@@ -347,8 +644,41 @@ onBeforeUnmount(() => {
         </label>
       </div>
       <div class="toolbar-block">
-        <span>方向</span>
-        <button v-for="item in (['X', 'Y', 'Z'] as const)" :key="item" type="button" :class="{ active: xyz === item }" @click="xyz = item">{{ item }}</button>
+        <span>视图模式</span>
+        <button
+          type="button"
+          :class="{ active: viewMode === 'mpr' }"
+          @click="viewMode = 'mpr'"
+        >
+          3视图 (MPR)
+        </button>
+        <button
+          type="button"
+          :class="{ active: viewMode === 'single' }"
+          @click="viewMode = 'single'"
+        >
+          单视图
+        </button>
+      </div>
+      <div v-if="viewMode === 'single'" class="toolbar-block">
+        <span>切片方位</span>
+        <button
+          v-for="item in ORIENTATION_OPTIONS"
+          :key="item.id"
+          type="button"
+          :class="{ active: currentAxis === item.id }"
+          @click="currentAxis = item.id"
+        >
+          {{ item.label }}
+        </button>
+      </div>
+      <div class="toolbar-block">
+        <select v-model="preset" aria-label="窗宽窗位">
+          <option value="lung">肺窗</option>
+          <option value="soft">软组织</option>
+          <option value="bone">骨窗</option>
+          <option value="brain">脑窗</option>
+        </select>
         <label class="opacity">染色
           <input v-model.number="opacity" type="range" min="0" max="1" step="0.05" />
         </label>
@@ -379,10 +709,12 @@ onBeforeUnmount(() => {
             :model-id="batch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
-            :slice-index="positionToSlice(position, sliceCount(primary))"
+            :slice-index="positionToSlice(positionFor(primary), sliceCount(primary))"
             :shape="shapeOf(primary)"
+            :spacing="spacingOf(primary)"
             :affine="affineOf(primary)"
             :status="batch ? `分割${batch.status}` : '尚未分割'"
+            :organ-meta="organMetaMap"
             @select-label="jumpToOrgan"
           />
           <AnatomyScene
@@ -390,52 +722,96 @@ onBeforeUnmount(() => {
             :model-id="compareBatch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
-            :slice-index="positionToSlice(position, sliceCount(secondary))"
+            :slice-index="positionToSlice(positionFor(secondary), sliceCount(secondary))"
             :shape="shapeOf(secondary)"
+            :spacing="spacingOf(secondary)"
             :affine="affineOf(secondary)"
+            :organ-meta="compareOrganMetaMap"
             @select-label="jumpToOrgan"
           />
         </div>
-        <OrganVisibilityList :organs="organs" :selected="selected" @toggle="toggleOrgan" @set-all="setAll" />
+        <OrganVisibilityList :groups="groups" :selected="selectedGroups" @toggle="toggleOrgan" @set-all="setAll" />
       </section>
       <div
         class="pane-resizer"
         role="separator"
         aria-orientation="vertical"
         tabindex="0"
+        @wheel.prevent.stop
         @pointerdown.prevent="startResize"
       ><span /></div>
-      <section class="right-pane" :class="{ compare: Boolean(secondary), stacked: Boolean(secondary) && !sideBySide }">
-        <SliceViewport
-          v-if="primary"
-          :examination="primary"
-          :axis="axis"
-          preset="soft"
-          :zoom="1"
-          :renderer="null"
-          :position="position"
-          :label-volume="labels"
-          :visible-labels="selected"
-          :stain-colors="stainColors"
-          :stain-opacity="opacity"
-          compact
-          @position-change="onPosition"
-        />
-        <SliceViewport
-          v-if="secondary"
-          :examination="secondary"
-          :axis="axis"
-          preset="soft"
-          :zoom="1"
-          :renderer="null"
-          :position="position"
-          :label-volume="compareLabels"
-          :visible-labels="selected"
-          :stain-colors="stainColors"
-          :stain-opacity="opacity"
-          compact
-          @position-change="onPosition"
-        />
+      <section
+        ref="rightPaneRef"
+        class="right-pane"
+        :class="{
+          'mpr-mode': viewMode === 'mpr',
+          'mpr-single-study': viewMode === 'mpr' && !secondary,
+          'mpr-single-stacked': viewMode === 'mpr' && !secondary && rightAspectRatio < 1.3,
+          'mpr-2x3': viewMode === 'mpr' && secondary && mprCompareLayout === '2x3',
+          'mpr-3x2': viewMode === 'mpr' && secondary && mprCompareLayout === '3x2',
+          'single-mode': viewMode === 'single',
+          'compare': viewMode === 'single' && Boolean(secondary),
+          'stacked': viewMode === 'single' && Boolean(secondary) && !sideBySide,
+        }"
+      >
+        <template v-if="viewMode === 'mpr'">
+          <SliceViewport
+            v-for="vp in mprViewports"
+            :key="vp.key"
+            :examination="vp.study"
+            :axis="vp.axis"
+            :preset="preset"
+            :zoom="1"
+            :renderer="vp.renderer"
+            :position="positionFor(vp.study, vp.axis)"
+            :label-volume="vp.labelVolume"
+            :visible-labels="visibleLabels"
+            :stain-colors="stainColors"
+            :stain-opacity="opacity"
+            :title="vp.title"
+            :compact="vp.compact"
+            :sync-crosshairs="false"
+            :show-crosshairs="false"
+            @position-change="onPositionFrom(vp.study, $event, vp.axis)"
+          />
+        </template>
+        <template v-else>
+          <SliceViewport
+            v-if="primary"
+            :examination="primary"
+            :axis="axis"
+            :preset="preset"
+            :zoom="1"
+            :renderer="volumeRenderer"
+            :position="positionFor(primary, axis)"
+            :label-volume="labels"
+            :visible-labels="visibleLabels"
+            :stain-colors="stainColors"
+            :stain-opacity="opacity"
+            :title="secondary ? '当前检查' : undefined"
+            :sync-crosshairs="false"
+            :show-crosshairs="false"
+            @position-change="onPositionFrom(primary, $event, axis)"
+          />
+          <SliceViewport
+            v-if="secondary"
+            :examination="secondary"
+            :axis="axis"
+            :preset="preset"
+            :zoom="1"
+            :renderer="compareRenderer"
+            :position="positionFor(secondary, axis)"
+            :label-volume="compareLabels"
+            :visible-labels="visibleLabels"
+            :stain-colors="stainColors"
+            :stain-opacity="opacity"
+            title="对比检查"
+            compact
+            :sync-crosshairs="false"
+            :show-crosshairs="false"
+            @position-change="onPositionFrom(secondary, $event, axis)"
+          />
+        </template>
       </section>
     </div>
   </div>
@@ -445,9 +821,15 @@ onBeforeUnmount(() => {
 .viewer-window {
   display: flex;
   height: 100vh;
+  max-height: 100vh;
+  width: 100vw;
+  max-width: 100vw;
+  overflow: hidden;
+  overscroll-behavior: none;
   flex-direction: column;
   background: #0f1b22;
   color: #d7e6e8;
+  box-sizing: border-box;
 }
 .viewer-toolbar {
   display: flex;
@@ -458,6 +840,7 @@ onBeforeUnmount(() => {
   padding: 10px 14px;
   border-bottom: 1px solid #2a3b44;
   background: #13232c;
+  flex-shrink: 0;
 }
 .toolbar-block {
   display: flex;
@@ -499,24 +882,39 @@ onBeforeUnmount(() => {
   flex: 1;
   grid-template-columns: clamp(320px, var(--organ-nav-width), calc(100% - 420px)) 10px minmax(380px, 1fr);
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 .left-pane {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   background: #f4fafa;
   color: #244247;
 }
 .scenes {
   display: grid;
+  flex: 1;
   min-height: 0;
   padding: 8px;
   gap: 8px;
+  overflow: hidden;
 }
 .scenes.compare { grid-template-columns: 1fr 1fr; }
+.left-pane :deep(.organ-list) {
+  flex-shrink: 0;
+  max-height: 280px;
+  overflow: hidden;
+  border-top: 1px solid #2a3b44;
+}
 .pane-resizer {
   cursor: col-resize;
   background: #13232c;
+  user-select: none;
+  touch-action: none;
 }
 .pane-resizer span {
   display: block;
@@ -529,15 +927,66 @@ onBeforeUnmount(() => {
 .right-pane {
   display: grid;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   padding: 8px;
+  gap: 8px;
+  box-sizing: border-box;
 }
-.right-pane.compare { grid-template-columns: 1fr 1fr; }
-.right-pane.stacked { grid-template-columns: 1fr; }
+.right-pane.single-mode {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+.right-pane.single-mode.compare {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+.right-pane.single-mode.stacked {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+.right-pane.mpr-single-study {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: 1fr;
+}
+.right-pane.mpr-single-study.mpr-single-stacked {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: 1fr 1fr;
+}
+.right-pane.mpr-single-study.mpr-single-stacked > :first-child {
+  grid-column: span 2;
+}
+.right-pane.mpr-2x3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+.right-pane.mpr-3x2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
 .resizing { user-select: none; }
 @media (max-width: 980px) {
   .viewer-body { grid-template-columns: 1fr; }
   .pane-resizer { display: none; }
-  .scenes.compare, .right-pane.compare { grid-template-columns: 1fr; }
+  .scenes.compare { grid-template-columns: 1fr; }
+  .right-pane.single-mode.compare {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .right-pane.mpr-single-study,
+  .right-pane.mpr-single-study.mpr-single-stacked {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+  }
+  .right-pane.mpr-single-study.mpr-single-stacked > :first-child {
+    grid-column: span 1;
+  }
+  .right-pane.mpr-2x3,
+  .right-pane.mpr-3x2 {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(6, minmax(0, 1fr));
+  }
 }
 .btn-batch-start {
   background: #0f766e;

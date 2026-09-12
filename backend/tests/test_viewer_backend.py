@@ -99,8 +99,8 @@ def test_comparison_candidates_respect_geometry_and_device(app_env, people, nift
         f"/api/v1/medical-images/{first}/comparison-candidates", headers=people["doctor_a"]
     ).json()["data"]
     wide = next(item for item in blocked if item["image_id"] == wide_id)
-    assert wide["comparable"] is False
-    assert any("间距" in reason for reason in wide["reasons"])
+    assert wide["comparable"] is True
+    assert any("间距" in warning for warning in wide["warnings"])
     with app.state.session_factory() as db:
         left = db.get(MedicalImage, first)
         right = db.get(MedicalImage, second)
@@ -108,8 +108,8 @@ def test_comparison_candidates_respect_geometry_and_device(app_env, people, nift
         right.acquisition = {**(right.acquisition or {}), "device": "ScannerB"}
         db.commit()
         verdict = compare_studies(left, right)
-    assert verdict["comparable"] is False
-    assert any("设备" in reason for reason in verdict["reasons"])
+    assert verdict["comparable"] is True
+    assert any("设备" in warning for warning in verdict["warnings"])
 
 
 def test_overlay_style_marks_near_black_as_outline():

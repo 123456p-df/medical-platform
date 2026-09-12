@@ -9,6 +9,7 @@ export interface ViewerOrgan {
   name: string
   display_name?: string | null
   group_id?: string | null
+  group_name?: string | null
   status: 'queued' | 'running' | 'completed' | 'failed'
   progress: number
   model_id?: string | null

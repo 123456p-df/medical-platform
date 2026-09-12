@@ -31,7 +31,7 @@ def main():
         settings = Settings(_env_file=None, database_url="sqlite:///" + Path(temporary).as_posix() + "/test.db",
             jwt_secret="j" * 48, id_hash_key="h" * 48, id_encryption_key=Fernet.generate_key().decode(),
             storage_root=Path(temporary) / "images", ai_base_url=None, ai_model=None,
-            nv_segment_ct_dir=None, segmentation_callable=None, allow_registration=True)
+            nv_segment_ct_dir=None, segmentation_callable=None)
         engine = make_engine(settings.database_url)
         Base.metadata.create_all(engine)
         with TestClient(create_app(settings, engine=engine)) as client:

@@ -10,32 +10,41 @@ class Input(BaseModel):
 
 class Credentials(Input):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[\w.-]+$")
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=8, max_length=128)
 
 
 class RegisterInput(Credentials):
-    role: Literal["doctor", "patient"]
-
-    @field_validator("password")
-    @classmethod
-    def strong_registration_password(cls, value):
-        if len(value) < 8:
-            raise ValueError("Registration passwords require at least 8 characters")
-        return value
+    role: Literal["patient"] = "patient"
 
 
 class UserOut(BaseModel):
     user_id: int
     username: str
-    role: Literal["doctor", "patient"]
+    role: Literal["admin", "doctor", "patient"]
     patient_id: int | None = None
 
 
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    role: Literal["doctor", "patient"]
+    role: Literal["admin", "doctor", "patient"]
     user_id: int
+
+
+class DoctorProvisionInput(Credentials):
+    department: str = Field(default="", max_length=100)
+
+
+class BreakGlassInput(Input):
+    reason: str = Field(min_length=3, max_length=500)
+    duration_minutes: int = Field(default=15, ge=1, le=60)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value):
+        if not value.strip():
+            raise ValueError("Reason must not be blank")
+        return value.strip()
 
 
 class ResolveInput(Input):
@@ -92,25 +101,21 @@ class RecordCreate(Input):
     organ_id: str = Field(min_length=1, max_length=64)
     organ_ids: list[str] | None = Field(None, min_length=1, max_length=10)
     examination_id: str | None = Field(default=None, max_length=64)
-    diagnosis: str = Field(max_length=10000)
-    description: str = Field(max_length=30000)
+    diagnosis: str = Field(min_length=1, max_length=10000)
+    description: str = Field(min_length=1, max_length=30000)
     recommendation: str = Field(default="", max_length=10000)
     reviewed: bool = True
     record_date: date
 
+    @field_validator("diagnosis", "description")
+    @classmethod
+    def not_blank(cls, value):
+        if not value.strip():
+            raise ValueError("Must not be blank")
+        return value.strip()
+
     @model_validator(mode="after")
     def matching_organs(self):
-        self.diagnosis = self.diagnosis.strip()
-        self.description = self.description.strip()
-        self.recommendation = self.recommendation.strip()
-        if any("<!-- vmrb:" in value.lower() for value in (
-            self.diagnosis,
-            self.description,
-            self.recommendation,
-        )):
-            raise ValueError("Report text contains a reserved document marker")
-        if self.reviewed and (not self.diagnosis or not self.description):
-            raise ValueError("Signed reports require a diagnosis and description")
         if self.organ_ids is not None:
             if (
                 len(set(self.organ_ids)) != len(self.organ_ids)
@@ -125,8 +130,8 @@ class RecordPatch(Input):
     organ_id: str | None = Field(default=None, min_length=1, max_length=64)
     organ_ids: list[str] | None = Field(None, min_length=1, max_length=10)
     examination_id: str | None = Field(default=None, max_length=64)
-    diagnosis: str | None = Field(default=None, max_length=10000)
-    description: str | None = Field(default=None, max_length=30000)
+    diagnosis: str | None = Field(default=None, min_length=1, max_length=10000)
+    description: str | None = Field(default=None, min_length=1, max_length=30000)
     recommendation: str | None = Field(default=None, max_length=10000)
     reviewed: bool | None = None
     record_date: date | None = None
@@ -134,24 +139,28 @@ class RecordPatch(Input):
     @model_validator(mode="after")
     def nonempty(self):
         values = self.model_dump(exclude_unset=True)
-        if not values or any(v is None for v in values.values()):
-            raise ValueError("Provide at least one non-null field")
-        for field in ("diagnosis", "description", "recommendation"):
-            value = values.get(field)
-            if isinstance(value, str):
-                if "<!-- vmrb:" in value.lower():
-                    raise ValueError("Report text contains a reserved document marker")
-                setattr(self, field, value.strip())
-        if self.reviewed is not False and any(
-            field in values and not values[field].strip() for field in ("diagnosis", "description")
+        if not values or any(
+            v is None or (isinstance(v, str) and not v.strip()) for v in values.values()
         ):
-            raise ValueError("Signed reports require a diagnosis and description")
+            raise ValueError("Provide at least one non-null, non-blank field")
         if self.organ_ids is not None:
             if len(set(self.organ_ids)) != len(self.organ_ids):
                 raise ValueError("Organ list must be unique")
             if self.organ_id is not None and self.organ_id not in self.organ_ids:
                 raise ValueError("Primary organ must be included")
         return self
+
+
+class AddendumCreate(Input):
+    reason: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=20000)
+
+    @field_validator("reason", "content")
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError("Must not be blank")
+        return value.strip()
 
 
 class RecordOut(BaseModel):
@@ -169,6 +178,15 @@ class RecordOut(BaseModel):
     doctor_name: str
     created_at: datetime
     updated_at: datetime
+
+
+class AddendumOut(BaseModel):
+    addendum_id: int
+    record_id: int
+    author_user_id: int
+    reason: str
+    content: str
+    created_at: datetime
 
 
 class RecordPage(BaseModel):
@@ -271,6 +289,7 @@ class BatchItemOut(BaseModel):
     name: str
     display_name: str | None = None
     group_id: str | None = None
+    group_name: str | None = None
     status: Literal["queued", "running", "completed", "failed"]
     progress: int
     model_id: str | None = None
@@ -311,6 +330,7 @@ class ComparisonCandidateOut(BaseModel):
     reasons: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     device: str | None = None
+    world_matrix: list[list[float]] | None = None
 
 
 class LabelColorOut(BaseModel):

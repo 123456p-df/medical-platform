@@ -17,7 +17,7 @@ async function remove() {
     await store.archivePatient(props.id)
     dialog.value?.close(); await workflow.load(); emit('removed', props.id)
     if (!props.stay) await router.push('/doctor/patients')
-  } catch (e) { error.value = e instanceof Error ? e.message : 'Delete failed.' }
+  } catch (e) { error.value = e instanceof Error ? e.message : '删除失败' }
   finally { busy.value = false }
 }
 </script>
@@ -25,12 +25,12 @@ async function remove() {
   <button
     type="button"
     :class="['btn', 'btn-secondary', 'btn-sm', 'patient-delete-trigger', { 'is-compact': compact }]"
-    :aria-label="$t('Delete patient {name}', { name })"
-    :title="compact ? $t('Delete patient {name}', { name }) : undefined"
+    :aria-label="`删除患者 ${name}`"
+    :title="compact ? `删除患者 ${name}` : undefined"
     @click.stop="error = ''; dialog?.showModal()"
   >
     <Trash2 :size="14" />
-    <span v-if="!compact">{{ $t('Delete patient') }}</span>
+    <span v-if="!compact">删除患者</span>
   </button>
   <dialog
     ref="dialog"
@@ -39,8 +39,8 @@ async function remove() {
     @click.stop
     @cancel="busy && $event.preventDefault()"
   >
-    <h2 :id="`delete-title-${id}`">{{ $t('Delete patient record?') }}</h2><p>{{ $t('Remove {name} (ID {id}) from the patient list and stop access to their records and imaging through this platform.', { name, id }) }}</p><p class="muted">{{ $t('Records, original imaging, and audit history remain archived. Contact the records administrator to restore access.') }}</p>
-    <p v-if="error" role="alert">{{ $t(error) }}</p><footer><button class="btn btn-secondary" :disabled="busy" @click="dialog?.close()">{{ $t('Cancel') }}</button><button class="btn danger" :disabled="busy" @click="remove">{{ $t(busy ? 'Deleting…' : 'Confirm delete') }}</button></footer>
+    <h2 :id="`delete-title-${id}`">删除患者档案？</h2><p>将从患者列表移除 <strong>{{ name }}</strong>（ID {{ id }}），并停止通过本平台访问其病历和影像。</p><p class="muted">病历、原始影像和操作历史保留在归档中。如需恢复，请联系档案管理员。</p>
+    <p v-if="error" role="alert">{{ error }}</p><footer><button class="btn btn-secondary" :disabled="busy" @click="dialog?.close()">取消</button><button class="btn danger" :disabled="busy" @click="remove">{{ busy ? '删除中…' : '确认删除' }}</button></footer>
   </dialog>
 </template>
 <style scoped>

@@ -43,6 +43,9 @@ ORGAN_STYLES = {
     "femur": ([230, 225, 210, 255], 0.65, "OPAQUE"),
     "sternum": ([235, 230, 215, 255], 0.65, "OPAQUE"),
     "scapula": ([230, 225, 210, 255], 0.65, "OPAQUE"),
+    "clavicula": ([232, 226, 212, 255], 0.62, "OPAQUE"),
+    "humerus": ([228, 222, 208, 255], 0.62, "OPAQUE"),
+    "costal": ([185, 220, 230, 230], 0.35, "BLEND"),
     # Cardiovascular
     "aorta": ([225, 35, 35, 255], 0.30, "OPAQUE"),
     "artery": ([225, 35, 35, 255], 0.30, "OPAQUE"),
@@ -78,6 +81,14 @@ ORGAN_STYLES = {
     "brain": ([220, 180, 190, 255], 0.50, "OPAQUE"),
     "spinal_cord": ([245, 235, 175, 255], 0.50, "OPAQUE"),
     "muscle": ([170, 70, 70, 255], 0.55, "OPAQUE"),
+    "iliopsoas": ([165, 68, 68, 255], 0.55, "OPAQUE"),
+    "autochthon": ([160, 62, 62, 255], 0.55, "OPAQUE"),
+    "gluteus": ([175, 72, 70, 255], 0.55, "OPAQUE"),
+    "carotid": ([220, 40, 40, 255], 0.28, "OPAQUE"),
+    "subclavian": ([218, 38, 42, 255], 0.28, "OPAQUE"),
+    "brachiocephalic": ([210, 42, 48, 255], 0.30, "OPAQUE"),
+    "atrial": ([180, 45, 55, 255], 0.36, "OPAQUE"),
+    "appendage": ([180, 45, 55, 255], 0.36, "OPAQUE"),
 }
 
 
@@ -245,16 +256,17 @@ def extract_subvoxel_surface(
             candidate_mesh.fix_normals()
             source_volume = abs(float(mesh_ijk.volume)) if mesh_ijk.is_watertight else 0.0
             candidate_volume = abs(float(candidate_mesh.volume)) if candidate_mesh.is_watertight else 0.0
-            volume_ok = (
-                not source_volume
-                or candidate_mesh.is_watertight
-                and abs(candidate_volume - source_volume) / source_volume <= 0.015
+            volume_error = (
+                0.0
+                if not source_volume
+                else abs(candidate_volume - source_volume) / source_volume
             )
-            if (
-                len(candidate_mesh.faces) <= target_faces
-                and candidate_mesh.is_watertight == mesh_ijk.is_watertight
-                and volume_ok
-            ):
+            topology_ok = candidate_mesh.is_watertight == mesh_ijk.is_watertight
+            # Keep a strict gate for normal cases, but allow a bounded 5% volume
+            # error for very dense meshes. This prevents a failed 1.5% gate from
+            # sending hundreds of thousands of faces to the browser.
+            volume_ok = not source_volume or (candidate_mesh.is_watertight and volume_error <= 0.05)
+            if len(candidate_mesh.faces) <= target_faces and topology_ok and volume_ok:
                 mesh_ijk = candidate_mesh
             else:
                 decimation_fallback = True
@@ -368,32 +380,72 @@ def extract_subvoxel_surface_from_mask(
     sub_affine = affine.copy()
     sub_affine[:3, 3] = nib.affines.apply_affine(affine, min_c)
 
-    # 3. Exact Signed Distance Field computation (sub-voxel continuous field)
-    pos_dist = ndi.distance_transform_edt(sub_mask).astype(np.float32)
-    neg_dist = ndi.distance_transform_edt(~sub_mask).astype(np.float32)
+    # 3. Exact Signed Distance Field computation (sub-voxel continuous field).
+    # EDT must use the physical voxel spacing; otherwise a 5 mm slice thickness
+    # is treated as 1 mm and the reconstructed surface is geometrically warped.
+    try:
+        spacing_mm = np.linalg.norm(np.asarray(affine, dtype=float)[:3, :3], axis=0)
+    except (TypeError, ValueError):
+        spacing_mm = np.ones(3, dtype=float)
+    spacing_mm = np.asarray(spacing_mm, dtype=float)
+    if spacing_mm.shape != (3,) or not np.all(np.isfinite(spacing_mm)) or np.any(spacing_mm <= 0):
+        spacing_mm = np.ones(3, dtype=float)
+    pos_dist = ndi.distance_transform_edt(sub_mask, sampling=spacing_mm).astype(np.float32)
+    neg_dist = ndi.distance_transform_edt(~sub_mask, sampling=spacing_mm).astype(np.float32)
     sdf = np.where(sub_mask, pos_dist - 0.5, -(neg_dist - 0.5))
 
     # Calculate ground-truth voxel volume in cm3 (spacing-independent)
     voxel_vol_cm3 = float(np.sum(clean_mask) * abs(np.linalg.det(affine[:3, :3])) / 1000.0)
 
+    effective_sigma_mm = 0.0
     if sdf_sigma > 0.0:
-        sdf = ndi.gaussian_filter(sdf, sigma=sdf_sigma)
+        # Treat the public parameter as millimetres and convert per axis. Cap
+        # the blur for very small organs so a thin structure cannot disappear.
+        min_extent_mm = float(np.min(np.asarray(sub_mask.shape, dtype=float) * spacing_mm))
+        effective_sigma_mm = min(float(sdf_sigma), max(0.25, min_extent_mm / 6.0))
+        sigma_vox = tuple(
+            max(0.1, min(3.0, effective_sigma_mm / float(axis_spacing)))
+            for axis_spacing in spacing_mm
+        )
+        sdf = ndi.gaussian_filter(sdf, sigma=sigma_vox)
 
     # 4. Extract continuous zero-crossing surface via extract_subvoxel_surface
-    mesh, metadata = extract_subvoxel_surface(
-        field=sdf,
-        affine=sub_affine,
-        level=0.0,
-        target_faces=target_faces,
-        organ_id=organ_id,
-        is_probability=False,
-        min_component_voxels=min_component_voxels,
-        smooth_iterations=smooth_iterations,
-    )
+    try:
+        mesh, metadata = extract_subvoxel_surface(
+            field=sdf,
+            affine=sub_affine,
+            level=0.0,
+            target_faces=target_faces,
+            organ_id=organ_id,
+            is_probability=False,
+            min_component_voxels=min_component_voxels,
+            smooth_iterations=smooth_iterations,
+        )
+        sdf_fallback = False
+    except ValueError:
+        # A narrow/thin component may have no zero crossing after smoothing.
+        # Retry on the exact unsmoothed SDF rather than failing the whole batch.
+        if sdf_sigma <= 0.0:
+            raise
+        logger.warning("SDF smoothing removed the zero-crossing for %s; retrying raw SDF", organ_id)
+        raw_sdf = np.where(sub_mask, pos_dist - 0.5, -(neg_dist - 0.5))
+        mesh, metadata = extract_subvoxel_surface(
+            field=raw_sdf,
+            affine=sub_affine,
+            level=0.0,
+            target_faces=target_faces,
+            organ_id=organ_id,
+            is_probability=False,
+            min_component_voxels=min_component_voxels,
+            smooth_iterations=smooth_iterations,
+        )
+        sdf_fallback = True
 
     if np.isnan(metadata["volume_cm3"]) or metadata["volume_cm3"] <= 0:
         metadata["volume_cm3"] = voxel_vol_cm3
     metadata["sdf_sigma"] = sdf_sigma
+    metadata["sdf_sigma_effective_mm"] = effective_sigma_mm
+    metadata["sdf_fallback"] = sdf_fallback
 
     metadata["voxel_volume_cm3"] = voxel_vol_cm3
     return mesh, metadata

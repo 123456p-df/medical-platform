@@ -34,6 +34,7 @@ def acquisition_of(image: MedicalImage) -> dict:
         "fov_mm": _vector(fov),
         "orientation": stored.get("orientation") or "RAS",
         "device": (stored.get("device") or "").strip() or None,
+        "affine": stored.get("affine"),
     }
 
 
@@ -46,20 +47,25 @@ def compare_studies(primary: MedicalImage, candidate: MedicalImage) -> dict:
         reasons.append("只支持 CT 与 CT 对比")
     left = acquisition_of(primary)
     right = acquisition_of(candidate)
+    has_world = left["affine"] is not None and right["affine"] is not None
     if left["orientation"] != right["orientation"]:
-        reasons.append("影像方向不一致")
+        (warnings if has_world else reasons).append("影像方向不同，按世界坐标重采样")
     spacing_diff = _relative_diff(left["spacing_mm"], right["spacing_mm"])
     if spacing_diff is None:
         reasons.append("缺少体素间距")
-    elif max(spacing_diff) > SPACING_TOLERANCE:
+    elif max(spacing_diff) > SPACING_TOLERANCE and not has_world:
         reasons.append("体素间距相差超过 20%")
+    elif max(spacing_diff) > SPACING_TOLERANCE:
+        warnings.append("体素间距不同，将按世界坐标重采样")
     fov_diff = _relative_diff(left["fov_mm"], right["fov_mm"])
     if fov_diff is None:
         reasons.append("缺少视野信息")
-    elif max(fov_diff) > FOV_TOLERANCE:
+    elif max(fov_diff) > FOV_TOLERANCE and not has_world:
         reasons.append("扫描视野相差超过 25%")
+    elif max(fov_diff) > FOV_TOLERANCE:
+        warnings.append("扫描视野不同，将按世界坐标裁剪")
     if left["device"] and right["device"] and left["device"] != right["device"]:
-        reasons.append("采集设备不同")
+        warnings.append("采集设备不同")
     elif not left["device"] or not right["device"]:
         warnings.append("设备信息缺失，按几何相似允许对比")
     return {
@@ -74,4 +80,5 @@ def compare_studies(primary: MedicalImage, candidate: MedicalImage) -> dict:
         "reasons": reasons,
         "warnings": warnings if not reasons else [],
         "device": right["device"],
+        "world_matrix": right["affine"],
     }

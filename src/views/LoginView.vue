@@ -1,37 +1,57 @@
 <script setup lang="ts">
-import { ArrowRight, HeartPulse, ShieldCheck, Stethoscope, Activity, Languages } from 'lucide-vue-next'
+import { ArrowRight, HeartPulse, ShieldCheck, Stethoscope, Activity, UserPlus } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { ref } from 'vue'
 import { localPreview } from '@/utils/runtime'
-import { DEMO_ACCOUNTS, type DemoAccountKey } from '@/config/demoAccounts'
-import { locale, setLocale } from '@/i18n'
+import type { PortalRole } from '@/types'
 
 const router = useRouter()
 const auth = useAuthStore()
 
 const REMEMBERED_USERNAME_KEY = 'pulmolink-remembered-username'
+const mode = ref<'login' | 'signup'>('login')
 const username = ref(localStorage.getItem(REMEMBERED_USERNAME_KEY) || '')
 const password = ref('')
+const confirmPassword = ref('')
+const role = ref<PortalRole>('patient')
 const remember = ref(true)
 const busy = ref(false)
 const error = ref('')
 const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
-async function submit(previewAccount?: DemoAccountKey) {
+type PreviewAccount = 'admin' | 'doctor' | 'patient'
+
+function switchMode(next: 'login' | 'signup') {
+  mode.value = next
+  password.value = ''
+  confirmPassword.value = ''
+  error.value = ''
+}
+
+async function submit(previewAccount?: PreviewAccount) {
   if (busy.value) return
   if (previewAccount) {
-    const account = DEMO_ACCOUNTS[previewAccount]
-    username.value = account.username
-    password.value = account.password
+    mode.value = 'login'
+    const credentials = {
+      admin: ['admin', 'Admin123!'],
+      doctor: ['demo_doctor', 'DemoDoctor123!'],
+      patient: ['demo_patient', 'DemoPatient123!'],
+    } as const
+    ;[username.value, password.value] = credentials[previewAccount]
   }
   busy.value = true
   error.value = ''
   try {
-    const destinationRole = await auth.login(username.value, password.value, remember.value)
+    if (mode.value === 'signup' && password.value !== confirmPassword.value) {
+      throw new Error('两次输入的密码不一致。')
+    }
+    const destinationRole = mode.value === 'signup'
+      ? await auth.register(username.value, password.value, role.value, remember.value)
+      : await auth.login(username.value, password.value, remember.value)
     if (remember.value) localStorage.setItem(REMEMBERED_USERNAME_KEY, username.value.trim())
     else localStorage.removeItem(REMEMBERED_USERNAME_KEY)
     await router.push(destinationRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard')
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : 'Sign in failed.' }
+  } catch (reason) { error.value = reason instanceof Error ? reason.message : '登录失败' }
   finally { busy.value = false }
 }
 </script>
@@ -43,83 +63,90 @@ async function submit(previewAccount?: DemoAccountKey) {
         <span class="brand-symbol"><Activity :size="23" /></span>
         <span>
           <strong>PulmoLink</strong>
-          <small>{{ $t('Medical AI Platform') }}</small>
+          <small>Medical AI Platform</small>
         </span>
       </div>
       <div class="brand-message">
-        <span class="kicker">{{ $t('AI Medical Imaging & Digital Human') }}</span>
-        <h1>{{ $t('Connecting imaging, AI findings, and clinical review.') }}</h1>
+        <span class="kicker">AI Medical Imaging &amp; Digital Human</span>
+        <h1>Connecting imaging, AI findings, and clinical review.</h1>
         <p>
-          {{ $t('A clinical workspace for doctors and a calm digital health portal for patients, starting with the lung workflow.') }}
+          A clinical workspace for doctors and a calm digital health portal for patients,
+          starting with the lung workflow.
         </p>
       </div>
       <div class="brand-notes">
-        <span><HeartPulse :size="17" /> {{ $t('Doctor-reviewed workflow') }}</span>
-        <span><Stethoscope :size="17" /> {{ $t('Lung-first clinical module') }}</span>
+        <span><HeartPulse :size="17" /> Doctor-reviewed workflow</span>
+        <span><Stethoscope :size="17" /> Lung-first clinical module</span>
       </div>
     </section>
 
     <section class="login-panel">
-      <button class="login-language" type="button" :aria-label="$t('Switch language')" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">
-        <Languages :size="16" /> {{ locale === 'zh' ? 'EN' : '中文' }}
-      </button>
       <div class="login-heading">
-        <span class="kicker">{{ $t('PulmoLink account') }}</span>
-        <h2>{{ $t('Sign in to PulmoLink') }}</h2>
-        <p>{{ $t('Sign in to access your authorized medical records.') }}</p>
+        <span class="kicker">PulmoLink account</span>
+        <h2>{{ mode === 'login' ? 'Sign in to PulmoLink' : 'Create your account' }}</h2>
+        <p>{{ mode === 'login' ? 'Sign in to access your authorized medical records.' : 'Register once, then return with the same account on this device.' }}</p>
+      </div>
+
+      <div class="auth-switch" aria-label="Account action">
+        <button type="button" :class="{ active: mode === 'login' }" @click="switchMode('login')">Sign in</button>
+        <button type="button" :class="{ active: mode === 'signup' }" @click="switchMode('signup')">Sign up</button>
       </div>
 
       <form class="login-form" @submit.prevent="submit()">
-        <label class="label" for="username">{{ $t('Username') }}</label>
+        <label class="label" for="username">Username</label>
         <input id="username" v-model="username" class="input" autocomplete="username" required />
-        <label class="label" for="password">{{ $t('Password') }}</label>
-        <input id="password" v-model="password" class="input" type="password" autocomplete="current-password" minlength="6" required />
+        <template v-if="mode === 'signup'">
+          <label class="label" for="role">Account type</label>
+          <select id="role" v-model="role" class="select" required>
+            <option value="patient">Patient</option>
+            <option value="doctor">Doctor</option>
+          </select>
+        </template>
+        <label class="label" for="password">Password</label>
+        <input id="password" v-model="password" class="input" type="password" :autocomplete="mode === 'signup' ? 'new-password' : 'current-password'" minlength="8" required />
+        <template v-if="mode === 'signup'">
+          <label class="label" for="confirm-password">Confirm password</label>
+          <input id="confirm-password" v-model="confirmPassword" class="input" type="password" autocomplete="new-password" minlength="8" required />
+        </template>
         <label class="remember-row">
           <input v-model="remember" type="checkbox" />
-          <span>{{ $t('Remember me on this device') }}</span>
+          <span>Remember me on this device</span>
         </label>
-        <p v-if="error" role="alert" class="login-error">{{ $t(error) }}</p>
+        <p v-if="error" role="alert" class="login-error">{{ error }}</p>
         <button type="submit" class="btn btn-primary" :disabled="busy">
-          {{ $t(busy ? 'Please wait…' : 'Sign in') }}
+          <UserPlus v-if="mode === 'signup'" :size="16" />
+          {{ busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account' }}
         </button>
       </form>
-      <div v-if="preview" class="role-options">
+      <div v-if="preview && mode === 'login'" class="role-options">
         <button class="role-card admin" type="button" @click="submit('admin')">
           <span class="role-icon"><ShieldCheck :size="24" /></span>
           <span class="role-copy">
-            <strong>{{ $t(DEMO_ACCOUNTS.admin.label) }}</strong>
-            <small>{{ $t(DEMO_ACCOUNTS.admin.description) }} · admin / 123456</small>
+            <strong>Administrator</strong>
+            <small>查看和管理全部演示患者 · admin / Admin123!</small>
           </span>
           <ArrowRight :size="19" />
         </button>
         <button class="role-card doctor" type="button" @click="submit('doctor')">
           <span class="role-icon"><Stethoscope :size="24" /></span>
           <span class="role-copy">
-            <strong>{{ $t(DEMO_ACCOUNTS.doctor.label) }}</strong>
-            <small>{{ $t(DEMO_ACCOUNTS.doctor.description) }} · demo_doctor / 123456</small>
+            <strong>Doctor Portal</strong>
+            <small>Clinical review, imaging, AI findings, and reporting.</small>
           </span>
           <ArrowRight :size="19" />
         </button>
-        <button class="role-card patient" type="button" @click="submit('patientFull')">
+        <button class="role-card patient" type="button" @click="submit('patient')">
           <span class="role-icon"><HeartPulse :size="24" /></span>
           <span class="role-copy">
-            <strong>{{ $t(DEMO_ACCOUNTS.patientFull.label) }}</strong>
-            <small>{{ $t(DEMO_ACCOUNTS.patientFull.description) }} · demo_patient_full / 123456</small>
-          </span>
-          <ArrowRight :size="19" />
-        </button>
-        <button class="role-card patient" type="button" @click="submit('patientTest')">
-          <span class="role-icon"><HeartPulse :size="24" /></span>
-          <span class="role-copy">
-            <strong>{{ $t(DEMO_ACCOUNTS.patientTest.label) }}</strong>
-            <small>{{ $t(DEMO_ACCOUNTS.patientTest.description) }} · demo_patient_test / 123456</small>
+            <strong>Patient Portal</strong>
+            <small>Your health, examinations, reports, and body.</small>
           </span>
           <ArrowRight :size="19" />
         </button>
       </div>
 
       <div class="login-footnote">
-        {{ $t(preview ? 'Demo environment · Four fixed accounts only' : 'Four fixed accounts are managed by the server.') }}
+        {{ preview && mode === 'login' ? '本地演示 · 以下快捷入口使用合成患者数据' : '账号会安全保存在服务端；勾选后本设备保持登录' }}
       </div>
     </section>
   </main>
@@ -128,7 +155,6 @@ async function submit(previewAccount?: DemoAccountKey) {
 <style scoped>
 .login-form { display: grid; gap: 10px; margin-bottom: 24px; }
 .login-error { color: #aa4f55; font-size: 13px; }
-.login-language { position:absolute;top:24px;right:24px;display:inline-flex;align-items:center;gap:7px;padding:8px 11px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text-soft);font-weight:700; }
 .auth-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -251,7 +277,6 @@ async function submit(previewAccount?: DemoAccountKey) {
 }
 
 .login-panel {
-  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;

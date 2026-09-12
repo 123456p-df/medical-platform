@@ -28,7 +28,7 @@ from app.services.glb import (
 )
 from app.services.imaging import mask_to_glb, prepare_label_cache
 from app.services.label_catalog import LabelCatalog
-from app.services.storage import relative_path, segmentation_relative_path, stored_path
+from app.services.storage import relative_path, stored_path
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,14 @@ class SegmentationRunner:
             self.adapter = getattr(importlib.import_module(module_name), function_name)
         elif self.adapter is None and settings.nv_segment_ct_dir:
             self.adapter = NVSegmentCT(settings)
+        self.dispatcher = None
+        if settings.task_queue_enabled and settings.task_queue_url:
+            try:
+                from app.worker import dispatch_segmentation
+
+                self.dispatcher = dispatch_segmentation
+            except Exception:
+                logger.warning("Task queue is enabled but Celery is unavailable; using local runner")
 
     def ensure_available(self, image_type):
         if self.adapter is None or (
@@ -107,6 +115,12 @@ class SegmentationRunner:
             self.enqueue(task_id)
 
     def enqueue(self, task_id):
+        if self.dispatcher is not None:
+            try:
+                self.dispatcher(task_id, batch=False)
+                return
+            except Exception as exc:
+                logger.error("Celery dispatch failed (%s); falling back to local runner", type(exc).__name__)
         with self._lock:
             if task_id in self._pending:
                 return
@@ -182,10 +196,7 @@ class SegmentationRunner:
                 self.ensure_available(image.image_type)
                 image_path = stored_path(self.settings, image.file_path)
                 patient_id, organ_id, image_id = image.patient_id, task.organ_id, image.id
-            output_dir = stored_path(
-                self.settings,
-                segmentation_relative_path(patient_id, image_id, task_id),
-            )
+            output_dir = stored_path(self.settings, f"segmentations/{task_id}")
             output_dir.mkdir(parents=True, exist_ok=True)
             returned = self.adapter(
                 image_path=image_path,
@@ -301,6 +312,12 @@ class SegmentationRunner:
         return batch.id
 
     def enqueue_batch(self, batch_id):
+        if self.dispatcher is not None:
+            try:
+                self.dispatcher(batch_id, batch=True)
+                return
+            except Exception as exc:
+                logger.error("Celery batch dispatch failed (%s); falling back to local runner", type(exc).__name__)
         with self._lock:
             if batch_id in self._pending:
                 return
@@ -348,10 +365,7 @@ class SegmentationRunner:
                 self.ensure_available(image.image_type)
                 image_path = stored_path(self.settings, image.file_path)
                 patient_id, image_id = image.patient_id, image.id
-            output_dir = stored_path(
-                self.settings,
-                segmentation_relative_path(patient_id, image_id, batch_id),
-            )
+            output_dir = stored_path(self.settings, f"segmentations/{batch_id}")
             output_dir.mkdir(parents=True, exist_ok=True)
             result = self.adapter.run_batch(
                 image_path=image_path,

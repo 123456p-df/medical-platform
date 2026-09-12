@@ -1,5 +1,7 @@
 import logging
+from app.audit import reset_request_context, set_request_context
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -17,6 +19,7 @@ from app.routers import (
     analysis,
     auth,
     catalog,
+    dicom,
     images,
     organ_models,
     patients,
@@ -29,7 +32,6 @@ from app.services.ai import AIProvider
 from app.services.analysis import AnalysisRunner
 from app.services.imaging import release_volume_cache
 from app.services.segmentation import SegmentationRunner
-from app.services.reports import backfill_report_documents
 
 logger = logging.getLogger(__name__)
 SINGLE_INSTANCE_LOCK = 867421309
@@ -45,7 +47,7 @@ class BodyLimitMiddleware:
             return await self.app(scope, receive, send)
         total = 0
         rejected = False
-        limit = self.max_bytes if scope["path"].endswith("/medical-images") else 1024 * 1024
+        limit = self.max_bytes if (scope["path"].endswith("/medical-images") or scope["path"].endswith("/dicom/instances")) else 1024 * 1024
         if scope["path"] in {"/api/v1/auth/profile/files", "/api/v1/auth/profile/avatar"}:
             limit = 11 * 1024 * 1024
 
@@ -115,13 +117,6 @@ def create_app(
                         "BackgroundTasks deployment supports one API process; use --workers 1"
                     )
             settings.storage_root.mkdir(parents=True, exist_ok=True)
-            try:
-                backfill_report_documents(settings, sessions)
-            except Exception:
-                # Legacy rows remain readable from the database until their file
-                # mirror is created; a storage migration issue must not make the
-                # entire clinical API unavailable.
-                logger.exception("Deferred report document migration failed")
             runner.cleanup_label_maps()
             if recover_tasks:
                 runner.recover()
@@ -140,6 +135,9 @@ def create_app(
             engine.dispose()
 
     app = FastAPI(
+        docs_url="/docs" if settings.api_docs_enabled else None,
+        redoc_url="/redoc" if settings.api_docs_enabled else None,
+        openapi_url="/openapi.json" if settings.api_docs_enabled else None,
         title="VMRB Medical Data API",
         version="1.0.0",
         lifespan=lifespan,
@@ -155,16 +153,26 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
-        expose_headers=["X-Image-Orientation", "X-Slice-Axis"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        expose_headers=["X-Image-Orientation", "X-Slice-Axis", "X-Request-ID"],
     )
 
     @app.middleware("http")
     async def private_responses(request: Request, call_next):
-        response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        return response
+        request_id = request.headers.get("X-Request-ID") or uuid4().hex
+        token = set_request_context(
+            request_id,
+            request.client.host if request.client else None,
+            request.headers.get("User-Agent"),
+        )
+        try:
+            response = await call_next(request)
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            reset_request_context(token)
 
     @app.exception_handler(APIError)
     async def api_error(request: Request, exc: APIError):
@@ -204,7 +212,7 @@ def create_app(
 
     @app.exception_handler(Exception)
     async def server_error(request: Request, exc: Exception):
-        logger.error("Unhandled API error (%s)", type(exc).__name__)
+        logger.error("Unhandled API error (%s)", type(exc).__name__, exc_info=exc)
         return JSONResponse(
             {"code": 50001, "message": "Internal server error", "data": None},
             status_code=500,
@@ -216,6 +224,7 @@ def create_app(
         workflow.router,
         auth.router,
         catalog.router,
+        dicom.router,
         patients.router,
         records.router,
         images.router,

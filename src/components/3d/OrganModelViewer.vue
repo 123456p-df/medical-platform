@@ -4,9 +4,11 @@ import { RotateCcw, Grid, Sparkles } from 'lucide-vue-next'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { api, request } from '@/api/client'
+import { request } from '@/api/client'
 
-const props = defineProps<{ patientId: string; organId: string }>()
+type OrganModelInfo = { model_id: string; source: string; available: boolean }
+
+const props = defineProps<{ organId: string; modelInfo: OrganModelInfo | null }>()
 const host = ref<HTMLDivElement | null>(null)
 const status = ref('正在加载真实解剖模型…')
 const source = ref('')
@@ -18,9 +20,12 @@ let controls: OrbitControls | undefined
 let scene: THREE.Scene
 let camera: THREE.PerspectiveCamera
 let model: THREE.Group | undefined
-let frame = 0
 let version = 0
 let observer: ResizeObserver | undefined
+
+function renderScene() {
+  if (renderer && scene && camera) renderer.render(scene, camera)
+}
 
 function dispose(object: THREE.Object3D) {
   object.traverse(child => {
@@ -48,14 +53,16 @@ function updateWireframe() {
       })
     }
   })
+  renderScene()
 }
 
 function resetView() {
   controls?.reset()
+  renderScene()
 }
 
 async function load() {
-  if (!scene || !props.patientId) return
+  if (!scene) return
   const revision = ++version
   if (model) {
     scene.remove(model)
@@ -65,20 +72,19 @@ async function load() {
   status.value = '正在加载解剖模型…'
   source.value = ''
   isPatientReconstruction.value = false
+  renderScene()
+
+  const organModel = props.modelInfo
+  if (!organModel) return
 
   try {
-    const organ = await api<{ model: { model_id: string; source: string; available: boolean } }>(
-      '/patients/' + props.patientId + '/organs/' + props.organId
-    )
-    if (revision !== version) return
-
     let buffer: ArrayBuffer
-    if (organ.model?.available) {
-      isPatientReconstruction.value = organ.model.source !== 'default'
+    if (organModel.available) {
+      isPatientReconstruction.value = organModel.source !== 'default'
       source.value = isPatientReconstruction.value
         ? '患者专属真实 CT 重建 (0.75mm FMRC 亚体素连续曲面)'
         : '临床 0.75mm 实心封闭解剖标本 (100% Watertight)'
-      const response = await request('/organ-models/' + organ.model.model_id + '/file')
+      const response = await request('/organ-models/' + organModel.model_id + '/file')
       buffer = await response.arrayBuffer()
     } else {
       isPatientReconstruction.value = false
@@ -86,6 +92,7 @@ async function load() {
       const response = await fetch('/models/organ-' + props.organId + '.glb')
       if (!response.ok) {
         status.value = '该器官尚未配置解剖模型。'
+        renderScene()
         return
       }
       buffer = await response.arrayBuffer()
@@ -116,8 +123,10 @@ async function load() {
     scene.add(model)
     status.value = ''
     controls?.reset()
+    renderScene()
   } catch (reason) {
     if (revision === version) status.value = reason instanceof Error ? reason.message : '模型加载失败'
+    renderScene()
   }
 }
 
@@ -137,7 +146,8 @@ onMounted(() => {
     camera.position.set(0, 0.3, 5.5)
 
     controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
+    controls.enableDamping = false
+    controls.addEventListener('change', renderScene)
     controls.saveState()
 
     scene.add(new THREE.HemisphereLight(0xffffff, 0x79918f, 2.0))
@@ -158,15 +168,11 @@ onMounted(() => {
       renderer.setSize(width, height)
       camera.aspect = width / Math.max(height, 1)
       camera.updateProjectionMatrix()
+      renderScene()
     })
     observer.observe(host.value)
 
-    const animate = () => {
-      frame = requestAnimationFrame(animate)
-      controls?.update()
-      renderer?.render(scene, camera)
-    }
-    animate()
+    renderScene()
     void load()
   } catch {
     status.value = 'WebGL 无法启动，请在支持 WebGL 的浏览器中打开。'
@@ -174,15 +180,19 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  cancelAnimationFrame(frame)
+  version++
   observer?.disconnect()
+  controls?.removeEventListener('change', renderScene)
   controls?.dispose()
   if (model) dispose(model)
   renderer?.dispose()
   renderer?.domElement.remove()
 })
 
-watch(() => [props.patientId, props.organId], () => void load())
+watch(
+  () => [props.organId, props.modelInfo?.model_id, props.modelInfo?.source, props.modelInfo?.available],
+  () => void load(),
+)
 watch(wireframe, updateWireframe)
 </script>
 

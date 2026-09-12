@@ -14,6 +14,8 @@ from app.config import Settings
 from app.db import Base, make_engine
 from app.main import create_app
 from app.services.ai import AIAnswer
+from app.models import Doctor, User
+from app.security import hash_password
 
 
 class SyntheticAdapter:
@@ -114,7 +116,6 @@ def app_env(tmp_path):
         id_hash_key="h" * 48,
         id_encryption_key=Fernet.generate_key().decode(),
         storage_root=tmp_path / "storage",
-        allow_registration=True,
         max_upload_bytes=1024 * 1024,
         max_uncompressed_bytes=4 * 1024 * 1024,
         max_volume_voxels=1000000,
@@ -150,12 +151,25 @@ def people(app_env):
         ("patient_a", "patient"),
         ("patient_b", "patient"),
     ]:
-        response = client.post(
-            "/api/v1/auth/register",
-            json={"username": username, "password": "password-test-123", "role": role},
-        )
-        assert response.status_code == 201, response.text
-        result[username + "_id"] = response.json()["data"]["user_id"]
+        if role == "doctor":
+            with app.state.session_factory() as db:
+                user = User(
+                    username=username,
+                    password_hash=hash_password("password-test-123"),
+                    role="doctor",
+                )
+                db.add(user)
+                db.flush()
+                db.add(Doctor(user_id=user.id))
+                db.commit()
+                result[username + "_id"] = user.id
+        else:
+            response = client.post(
+                "/api/v1/auth/register",
+                json={"username": username, "password": "password-test-123"},
+            )
+            assert response.status_code == 201, response.text
+            result[username + "_id"] = response.json()["data"]["user_id"]
         token = client.post(
             "/api/v1/auth/login", json={"username": username, "password": "password-test-123"}
         ).json()["data"]["access_token"]

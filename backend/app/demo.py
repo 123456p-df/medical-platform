@@ -1,8 +1,8 @@
-"""Fixed demo accounts plus one public, de-identified real CT example."""
+"""Explicit demo fixtures for the local database using three real CT samples."""
 
 import os
 import shutil
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import trimesh
@@ -11,110 +11,81 @@ from sqlalchemy import select
 from app.cli import install_default, provision_patient, set_access
 from app.config import Settings
 from app.db import make_engine, make_session_factory
-from app.accounts import ACCOUNT_PROFILES, DEMO_PASSWORD
 from app.models import Doctor, MedicalImage, MedicalRecord, OrganModel, Patient, User, utcnow
 from app.organs import ORGANS
-from app.security import hash_password, verify_password
-from app.services.imaging import (
-    acquisition_from_volume,
-    load_volume,
-    prepare_slice_cache,
-    slice_cache_path,
-)
-from app.services.reports import rollback_report_document, write_report_document
-from app.services.storage import imaging_relative_path, relative_path, stored_path
+from app.security import hash_password
+from app.services.imaging import load_volume, prepare_slice_cache, slice_cache_path
+from app.services.storage import relative_path, stored_path
 
 
 DEMO_PATIENTS = (
-    ("demo_patient_full", "完整示例患者", date(1980, 1, 1), "male", "A"),
-    ("demo_patient_test", "报告联调患者", date(1990, 4, 12), "female", "O"),
+    ("demo_patient", "张三（演示）", "0.nii", date(1980, 1, 1), "male", "A"),
+    ("demo_patient_2", "李薇（演示）", "1.nii", date(1990, 4, 12), "female", "O"),
+    ("demo_patient_3", "陈宇（演示）", "10.nii", date(1972, 9, 3), "male", "B"),
 )
 
 
-def demo_scan_path() -> tuple[Path, str]:
-    project = Path(__file__).resolve().parents[2]
-    configured = os.environ.get("VMRB_DEMO_SCAN_PATH")
-    candidates = [
-        (Path(configured).expanduser(), "lung") if configured else None,
-        (project / ".cache/real-imaging/CT-chest.nii.gz", "lung"),
-        (project / "datasets/medical_dataset/imagesTr/spleen_10.nii.gz", "spleen"),
-    ]
-    for item in candidates:
-        if item is None:
-            continue
-        candidate, organ_id = item
+def demo_scan_path(filename: str) -> Path:
+    root = Path(
+        os.environ.get(
+            "VMRB_DEMO_SCAN_DIR",
+            "/home/zhichun/Documents/NV-Segment-CTMR/test_data/user_scans",
+        )
+    ).expanduser()
+    for candidate in (root / filename, root / f"{filename}.gz"):
         if candidate.is_file():
-            return candidate, organ_id
+            return candidate
     raise FileNotFoundError(
-        "Real demo CT is missing; run scripts/real-imaging-samples.py or set "
-        "VMRB_DEMO_SCAN_PATH to a de-identified NIfTI CT"
+        f"Demo scan {filename} was not found in {root}; set VMRB_DEMO_SCAN_DIR to the sample directory"
     )
 
 
-def install_demo_image(
-    db, settings, patient_id: int, image_id: str, source: Path, organ_id: str
-):
-    target = stored_path(settings, imaging_relative_path(patient_id, image_id, ".nii.gz"))
+def install_demo_image(db, settings, patient_id: int, image_id: str, source: Path, day_offset: int):
+    target = stored_path(settings, f"medical-images/{image_id}.nii.gz")
     target.parent.mkdir(parents=True, exist_ok=True)
-    image = db.get(MedicalImage, image_id)
-    is_new = image is None
-    if not is_new and target.is_file() and slice_cache_path(target).is_file():
-        return False
+    for suffix in (".nii", ".nii.gz"):
+        stale = stored_path(settings, f"medical-images/{image_id}{suffix}")
+        stale.unlink(missing_ok=True)
+        slice_cache_path(stale).unlink(missing_ok=True)
     shutil.copyfile(source, target)
     volume, data = load_volume(target, settings)
     canonical = prepare_slice_cache(target, volume, data)
+
+    image = db.get(MedicalImage, image_id)
+    is_new = image is None
     if image is None:
         image = MedicalImage(id=image_id)
         db.add(image)
     image.patient_id = patient_id
-    image.organ_id = organ_id
+    image.organ_id = "lung"
     image.image_type = "CT"
     image.file_path = relative_path(settings, target)
     image.shape = list(canonical.shape)
     image.spacing = [float(value) for value in canonical.header.get_zooms()[:3]]
     image.size_bytes = target.stat().st_size
-    image.study_date = date.today()
-    image.created_at = utcnow()
-    image.acquisition = acquisition_from_volume(volume, data)
+    image.study_date = date.today() - timedelta(days=day_offset)
+    image.created_at = utcnow() - timedelta(days=day_offset)
     return is_new
 
 
 def seed(settings):
-    scan_path, sample_organ = demo_scan_path()
+    scan_paths = [demo_scan_path(scan_name) for _, _, scan_name, _, _, _ in DEMO_PATIENTS]
     engine = make_engine(settings.database_url)
     try:
         with make_session_factory(engine)() as db:
-            aliases = {
-                "demo_patient_full": "demo_patient",
-                "demo_patient_test": "demo_patient_2",
-            }
-            for target, legacy in aliases.items():
-                existing = db.scalar(select(User).where(User.username == target))
-                old = db.scalar(select(User).where(User.username == legacy))
-                if existing is None and old is not None:
-                    old.username = target
-                    db.commit()
-
-            for username, role in (
-                ("admin", "doctor"),
-                ("demo_doctor", "doctor"),
-                ("demo_patient_full", "patient"),
-                ("demo_patient_test", "patient"),
+            for username, role, password in (
+                ("admin", "doctor", "Admin123!"),
+                ("demo_doctor", "doctor", "DemoDoctor123!"),
+                ("demo_patient", "patient", "DemoPatient123!"),
+                ("demo_patient_2", "patient", "DemoPatient123!"),
+                ("demo_patient_3", "patient", "DemoPatient123!"),
             ):
-                user = db.scalar(select(User).where(User.username == username))
-                if user is None:
-                    user = User(username=username, role=role, password_hash=hash_password(DEMO_PASSWORD))
-                    db.add(user)
-                    db.flush()
-                elif user.role != role:
-                    raise ValueError(f"Demo account role mismatch: {username}")
-                elif not verify_password(DEMO_PASSWORD, user.password_hash):
-                    user.password_hash = hash_password(DEMO_PASSWORD)
-                user.profile = {**user.profile, **ACCOUNT_PROFILES[username]}
-                linked_model = Doctor if role == "doctor" else Patient
-                linked = db.scalar(select(linked_model).where(linked_model.user_id == user.id))
-                if linked is None:
-                    db.add(Doctor(user_id=user.id) if role == "doctor" else Patient(user_id=user.id))
+                if db.scalar(select(User).where(User.username == username)):
+                    continue
+                user = User(username=username, role=role, password_hash=hash_password(password))
+                db.add(user)
+                db.flush()
+                db.add(Doctor(user_id=user.id) if role == "doctor" else Patient(user_id=user.id))
                 db.commit()
 
             doctor = db.scalar(
@@ -122,7 +93,9 @@ def seed(settings):
                 .join(User, User.id == Doctor.user_id)
                 .where(User.username == "demo_doctor")
             )
-            for index, (username, name, born, gender, blood_type) in enumerate(DEMO_PATIENTS):
+            for index, ((username, name, _, born, gender, blood_type), source) in enumerate(
+                zip(DEMO_PATIENTS, scan_paths)
+            ):
                 patient_id = provision_patient(
                     db,
                     settings,
@@ -139,39 +112,23 @@ def seed(settings):
                 patient.deleted_at = None
                 set_access(db, "demo_doctor", patient_id, "active")
                 set_access(db, "admin", patient_id, "active")
-                if username != "demo_patient_full":
-                    continue
-                image_id = "img_demo_real_ct"
-                is_new = install_demo_image(
-                    db, settings, patient_id, image_id, scan_path, sample_organ
-                )
+                image_id = f"img_demo_{index + 1:04d}"
+                is_new = install_demo_image(db, settings, patient_id, image_id, source, index)
                 if is_new:
-                    record = MedicalRecord(
-                        patient_id=patient_id,
-                        doctor_id=doctor.id,
-                        examination_id=image_id,
-                        organ_id=sample_organ,
-                        diagnosis="去标识化真实 CT 示例",
-                        description=(
-                            "该影像仅用于系统演示和前后端联调，不代表患者临床发现或诊断。"
-                        ),
-                        recommendation="仅作技术演示，不用于医疗决策。",
-                        reviewed=True,
-                        signed_at=utcnow(),
-                        record_date=date.today(),
-                    )
-                    db.add(record)
-                    db.flush()
-                    change = None
-                    try:
-                        change = write_report_document(settings, record)
-                        db.commit()
-                    except Exception:
-                        db.rollback()
-                        rollback_report_document(change)
-                        raise
-                else:
-                    db.commit()
+                    for days in (14, 0):
+                        db.add(
+                            MedicalRecord(
+                                patient_id=patient_id,
+                                doctor_id=doctor.id,
+                                organ_id="lung",
+                                diagnosis="演示病历 · 肺部 CT 资料记录",
+                                description=(
+                                    "仅用于前后端联调的去标识化 CT 样例，不代表临床发现或诊断。"
+                                ),
+                                record_date=date.today() - timedelta(days=days + index),
+                            )
+                        )
+                db.commit()
 
             for organ in ORGANS:
                 if organ == "other":

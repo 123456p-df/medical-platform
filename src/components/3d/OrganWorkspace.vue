@@ -12,6 +12,7 @@ const detail = ref<{
   name: string
   records: { record_id: number; date: string; diagnosis: string; description: string; doctor_name: string }[]
   records_total: number
+  model: { model_id: string; source: string; available: boolean }
 } | null>(null)
 
 watch(
@@ -43,7 +44,7 @@ watch(
           <p class="muted">选择器官以查看真实解剖模型与病历</p>
         </div>
       </div>
-      <DigitalHumanViewer :patient-id="patientId" :selected-organ-id="organ" compact @select="organ = $event" />
+      <DigitalHumanViewer :selected-organ-id="organ" compact @select="organ = $event" />
       <div class="organ-buttons">
         <button
           v-for="item in organCatalog"
@@ -64,7 +65,7 @@ watch(
         <div v-if="organ === 'other'" class="empty-state">
           其他分类用于未建模器官、全身性或尚未归类的问题。相关病历显示在下方。
         </div>
-        <OrganModelViewer v-else :patient-id="patientId" :organ-id="organ" />
+        <OrganModelViewer v-else :organ-id="organ" :model-info="detail?.model || null" />
       </div>
       <section class="card">
         <div class="card-header">

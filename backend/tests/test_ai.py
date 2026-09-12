@@ -15,7 +15,7 @@ def test_chat_context_is_authorized_referenced_and_persisted(app_env, people, ni
     app, client, _, provider = app_env
     pid = people["patient_a_pid"]
     rid = record(client, people)
-    deleted = record(client, people, diagnosis="DELETED-SECRET")
+    deleted = record(client, people, diagnosis="DELETED-SECRET", reviewed=False)
     liver = record(client, people, organ_id="liver", diagnosis="OTHER-ORGAN-SECRET")
     client.delete(f"/api/v1/medical-records/{deleted}", headers=people["doctor_a"])
     upload(client, people, nifti_file)
@@ -68,7 +68,6 @@ def mock_http(monkeypatch, handler):
     "payload",
     [
         {"answer": "fabricated reference", "used_record_ids": [999]},
-        {"answer": "uncited answer", "used_record_ids": []},
         {"answer": "string reference", "used_record_ids": ["7"]},
         {"answer": " ", "used_record_ids": [7]},
         "not a JSON object",
@@ -88,6 +87,49 @@ def test_provider_rejects_invalid_answers(app_env, monkeypatch, payload):
     with pytest.raises(APIError) as error:
         AIProvider(settings).answer({"records": [{"record_id": 7}]}, "question", "doctor")
     assert error.value.status == 502
+
+
+def test_provider_allows_general_answer_and_redacts_external_phi(app_env, monkeypatch):
+    _, _, settings, _ = app_env
+    settings = settings.model_copy(
+        update={"ai_base_url": "https://test.invalid/v1", "ai_model": "test-model"}
+    )
+    requests = []
+
+    def handler(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {"answer": "这是一般医学信息。", "used_record_ids": []}
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    mock_http(monkeypatch, handler)
+    context = {
+        "records": [
+            {
+                "record_id": 7,
+                "diagnosis": "姓名：张三，身份证号：110101199001011234",
+                "description": "联系电话：13800138000，邮箱 test@example.com",
+            }
+        ]
+    }
+    answer = AIProvider(settings).answer(context, "常识问题", "patient")
+    assert answer.used_record_ids == []
+    outbound = requests[0]["messages"][1]["content"]
+    assert "张三" not in outbound
+    assert "110101199001011234" not in outbound
+    assert "13800138000" not in outbound
+    assert "test@example.com" not in outbound
 
 
 def test_provider_role_prompts_and_request_shape(app_env, monkeypatch):

@@ -2,22 +2,11 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-const backendTarget = process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8000'
-
 export default defineConfig({
   plugins: [vue()],
-  optimizeDeps: {
-    exclude: ['@cornerstonejs/dicom-image-loader'],
-    include: ['dicom-parser',
-      '@cornerstonejs/dicom-image-loader > @cornerstonejs/codec-libjpeg-turbo-8bit/decodewasmjs',
-      '@cornerstonejs/dicom-image-loader > @cornerstonejs/codec-charls/decodewasmjs',
-      '@cornerstonejs/dicom-image-loader > @cornerstonejs/codec-openjpeg/decodewasmjs',
-      '@cornerstonejs/dicom-image-loader > @cornerstonejs/codec-openjph/wasmjs'],
-  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      events: 'events/',
     },
   },
   server: {
@@ -25,8 +14,8 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      '/api': { target: backendTarget, changeOrigin: true },
-      '/health': { target: backendTarget, changeOrigin: true },
+      '/api': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
+      '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
     },
   },
   preview: {
@@ -34,8 +23,8 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      '/api': { target: backendTarget, changeOrigin: true },
-      '/health': { target: backendTarget, changeOrigin: true },
+      '/api': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
+      '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
     },
   },
   worker: {

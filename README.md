@@ -1,71 +1,63 @@
-# VMRB 医学影像与报告平台
+# VMRB 医疗平台前端（macOS）
 
-这是 Vue 3 + FastAPI + PostgreSQL 的双语医学影像工作台。医生端、管理员端和患者端共用同一套后端身份、患者、影像与报告数据，不再把浏览器 `localStorage` 当作正式数据源。
+## 直接运行
 
-## 固定账号
+首次运行需要 Node.js 20+ 和 pnpm。在此目录执行：
 
-预览数据库只开放以下四个账号，密码均为 `123456`：
-
-| 账号 | 用途 |
-| --- | --- |
-| `admin` | 管理全部演示患者与工作流 |
-| `demo_doctor` | 影像审核与报告签署 |
-| `demo_patient_full` | 查看真实 CT 示例和已签署报告 |
-| `demo_patient_test` | 验证医生新签报告的患者可见性 |
-
-注册默认关闭。旧演示账号不会通过登录白名单，旧浏览器会话也会在前端升级时清理。
-
-## 启动完整预览
-
-Windows 环境先安装前后端依赖，然后运行：
-
-```powershell
+```sh
+pnpm install
 pnpm start
 ```
 
-Windows 下该入口会启动 PostgreSQL、FastAPI 和前端，并在数据库及 API 健康检查通过后报告就绪。首次启动会写入四个固定账号和真实 CT，之后保留已有资料；重复执行会复用本项目的健康进程，并修复只启动了前端的情况。默认地址是 <http://127.0.0.1:4173>，后端端口为 `8000`。
+然后打开 <http://127.0.0.1:4173>。也可以双击 `start.command` 启动；脚本会自动检查依赖并打开浏览器。macOS 若提示权限，可在终端执行一次：
 
-也可以直接运行 `powershell -ExecutionPolicy Bypass -File scripts/start-preview.ps1`，通过 `-FrontendPort`、`-BackendPort`、`-DatabasePort` 指定端口。停止服务使用 `scripts/stop-preview.ps1`，数据会保留。
-
-`pnpm dev` 只启动前端，需要后端已运行；默认代理到 `http://127.0.0.1:8000`。使用 Docker 的 `8080` 入口时，设置 `VMRB_BACKEND_URL=http://127.0.0.1:8080`。macOS/Linux 的 `pnpm start` 会先检查配置的后端（默认 Docker `8080` 入口），健康后启动前端。
-
-如缺少真实样本，先运行：
-
-```powershell
-backend\.venv\Scripts\python.exe scripts\real-imaging-samples.py
+```sh
+chmod +x start.command
 ```
 
-示例使用 3D Slicer 官方公开的去标识化 `CT-chest` 数据，下载地址、固定 SHA-256 和 NRRD→NIfTI 转换逻辑均记录在 `scripts/real-imaging-samples.py`。该影像仅用于技术演示，不能用于医疗诊断。
+## 构建并预览
 
-## 数据与报告目录
-
-数据库继续负责账号、权限、查询索引、报告状态和审计；影像与可供 Agent 阅读的报告正文统一放在 `STORAGE_ROOT`（默认 `dataset`）下：
-
-```text
-dataset/
-  patient/{patient_id}/
-    report/{record_id}/{revision}-{sha256}.md
-    imaging/{image_id}.nii.gz
-    imaging/{image_id}.nii.gz.slices.npy
-    segmentation/{image_id}/{task_id}/...
-  account/{user_id}/profile/...
-```
-
-报告 Markdown 使用不可变版本文件。数据库保存当前版本的相对路径、SHA-256、大小和版本号；读取报告时会校验文件，旧数据库正文仅作为尚未迁移记录的兼容来源。`0009_report_documents` 迁移会加入这些索引字段，服务启动后分批补齐历史报告文件。
-
-## CT 连续浏览缓存
-
-NIfTI 首次导入时解压并生成 canonical `.slices.npy`。后端后续通过 `numpy.memmap` 读取，不再为每张切片重复解压。浏览器端还会按影像 ID 复用已下载的体积和 Web Worker，因此在 A→B→A 检查之间切换时可直接复用缓存。缓存有总内存上限，并在退出登录或权限失效时清理。
-
-## 开发与验证
-
-```powershell
-pnpm typecheck
+```sh
 pnpm build
-backend\.venv\Scripts\python.exe -m pytest backend\tests -q
-pnpm test:modalities
-pnpm test:volume
-pnpm test:comparison
+pnpm serve
 ```
 
-肺结节模型服务的接口、环境变量和联调说明见 `docs/lung-nodule-model-api.md`。
+## 后端说明
+
+双击 `start.command` 会以本地预览模式自动进入医生工作台，使用项目内的合成演示数据，不需要输入密码，也不连接外部服务。手动执行 `pnpm start` 时仍是正常登录模式。
+
+真实后端模式连接同仓库中的 FastAPI 后端 `/api/v1`，Vite 会把 `/api` 和 `/health` 转发到 `127.0.0.1:8000`；要登录真实患者数据，需要同时启动后端和 PostgreSQL，具体步骤见上级项目 README。
+
+## 肺结节辅助检测
+
+网站现已提供肺部 CT 肺结节候选检测任务、结果查询和医生审核接口。模型服务的请求/响应格式、环境变量和联调步骤见 [`docs/lung-nodule-model-api.md`](docs/lung-nodule-model-api.md)。3D Viewer 不属于本次模型接入范围。
+
+## 多期 CT 同屏比较
+
+医生的患者影像页和患者端“My Examinations”均支持多个时期的 CT 同屏比较。可切换单屏、二分屏、四分屏，并选择同步滚动或各窗口独立滚动。同步滚动使用各序列的相对切片位置，因此不同切片数量也可以联动。
+
+上传框支持一次选择多份 `.nii` / `.nii.gz`，每份文件可单独填写检查日期。患者只能上传到自己的档案；真实上传和比较需要使用后端模式并执行最新数据库迁移：
+
+```sh
+cd backend
+uv run alembic upgrade head
+```
+
+## 报告同步与工作区标签
+
+医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。真实后端使用 `0006_report_delivery` 数据库迁移保存关联检查、建议、签署状态和签署时间；本地演示模式使用浏览器持久化存储，切换医生与患者账号后数据仍会保留。
+
+医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断、报告和 3D 影像；这些页面会作为工作区标签保留，可快速切换或单独关闭。
+
+## Staged production hardening
+
+The default stack keeps the existing LAN HTTP listener on port 8080 and runs the GPU
+segmentation runner in-process. API documentation is disabled in that environment.
+For the optional local integration services (Redis, Celery worker, MinIO, and Orthanc),
+configure the corresponding secrets and model directory, then run:
+
+    docker compose -f compose.yaml -f compose.override.yaml -f compose.infra.yaml --profile infra up -d
+
+Set ORTHANC_URL, ORTHANC_USERNAME, and ORTHANC_PASSWORD in backend/.env before
+using the authenticated DICOM endpoints. TASK_QUEUE_ENABLED remains false unless the
+Celery worker image has been rebuilt and Redis is ready.

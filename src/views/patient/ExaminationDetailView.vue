@@ -7,7 +7,6 @@ import { usePatientStore } from '@/stores/patients'
 import MedicalImageViewer from '@/components/medical/MedicalImageViewer.vue'
 import ReportCard from '@/components/medical/ReportCard.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
-import { locale } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,7 +25,7 @@ const reviewedReport = computed(() =>
 
 function formatDate(date?: string) {
   if (!date) return ''
-  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en', {
+  return new Intl.DateTimeFormat('en', {
     month: 'long',
     day: '2-digit',
     year: 'numeric',
@@ -43,14 +42,14 @@ onMounted(async () => {
 <template>
   <div class="page">
     <button type="button" class="back-link" @click="router.push({ name: 'patient-examinations' })">
-      <ArrowLeft :size="16" /> {{ $t('My Examinations') }}
+      <ArrowLeft :size="16" /> My Examinations
     </button>
 
     <section v-if="examination" class="exam-detail-grid">
       <div class="card viewer-card">
         <div class="card-header">
           <div>
-            <h3>{{ examination.type }} · {{ $t(examination.bodyPart) }}</h3>
+            <h3>{{ examination.type }} · {{ examination.bodyPart }}</h3>
             <p class="muted">{{ formatDate(examination.date) }}</p>
           </div>
           <StatusBadge :status="examination.status" />
@@ -64,7 +63,7 @@ onMounted(async () => {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3>{{ $t('About this examination') }}</h3>
+              <h3>About this examination</h3>
             </div>
             <Info :size="18" class="header-icon" />
           </div>
@@ -72,15 +71,15 @@ onMounted(async () => {
             <p class="exam-description">{{ examination.description }}</p>
             <dl class="exam-facts">
               <div>
-                <dt>{{ $t('Body region') }}</dt>
-                <dd>{{ $t(examination.organ) }}</dd>
+                <dt>Body region</dt>
+                <dd>{{ examination.organ }}</dd>
               </div>
               <div>
-                <dt>{{ $t('Imaging type') }}</dt>
+                <dt>Imaging type</dt>
                 <dd>{{ examination.type }}</dd>
               </div>
               <div>
-                <dt>{{ $t('Images') }}</dt>
+                <dt>Images</dt>
                 <dd>{{ examination.sliceCount }}</dd>
               </div>
             </dl>
@@ -90,15 +89,15 @@ onMounted(async () => {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3>{{ $t("Doctor's Report") }}</h3>
-              <p class="muted">{{ $t('Latest medical record for this organ.') }}</p>
+              <h3>Doctor's Report</h3>
+              <p class="muted">Latest medical record for this organ.</p>
             </div>
             <FileText :size="18" class="header-icon" />
           </div>
           <div class="card-body">
             <ReportCard v-if="reviewedReport" :report="reviewedReport" patient-facing />
             <div v-else class="empty-state">
-              {{ $t('Your doctor is still reviewing this examination.') }}
+              Your doctor is still reviewing this examination.
             </div>
           </div>
         </div>

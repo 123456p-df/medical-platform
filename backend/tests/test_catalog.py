@@ -42,5 +42,5 @@ def test_portal_collections_enforce_access_and_pagination(app_env, people, nifti
         client.get(route, headers=people["doctor_a"], params={"page_size": 101}).status_code == 422
     )
     if resource == "medical-records":
-        client.delete(f"/api/v1/medical-records/{rid}", headers=people["doctor_a"])
-        assert client.get(route, headers=people["patient_a"]).json()["data"]["total"] == 0
+        assert client.delete(f"/api/v1/medical-records/{rid}", headers=people["doctor_a"]).status_code == 409
+        assert client.get(route, headers=people["patient_a"]).json()["data"]["total"] == 1

@@ -6,8 +6,8 @@ foreach ($name in @('frontend', 'backend')) {
   if (Test-Path -LiteralPath $pidPath) {
     $processId = [int](Get-Content -LiteralPath $pidPath)
     $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$processId"
-    $expected = if ($name -eq 'frontend') { 'vite' } else { 'app.main:create_app' }
-    if ($processInfo -and $processInfo.CommandLine.Replace('/', '\').Contains($projectRoot) -and $processInfo.CommandLine.Contains($expected)) { Stop-Process -Id $processId }
+    $expected = if ($name -eq 'frontend') { 'medical-platform\Medical\node_modules\vite\bin\vite.js' } else { 'app.main:create_app' }
+    if ($processInfo -and $processInfo.CommandLine.Contains($expected)) { Stop-Process -Id $processId }
     elseif ($processInfo) { throw "PID $processId belongs to a different process; refusing to stop it." }
     Remove-Item -LiteralPath $pidPath
   }

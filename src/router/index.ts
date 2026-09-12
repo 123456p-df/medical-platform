@@ -73,7 +73,11 @@ const router = createRouter({
             {
               path: 'viewer',
               name: 'doctor-patient-study-viewer',
-              component: () => import('@/views/viewer/StudyViewerWindow.vue'),
+              redirect: (to) => ({
+                name: 'study-viewer',
+                params: { patientId: to.params.id },
+                query: to.query,
+              }),
             },
           ],
         },

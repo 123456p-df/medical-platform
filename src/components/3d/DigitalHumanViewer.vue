@@ -1,18 +1,15 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RotateCcw, Rotate3D, Layers, Sparkles } from 'lucide-vue-next'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RotateCcw, Rotate3D, Layers } from 'lucide-vue-next'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { organNames } from '@/api/mappers'
-import { api } from '@/api/client'
-import { locale, t } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
     selectedOrganId?: string | null
     compact?: boolean
-    patientId?: string
     sliceAxis?: string
     slicePosition?: number
     showSlicingPlane?: boolean
@@ -39,20 +36,18 @@ const rotating = ref(false)
 const shell = ref(true)
 const hoveredName = ref('')
 const hoveredCategory = ref('')
-const patientOrgans = ref<Set<string>>(new Set())
-const hasPatientOrgans = computed(() => patientOrgans.value.size > 0)
 
 // System category filters
 type CategoryId = 'all' | 'viscera' | 'skeletal' | 'cardiovascular' | 'respiratory' | 'muscular'
 const activeCategory = ref<CategoryId>('all')
 
 const categories: { id: CategoryId; label: string }[] = [
-  { id: 'all', label: 'All (70 items)' },
-  { id: 'viscera', label: 'Viscera' },
-  { id: 'skeletal', label: 'Skeletal system' },
-  { id: 'cardiovascular', label: 'Cardiovascular' },
-  { id: 'respiratory', label: 'Respiratory system' },
-  { id: 'muscular', label: 'Muscular tissue' },
+  { id: 'all', label: '全部 (70项)' },
+  { id: 'viscera', label: '内脏实质' },
+  { id: 'skeletal', label: '骨骼系统' },
+  { id: 'cardiovascular', label: '心血管' },
+  { id: 'respiratory', label: '呼吸系统' },
+  { id: 'muscular', label: '肌群组织' },
 ]
 
 let renderer: THREE.WebGLRenderer | undefined
@@ -66,6 +61,10 @@ let disposed = false
 const organs: THREE.Mesh[] = []
 const shells: THREE.Mesh[] = []
 let down: { x: number; y: number } | null = null
+
+function renderScene() {
+  if (scene && camera && renderer) renderer.render(scene, camera)
+}
 
 // Anatomical Chinese mapping dictionary
 const ZH_NAMES: Record<string, string> = {
@@ -96,14 +95,7 @@ function getCategory(name: string): CategoryId {
   return 'viscera'
 }
 
-function getAnatomyName(name: string): string {
-  if (locale.value !== 'zh') {
-    const ribMatch = name.match(/^(left|right)_rib_(\d+)$/)
-    if (ribMatch) return `${ribMatch[1] === 'left' ? 'Left' : 'Right'} rib ${ribMatch[2]}`
-    const vertMatch = name.match(/^vertebrae_([TL])(\d+)$/)
-    if (vertMatch) return `${vertMatch[1] === 'T' ? 'Thoracic' : 'Lumbar'} vertebra ${vertMatch[1]}${vertMatch[2]}`
-    return name.replace(/_/g, ' ').replace(/\b\w/g, value => value.toUpperCase())
-  }
+function getChineseName(name: string): string {
   if (ZH_NAMES[name]) return ZH_NAMES[name]
   const ribMatch = name.match(/^(left|right)_rib_(\d+)$/)
   if (ribMatch) return `${ribMatch[1] === 'left' ? '左' : '右'}第 ${ribMatch[2]} 肋骨`
@@ -197,25 +189,23 @@ function updateCategoryVisibility() {
       }
     }
   }
+  renderScene()
 }
 
 function updateSelection() {
   for (const mesh of organs) {
     const material = mesh.material as THREE.MeshStandardMaterial
     const isSelected = mesh.userData.organId === props.selectedOrganId
-    const isPatientModel = patientOrgans.value.has(mesh.userData.organId)
 
     if (isSelected) {
-      material.emissive.set(isPatientModel ? 0x1f7a68 : 0x5a4220)
+      material.emissive.set(0x5a4220)
       material.emissiveIntensity = 0.55
-    } else if (isPatientModel) {
-      material.emissive.set(0x1a453e)
-      material.emissiveIntensity = 0.2
     } else {
       material.emissive.set(0x000000)
       material.emissiveIntensity = 0
     }
   }
+  renderScene()
 }
 
 function setCategory(id: CategoryId) {
@@ -227,6 +217,7 @@ function reset() {
   camera?.position.set(0, 0.30, 4.65)
   controls?.target.set(0, 0.27, 0)
   controls?.update()
+  renderScene()
 }
 
 function pointerDown(e: PointerEvent) {
@@ -244,7 +235,7 @@ function pointerMove(e: PointerEvent) {
   const visibleOrgans = organs.filter(o => o.visible)
   const hit = ray.intersectObjects(visibleOrgans, false)[0]
   if (hit && hit.object.userData.displayName) {
-    hoveredName.value = hit.object.userData.rawName
+    hoveredName.value = hit.object.userData.displayName
     hoveredCategory.value = hit.object.userData.categoryLabel || ''
   } else {
     hoveredName.value = ''
@@ -271,35 +262,33 @@ function pointerUp(e: PointerEvent) {
   }
 }
 
-function animate() {
-  if (disposed) return
-  frame = requestAnimationFrame(animate)
+function stopRotation() {
+  if (frame) cancelAnimationFrame(frame)
+  frame = 0
+}
+
+function animateRotation() {
+  if (disposed || !rotating.value) {
+    frame = 0
+    return
+  }
   controls?.update()
-  if (scene && camera) renderer?.render(scene, camera)
+  renderScene()
+  frame = requestAnimationFrame(animateRotation)
 }
 
 watch(() => props.selectedOrganId, updateSelection)
-watch(rotating, value => { if (controls) controls.autoRotate = value })
-watch(shell, value => shells.forEach(mesh => { mesh.visible = value }))
-watch(locale, () => renderer?.domElement.setAttribute('aria-label', t('Rotatable 3D human anatomy navigator')))
-
-async function loadPatientOrgans() {
-  if (!props.patientId) return
-  try {
-    for (const organKey of Object.keys(organNames)) {
-      if (organKey === 'other') continue
-      try {
-        const res = await api<{ model: { source: string; available: boolean } }>(
-          `/patients/${props.patientId}/organs/${organKey}`
-        )
-        if (res.model?.available && res.model.source !== 'default') {
-          patientOrgans.value.add(organKey)
-        }
-      } catch {}
-    }
-    updateSelection()
-  } catch {}
-}
+watch(rotating, value => {
+  if (!controls) return
+  controls.autoRotate = value
+  stopRotation()
+  if (value) animateRotation()
+  else renderScene()
+})
+watch(shell, value => {
+  shells.forEach(mesh => { mesh.visible = value })
+  renderScene()
+})
 
 onMounted(async () => {
   try {
@@ -309,7 +298,7 @@ onMounted(async () => {
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
-    renderer.domElement.setAttribute('aria-label', t('Rotatable 3D human anatomy navigator'))
+    renderer.domElement.setAttribute('aria-label', '可旋转的三维人体器官导航')
     host.value.appendChild(renderer.domElement)
 
     scene = new THREE.Scene()
@@ -343,7 +332,8 @@ onMounted(async () => {
     scene.add(disc)
 
     controls = new OrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
+    controls.enableDamping = false
+    controls.addEventListener('change', renderScene)
     controls.enablePan = false
     controls.minDistance = 2.0
     controls.maxDistance = 7
@@ -358,6 +348,7 @@ onMounted(async () => {
       renderer.setSize(w, h)
       camera.aspect = w / Math.max(h, 1)
       camera.updateProjectionMatrix()
+      renderScene()
     }
     observer = new ResizeObserver(resize)
     observer.observe(host.value)
@@ -366,7 +357,7 @@ onMounted(async () => {
     renderer.domElement.addEventListener('pointerdown', pointerDown)
     renderer.domElement.addEventListener('pointermove', pointerMove)
     renderer.domElement.addEventListener('pointerup', pointerUp)
-    animate()
+    renderScene()
 
     const gltf = await new GLTFLoader().loadAsync('/models/anatomy-navigation.glb')
     if (disposed) {
@@ -389,10 +380,12 @@ onMounted(async () => {
         child.renderOrder = 3
       } else {
         const category = getCategory(name)
+        const zhName = getChineseName(name)
         const mainOrganId = mapToMainOrganId(name)
 
         child.userData.category = category
         child.userData.rawName = name
+        child.userData.displayName = zhName
         child.userData.categoryLabel = categories.find(c => c.id === category)?.label || ''
         child.userData.organId = mainOrganId
 
@@ -405,22 +398,22 @@ onMounted(async () => {
     })
 
     scene.add(gltf.scene)
-    await loadPatientOrgans()
     updateCategoryVisibility()
     updateSelection()
     loading.value = false
   } catch (e) {
     if (!disposed) {
       loading.value = false
-      error.value = e instanceof Error ? e.message : t('The 3D view could not load.')
+      error.value = e instanceof Error ? e.message : '三维视图加载失败'
     }
   }
 })
 
 onBeforeUnmount(() => {
   disposed = true
-  cancelAnimationFrame(frame)
+  stopRotation()
   observer?.disconnect()
+  controls?.removeEventListener('change', renderScene)
   controls?.dispose()
   renderer?.domElement.removeEventListener('pointerdown', pointerDown)
   renderer?.domElement.removeEventListener('pointermove', pointerMove)
@@ -442,7 +435,7 @@ onBeforeUnmount(() => {
         :class="{ active: activeCategory === cat.id }"
         @click="setCategory(cat.id)"
       >
-        {{ $t(cat.label) }}
+        {{ cat.label }}
       </button>
     </div>
 
@@ -450,27 +443,24 @@ onBeforeUnmount(() => {
 
     <!-- Live hover tooltip -->
     <div v-if="hoveredName" class="hover-badge">
-      <span class="badge-cat">{{ $t(hoveredCategory) }}</span>
-      <strong>{{ getAnatomyName(hoveredName) }}</strong>
+      <span class="badge-cat">{{ hoveredCategory }}</span>
+      <strong>{{ hoveredName }}</strong>
     </div>
 
     <div class="anatomy-caption">
       <span>70+ ANATOMY ATLAS</span>
-      <strong>{{ selectedOrganId && selectedOrganId !== 'other' ? $t(organNames[selectedOrganId]) : $t('Clinical 0.75 mm solid anatomy atlas') }}</strong>
-      <small>
-        <Sparkles v-if="hasPatientOrgans" :size="11" class="pulse-icon" />
-        {{ hasPatientOrgans ? $t('Patient-specific CT reconstruction linked (FMRC)') : $t('100% watertight solid · 0.75 mm subvoxel smoothing') }}
-      </small>
+      <strong>{{ selectedOrganId && selectedOrganId !== 'other' ? $t(organNames[selectedOrganId]) : '临床 0.75mm 全实心解剖图谱' }}</strong>
+      <small>100% 封闭实心 (Watertight) · 0.75mm 亚体素平滑</small>
     </div>
 
     <div class="anatomy-tools">
-      <button :class="{ active: shell }" :aria-label="$t('Show or hide body shell')" :aria-pressed="shell" @click="shell = !shell">
+      <button :class="{ active: shell }" aria-label="显示或隐藏人体外壳" :aria-pressed="shell" @click="shell = !shell">
         <Layers :size="16" />
       </button>
-      <button :class="{ active: rotating }" :aria-label="$t('Auto-rotate body')" :aria-pressed="rotating" @click="rotating = !rotating">
+      <button :class="{ active: rotating }" aria-label="自动旋转人体" :aria-pressed="rotating" @click="rotating = !rotating">
         <Rotate3D :size="16" />
       </button>
-      <button :aria-label="$t('Reset to anterior view')" @click="reset">
+      <button aria-label="恢复人体正面视角" @click="reset">
         <RotateCcw :size="16" />
       </button>
     </div>
@@ -479,9 +469,9 @@ onBeforeUnmount(() => {
     <span class="side-label patient-left">L</span>
 
     <p v-if="loading || error" :role="error ? 'alert' : 'status'" class="anatomy-state">
-      {{ error || $t('Loading 70-item 0.75 mm solid anatomy atlas…') }}
+      {{ error || '正在载入 70 项 0.75mm 实心解剖大图谱…' }}
     </p>
-    <div class="anatomy-hint">{{ $t('Hover to inspect anatomy · Drag to rotate · Wheel to zoom') }}</div>
+    <div class="anatomy-hint">悬停探查解剖部位 · 拖动旋转 · 滚轮缩放</div>
   </div>
 </template>
 
@@ -603,15 +593,6 @@ onBeforeUnmount(() => {
   color: #236b66;
   font-weight: 500;
 }
-.pulse-icon {
-  animation: pulse 1.8s infinite;
-  color: #10b981;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
-}
-
 .anatomy-tools {
   position: absolute;
   right: 18px;
