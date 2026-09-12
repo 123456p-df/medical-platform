@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { api, collection } from '@/api/client'
 import { mockExaminations, mockPatients } from '@/data/mockData'
 import { localPreview } from '@/utils/runtime'
+import { getLocalUploads } from '@/api/localUploads'
 const PREVIEW_REVIEW_KEY = 'pulmolink-preview-review-status'
 export interface WorkItem {
   image_id: string; patient_id: number | string; patient_name: string; image_type: string
@@ -20,7 +21,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
       let saved: Record<string,string> = {}
       try { saved = JSON.parse(localStorage.getItem(PREVIEW_REVIEW_KEY) || '{}') }
       catch { saved = {} }
-      items.value = mockExaminations.map(examination => {
+      let uploaded = [] as typeof mockExaminations
+      try { uploaded = (await getLocalUploads()).map(study => study.examination) }
+      catch { /* The bundled preview workflow remains usable without IndexedDB. */ }
+      if (current !== generation) return
+      items.value = [...uploaded, ...mockExaminations].map(examination => {
         const patient = mockPatients.find(item => item.id === examination.patientId)
         const initiallyComplete = examination.status !== 'Pending Review' ? `${examination.date}T18:00:00Z` : null
         return { image_id: examination.id, patient_id: examination.patientId, patient_name: patient?.name || 'Demo Patient', image_type: examination.type, organ_id: examination.organId || examination.organ.toLowerCase(), created_at: `${examination.date}T09:00:00Z`, completed_at: saved[examination.id] ?? initiallyComplete }

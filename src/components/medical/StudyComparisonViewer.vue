@@ -4,6 +4,7 @@ import { Columns2, Grid2X2, Link2, Minus, Plus, Square, Unlink2 } from 'lucide-v
 import type { Examination, Finding } from '@/types'
 import type { SliceAxis } from '@/utils/volumePixels'
 import SliceViewport from './SliceViewport.vue'
+import { isLocalUpload } from '@/api/localUploads'
 
 type LayoutCount = 1 | 2 | 4
 
@@ -28,7 +29,8 @@ const preset = ref('lung')
 const zoom = ref(1)
 const selectedIds = ref<string[]>([])
 
-const available = computed(() => props.examinations.filter(item => item.type === 'CT'))
+const available = computed(() => props.examinations.filter(item => item.type === 'CT' && !isLocalUpload(item)))
+const localCtCount = computed(() => props.examinations.filter(item => item.type === 'CT' && isLocalUpload(item)).length)
 const signature = computed(() => available.value.map(item => item.id).join('|'))
 const paneStudies = computed(() => Array.from({ length: layout.value }, (_, index) =>
   available.value.find(item => item.id === selectedIds.value[index]) || null))
@@ -103,6 +105,7 @@ function findingsFor(id: string) {
 
     <div class="comparison-note">
       <span>{{ available.length }} 个 CT 检查可比较</span>
+      <span v-if="localCtCount">{{ localCtCount }} 个本地 CT 可在影像列表中单独浏览。</span>
       <span v-if="layout > 1 && syncEnabled">按各检查的相对切片位置同步，适配不同切片数量。</span>
       <span v-else-if="layout > 1">每个窗口可单独滚轮、方向键或拖动滑块。</span>
     </div>
