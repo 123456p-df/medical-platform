@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "vite --host 127.0.0.1 --port 4173",
+    "start": "node scripts/start.mjs",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "serve": "vite preview --host 127.0.0.1 --port 4173",
     "typecheck": "vue-tsc -b",
     "test:i18n": "node scripts/test-i18n.ts",
+    "test:api": "node --test scripts/test-api-client.ts",
     "test:modalities": "node scripts/verify-modalities.mjs",
     "test:volume": "node scripts/verify-volume-renderer.mjs",
     "test:comparison": "node scripts/verify-comparison.mjs"

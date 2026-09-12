@@ -35,11 +35,11 @@ def current_user(
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise APIError(401, 40101, "Authentication required")
     try:
-        user_id = decode_token(credentials.credentials, settings)
+        user_id, token_username = decode_token(credentials.credentials, settings)
     except (InvalidTokenError, ValueError, TypeError, OverflowError):
         raise APIError(401, 40102, "Invalid or expired token") from None
     user = db.get(User, user_id)
-    if user is None:
+    if user is None or user.username != token_username:
         raise APIError(401, 40102, "Invalid or expired token")
     return user
 

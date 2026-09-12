@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { api, SESSION_KEY } from '@/api/client'
+import { api, readSession } from '@/api/client'
 import { localPreview } from '@/utils/runtime'
 import type { UserSession } from '@/types'
 export interface ProfileFile { id: string; name: string; size_bytes: number; media_type: string }
@@ -14,7 +14,7 @@ const PREVIEW_PROFILE_PREFIX = 'pulmolink-preview-profile-v2:'
 
 function previewSession() {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || 'null') as UserSession | null
+    return JSON.parse(readSession() || 'null') as UserSession | null
   } catch { return null }
 }
 

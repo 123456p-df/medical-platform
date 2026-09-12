@@ -35,6 +35,7 @@ def test_jwt_rejects_expired_forged_and_incomplete(app_env, people):
     now = utcnow()
     claims = {
         "sub": str(people["doctor_a_id"]),
+        "usr": "doctor_a",
         "iat": now,
         "nbf": now,
         "exp": now - timedelta(seconds=1),
@@ -46,7 +47,12 @@ def test_jwt_rejects_expired_forged_and_incomplete(app_env, people):
         {"sub": claims["sub"]}, settings.jwt_secret.get_secret_value(), algorithm="HS256"
     )
     forged = jwt.encode(claims | {"exp": now + timedelta(hours=1)}, "x" * 48, algorithm="HS256")
-    for token in [expired, incomplete, forged, "garbage"]:
+    wrong_account = jwt.encode(
+        claims | {"exp": now + timedelta(hours=1), "usr": "doctor_b"},
+        settings.jwt_secret.get_secret_value(),
+        algorithm="HS256",
+    )
+    for token in [expired, incomplete, forged, wrong_account, "garbage"]:
         assert (
             client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + token}).status_code
             == 401

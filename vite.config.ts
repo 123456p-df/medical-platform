@@ -2,6 +2,8 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+const backendTarget = process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8000'
+
 export default defineConfig({
   plugins: [vue()],
   optimizeDeps: {
@@ -23,8 +25,8 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      '/api': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
-      '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api': { target: backendTarget, changeOrigin: true },
+      '/health': { target: backendTarget, changeOrigin: true },
     },
   },
   preview: {
@@ -32,8 +34,8 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      '/api': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
-      '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
+      '/api': { target: backendTarget, changeOrigin: true },
+      '/health': { target: backendTarget, changeOrigin: true },
     },
   },
   worker: {
