@@ -10,23 +10,14 @@ const props = withDefaults(
   defineProps<{
     selectedOrganId?: string | null
     compact?: boolean
-    sliceAxis?: string
-    slicePosition?: number
-    showSlicingPlane?: boolean
-    enableClipping?: boolean
   }>(),
   {
     selectedOrganId: null,
     compact: false,
-    sliceAxis: 'axial',
-    slicePosition: 0.5,
-    showSlicingPlane: false,
-    enableClipping: false,
   }
 )
 const emit = defineEmits<{
   select: [organId: string]
-  'navigate-slice': [pos: number]
 }>()
 
 const host = ref<HTMLDivElement>()

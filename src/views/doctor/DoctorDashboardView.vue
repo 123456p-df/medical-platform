@@ -26,6 +26,10 @@ import RiskBadge from '@/components/ui/RiskBadge.vue'
 import type { Patient } from '@/types'
 
 const router = useRouter()
+function openStudyViewer(patientId: string) {
+  const href = router.resolve({ name: 'study-viewer', params: { patientId } }).href
+  window.open(href, '_blank', 'noopener')
+}
 const store = usePatientStore()
 
 const filters = reactive({
@@ -248,7 +252,7 @@ onMounted(async () => {
             <button type="button" class="btn btn-secondary" @click="router.push({ name: 'doctor-patient-report', params: { id: selectedPatient.id } })">
               <FileText :size="16" /> View Report
             </button>
-            <button type="button" class="btn btn-secondary" @click="router.push({ name: 'doctor-patient-3d', params: { id: selectedPatient.id } })">
+            <button type="button" class="btn btn-secondary" @click="openStudyViewer(selectedPatient.id)">
               <Activity :size="16" /> View 3D
             </button>
             <PatientDeleteButton :id="selectedPatient.id" :name="selectedPatient.name" stay @removed="patientRemoved" />

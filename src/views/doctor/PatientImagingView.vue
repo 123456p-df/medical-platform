@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useWorkflowStore } from '@/stores/workflow'
 import { computed, ref, onBeforeUnmount, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { ScanLine, Box, CheckCircle2, RotateCcw, Sparkles, Columns2 } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
+import { ScanLine, Box, CheckCircle2, RotateCcw, Sparkles } from 'lucide-vue-next'
 import { usePatientStore } from '@/stores/patients'
-import RemoteSliceViewer from '@/components/medical/RemoteSliceViewer.vue'
+import SliceViewport from '@/components/medical/SliceViewport.vue'
 import StudyComparisonViewer from '@/components/medical/StudyComparisonViewer.vue'
 import MultiStudyUpload from '@/components/medical/MultiStudyUpload.vue'
 import { api } from '@/api/client'
@@ -12,12 +12,17 @@ import { analysisApi, type AnalysisStatus, type AnalysisTask } from '@/api/analy
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { localPreview } from '@/utils/runtime'
 import type { Examination } from '@/types'
-const route = useRoute(), store = usePatientStore(), workflow = useWorkflowStore()
+const route = useRoute(), router = useRouter(), store = usePatientStore(), workflow = useWorkflowStore()
 const reviewBusy = ref(false)
 const patientId = computed(() => String(route.params.id))
 const selected = ref(String(route.query.exam || ''))
-const viewerMode = ref<'compare' | 'mpr'>('compare')
 const active = computed(() => store.examinations.find(i => i.id === selected.value) || store.examinations[0])
+const ctStudies = computed(() => store.examinations.filter(item => item.type === 'CT'))
+const studyViewerHref = computed(() => router.resolve({
+  name: 'study-viewer',
+  params: { patientId: patientId.value },
+  query: active.value ? { image: active.value.id } : {},
+}).href)
 const activeFindings = computed(() => store.findings.filter(item => item.examinationId === active.value?.id))
 watch(() => route.query.exam, value => { selected.value = String(value || '') })
 const reviewItem = computed(() => workflow.items.find(i => i.image_id === active.value?.id))
@@ -90,25 +95,16 @@ async function analyzeLungNodules() {
 function selectStudy(id: string) {
   const changed = selected.value !== id
   selected.value = id
-  if (store.examinations.find(item => item.id === id)?.type !== 'CT') viewerMode.value = 'mpr'
   if (changed) {
     segmentationTask.value = null
     analysisTask.value = null
     error.value = ''
   }
 }
-function setViewerMode(mode: 'compare' | 'mpr') {
-  viewerMode.value = mode
-  if (mode === 'compare' && active.value?.type !== 'CT') {
-    const firstCt = store.examinations.find(item => item.type === 'CT')
-    if (firstCt) selectStudy(firstCt.id)
-  }
-}
 async function handleUploaded(studies: Examination[]) {
   await store.loadPatientContext(patientId.value)
   const latest = studies.at(-1)
   if (latest) selected.value = latest.id
-  viewerMode.value = 'compare'
   await Promise.all([workflow.load(), store.loadPatients()])
 }
 onBeforeUnmount(() => {
@@ -136,31 +132,34 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
         </div>
       </div>
       <div v-if="active" class="viewer-mode-bar card">
-        <div><strong>影像显示</strong><span>多期 CT 可选择单屏、二分屏或四分屏比较</span></div>
+        <div><strong>影像显示</strong><span>多期 CT 同屏比较；MPR / 3D 在独立查看器中打开</span></div>
         <div>
-          <button class="btn btn-sm" :class="viewerMode === 'compare' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('compare')"><Columns2 :size="15" /> 同屏比较</button>
-          <button class="btn btn-sm" :class="viewerMode === 'mpr' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('mpr')"><ScanLine :size="15" /> MPR 三平面</button>
-          <RouterLink
-            v-if="active && active.type === 'CT'"
+          <a
+            v-if="active.type === 'CT'"
             class="btn btn-sm btn-secondary"
-            :to="{ path: '/viewer/study/' + patientId, query: { image: active.id } }"
+            :href="studyViewerHref"
             target="_blank"
+            rel="noopener"
           >
-            <Box :size="15" /> 3D 全景重构
-          </RouterLink>
+            <Box :size="15" /> 打开 MPR / 3D 查看器
+          </a>
         </div>
       </div>
       <StudyComparisonViewer
-        v-if="active && viewerMode === 'compare'"
+        v-if="ctStudies.length && (!active || active.type === 'CT')"
         :examinations="store.examinations"
         :findings="store.findings"
-        :initial-id="active.id"
+        :initial-id="active?.id"
         @select-study="selectStudy"
       />
-      <RemoteSliceViewer
+      <SliceViewport
         v-else-if="active"
         :key="active.id"
         :examination="active"
+        axis="axial"
+        preset="auto"
+        :zoom="1"
+        :renderer="null"
         :findings="activeFindings"
       />
       <div v-else class="card empty-state">No medical images uploaded yet.</div>
@@ -170,7 +169,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           <div><h3>Organ segmentation</h3><p class="muted">CT 使用已配置的模型分割；MRI 当前支持浏览。</p></div>
           <button class="btn btn-primary" :disabled="active.type !== 'CT' || ['eye','other'].includes(active.organId || '') || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> Start segmentation</button>
           <p v-if="segmentationTask">Task: {{ segmentationTask.status }} · {{ segmentationTask.progress || 0 }}%</p>
-          <RouterLink v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :to="'/doctor/patients/' + patientId + '/3d'"><Box :size="16" /> View 3D result</RouterLink>
+          <a v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :href="studyViewerHref" target="_blank" rel="noopener"><Box :size="16" /> View 3D result</a>
         </div>
         <div class="card task-card analysis-card">
           <div>

@@ -4,7 +4,8 @@ import { ArrowLeft, FileText, Info } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
-import MedicalImageViewer from '@/components/medical/MedicalImageViewer.vue'
+import StudyComparisonViewer from '@/components/medical/StudyComparisonViewer.vue'
+import SliceViewport from '@/components/medical/SliceViewport.vue'
 import ReportCard from '@/components/medical/ReportCard.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 
@@ -55,7 +56,19 @@ onMounted(async () => {
           <StatusBadge :status="examination.status" />
         </div>
         <div class="card-body">
-          <MedicalImageViewer :examination="examination" :findings="[]" />
+          <StudyComparisonViewer
+            v-if="examination.type === 'CT'"
+            :examinations="[examination]"
+            :initial-id="examination.id"
+          />
+          <SliceViewport
+            v-else
+            :examination="examination"
+            axis="axial"
+            preset="auto"
+            :zoom="1"
+            :renderer="null"
+          />
         </div>
       </div>
 
