@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useWorkflowStore } from '@/stores/workflow'
 import { computed, ref, onBeforeUnmount, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { ScanLine, Box, CheckCircle2, RotateCcw, Sparkles, Columns2 } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
+import { ScanLine, Box, CheckCircle2, RotateCcw, Sparkles } from 'lucide-vue-next'
 import { usePatientStore } from '@/stores/patients'
-import RemoteSliceViewer from '@/components/medical/RemoteSliceViewer.vue'
+import SliceViewport from '@/components/medical/SliceViewport.vue'
 import UploadedStudyViewer from '@/components/medical/UploadedStudyViewer.vue'
 import StudyComparisonViewer from '@/components/medical/StudyComparisonViewer.vue'
 import MultiStudyUpload from '@/components/medical/MultiStudyUpload.vue'
@@ -14,13 +14,33 @@ import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { localPreview } from '@/utils/runtime'
 import type { Examination } from '@/types'
 import { isLocalUpload } from '@/api/localUploads'
-const route = useRoute(), store = usePatientStore(), workflow = useWorkflowStore()
+const route = useRoute(), router = useRouter(), store = usePatientStore(), workflow = useWorkflowStore()
 const reviewBusy = ref(false)
 const patientId = computed(() => String(route.params.id))
 const selected = ref(String(route.query.exam || ''))
-const viewerMode = ref<'compare' | 'mpr'>('compare')
 const active = computed(() => store.examinations.find(i => i.id === selected.value) || store.examinations[0])
 const isLocalActive = computed(() => isLocalUpload(active.value))
+const comparableStudies = computed(() => store.examinations.filter(item => item.type === active.value?.type && !isLocalUpload(item)))
+const studyViewerHref = computed(() => router.resolve({
+  name: 'study-viewer',
+  params: { patientId: patientId.value },
+  query: active.value ? { image: active.value.id } : {},
+}).href)
+const canSegment = computed(() => {
+  if (!active.value || isLocalActive.value) return false
+  if (['eye', 'other'].includes(active.value.organId || '')) return false
+  return active.value.type === 'CT' || active.value.type === 'MRI'
+})
+const segmentationHint = computed(() => {
+  if (!active.value) return ''
+  if (isLocalActive.value) return '本地影像可直接阅片；分割需先通过后端模式上传。'
+  if (active.value.segmentationWarning) return active.value.segmentationWarning
+  if (active.value.type === 'MRI' && active.value.segmentationMode === 'MRI_BRAIN') {
+    return '将去颅后对 T1 做脑区分割。'
+  }
+  if (active.value.type === 'MRI') return 'MRI 使用 NV-Segment-CTMR 的 MRI_BODY 标签集。'
+  return 'CT 使用已配置的模型分割。'
+})
 const activeFindings = computed(() => store.findings.filter(item => item.examinationId === active.value?.id))
 watch(() => route.query.exam, value => { selected.value = String(value || '') })
 const reviewItem = computed(() => workflow.items.find(i => i.image_id === active.value?.id))
@@ -93,26 +113,16 @@ async function analyzeLungNodules() {
 function selectStudy(id: string) {
   const changed = selected.value !== id
   selected.value = id
-  const examination = store.examinations.find(item => item.id === id)
-  if (examination && !isLocalUpload(examination) && examination.type !== 'CT') viewerMode.value = 'mpr'
   if (changed) {
     segmentationTask.value = null
     analysisTask.value = null
     error.value = ''
   }
 }
-function setViewerMode(mode: 'compare' | 'mpr') {
-  viewerMode.value = mode
-  if (mode === 'compare' && active.value?.type !== 'CT') {
-    const firstCt = store.examinations.find(item => item.type === 'CT' && !isLocalUpload(item))
-    if (firstCt) selectStudy(firstCt.id)
-  }
-}
 async function handleUploaded(studies: Examination[]) {
   await store.loadPatientContext(patientId.value)
   const latest = studies.at(-1)
   if (latest) selected.value = latest.id
-  viewerMode.value = 'mpr'
   await Promise.all([workflow.load(), store.loadPatients()])
 }
 onBeforeUnmount(() => {
@@ -128,7 +138,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
       <div v-if="active" class="card review-bar" :class="{complete:reviewed}">
         <div class="review-copy">
           <span class="review-kicker">IMAGING REVIEW</span>
-          <div class="review-title"><h2>{{ active.type }} · {{ active.organ }}</h2><StatusBadge :status="reviewed ? 'Reviewed' : 'Pending Review'" /></div>
+          <div class="review-title"><h2>{{ active.type }}<template v-if="active.sequence && active.sequence !== 'unknown'"> · {{ active.sequence }}</template> · {{ active.organ }}</h2><StatusBadge :status="reviewed ? 'Reviewed' : 'Pending Review'" /></div>
           <p>{{ active.date }} · {{ active.sliceCount }} slices · {{ reviewed ? '该影像已完成审核，可重新打开。' : '请浏览影像并核对 AI Findings，完成后确认审核。' }}</p>
         </div>
         <div class="review-actions">
@@ -140,42 +150,45 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
         </div>
       </div>
       <div v-if="active && !isLocalActive" class="viewer-mode-bar card">
-        <div><strong>影像显示</strong><span>多期 CT 可选择单屏、二分屏或四分屏比较</span></div>
+        <div><strong>影像显示</strong><span>多期同模态同屏比较；MPR / 3D 在独立查看器中打开</span></div>
         <div>
-          <button class="btn btn-sm" :class="viewerMode === 'compare' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('compare')"><Columns2 :size="15" /> 同屏比较</button>
-          <button class="btn btn-sm" :class="viewerMode === 'mpr' ? 'btn-primary' : 'btn-secondary'" @click="setViewerMode('mpr')"><ScanLine :size="15" /> MPR 三平面</button>
-          <RouterLink
-            v-if="active && active.type === 'CT'"
+          <a
+            v-if="active.type === 'CT' || active.type === 'MRI'"
             class="btn btn-sm btn-secondary"
-            :to="{ path: '/viewer/study/' + patientId, query: { image: active.id } }"
+            :href="studyViewerHref"
             target="_blank"
+            rel="noopener"
           >
-            <Box :size="15" /> 3D 全景重构
-          </RouterLink>
+            <Box :size="15" /> 打开 MPR / 3D 查看器
+          </a>
         </div>
       </div>
       <UploadedStudyViewer v-if="active && isLocalActive" :key="active.id" :examination="active" />
       <StudyComparisonViewer
-        v-else-if="active && viewerMode === 'compare'"
+        v-else-if="comparableStudies.length && active && (active.type === 'CT' || active.type === 'MRI')"
         :examinations="store.examinations"
         :findings="store.findings"
-        :initial-id="active.id"
+        :initial-id="active?.id"
         @select-study="selectStudy"
       />
-      <RemoteSliceViewer
+      <SliceViewport
         v-else-if="active"
         :key="active.id"
         :examination="active"
+        axis="axial"
+        preset="auto"
+        :zoom="1"
+        :renderer="null"
         :findings="activeFindings"
       />
       <div v-else class="card empty-state">No medical images uploaded yet.</div>
       <p v-if="error" class="integration-error" role="alert">{{ error }}</p>
       <div v-if="active" class="task-grid">
         <div class="card task-card">
-          <div><h3>Organ segmentation</h3><p class="muted">{{ isLocalActive ? '本地影像可直接阅片；分割需先通过后端模式上传。' : 'CT 使用已配置的模型分割；MRI 当前支持浏览。' }}</p></div>
-          <button class="btn btn-primary" :disabled="isLocalActive || active.type !== 'CT' || ['eye','other'].includes(active.organId || '') || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> {{ isLocalActive ? '后端上传后可分割' : 'Start segmentation' }}</button>
+          <div><h3>Organ segmentation</h3><p class="muted">{{ segmentationHint }}</p></div>
+          <button class="btn btn-primary" :disabled="!canSegment || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> {{ isLocalActive ? '后端上传后可分割' : 'Start segmentation' }}</button>
           <p v-if="segmentationTask">Task: {{ segmentationTask.status }} · {{ segmentationTask.progress || 0 }}%</p>
-          <RouterLink v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :to="'/doctor/patients/' + patientId + '/3d'"><Box :size="16" /> View 3D result</RouterLink>
+          <a v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :href="studyViewerHref" target="_blank" rel="noopener"><Box :size="16" /> View 3D result</a>
         </div>
         <div class="card task-card analysis-card">
           <div>
@@ -186,7 +199,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           </div>
           <button
             class="btn btn-primary"
-            :disabled="localPreview || !analysisStatus?.configured || active.type !== 'CT' || active.organId !== 'lung' || analysisBusy || ['queued','running'].includes(analysisTask?.status || '')"
+            :disabled="isLocalActive || localPreview || !analysisStatus?.configured || active.type !== 'CT' || active.organId !== 'lung' || analysisBusy || ['queued','running'].includes(analysisTask?.status || '')"
             @click="analyzeLungNodules"
           ><Sparkles :size="16" /> {{ analysisBusy ? '正在启动…' : '开始肺结节检测' }}</button>
           <p v-if="analysisTask">任务：{{ analysisTask.status }} · {{ analysisTask.progress || 0 }}%</p>
@@ -203,8 +216,8 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
       <section class="card">
         <div class="card-header"><h3>Imaging studies</h3><span class="muted">{{ store.examinations.length }}</span></div>
         <div class="study-list">
-          <button v-for="image in store.examinations" :key="image.id" class="study-item" :class="{ active:image.id === active?.id }" @click="selectStudy(image.id)">
-            <strong>{{ image.type }} · {{ image.organ }}<em v-if="isLocalUpload(image)">本地</em></strong><span>{{ image.date }} · {{ image.sliceCount }} slices</span>
+          <button v-for="image in store.examinations" :key="image.id" class="study-item" :class="{ active: image.id === active?.id }" @click="selectStudy(image.id)">
+            <strong>{{ image.type }}<template v-if="image.sequence && image.sequence !== 'unknown'"> · {{ image.sequence }}</template> · {{ image.organ }}<em v-if="isLocalUpload(image)">本地</em></strong><span>{{ image.date }} · {{ image.sliceCount }} slices</span>
           </button>
         </div>
       </section>

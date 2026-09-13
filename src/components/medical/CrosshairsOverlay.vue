@@ -24,6 +24,7 @@ const props = withDefaults(
     windowWidth: number | null
     probeHU: number | null
     probeTissue?: string
+    probeUnit?: string
     probeVoxel?: [number, number, number] | null
     rulers: RulerMeasurement[]
     activeRuler: { startCol: number; startRow: number; endCol: number; endRow: number; lengthMm: number } | null
@@ -36,6 +37,7 @@ const props = withDefaults(
     spacing: () => [1, 1, 1],
     findings: () => [],
     selectedFindingId: null,
+    probeUnit: 'HU',
   },
 )
 
@@ -567,7 +569,7 @@ function onHandlePointerUp() {
         W: <strong>{{ windowWidth }}</strong> L: <strong>{{ windowCenter }}</strong>
       </span>
       <span v-if="probeHU !== null" class="hud-item probe-hud">
-        HU: <strong>{{ probeHU }}</strong>
+        {{ probeUnit }}: <strong>{{ probeHU }}</strong>
         <small v-if="probeTissue">({{ probeTissue }})</small>
       </span>
     </div>

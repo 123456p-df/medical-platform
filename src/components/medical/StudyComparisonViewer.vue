@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Columns2, Grid2X2, Link2, Minus, Plus, Square, Unlink2 } from 'lucide-vue-next'
 import type { Examination, Finding } from '@/types'
 import type { SliceAxis } from '@/utils/volumePixels'
+import { defaultPresetFor } from '@/utils/volumePixels'
 import SliceViewport from './SliceViewport.vue'
 import { isLocalUpload } from '@/api/localUploads'
 
@@ -25,12 +26,15 @@ const layout = ref<LayoutCount>(1)
 const syncEnabled = ref(true)
 const sharedPosition = ref(0.5)
 const axis = ref<SliceAxis>('axial')
-const preset = ref('lung')
 const zoom = ref(1)
 const selectedIds = ref<string[]>([])
 
-const available = computed(() => props.examinations.filter(item => item.type === 'CT' && !isLocalUpload(item)))
-const localCtCount = computed(() => props.examinations.filter(item => item.type === 'CT' && isLocalUpload(item)).length)
+const modality = computed(() => props.examinations.find(item => item.id === props.initialId && !isLocalUpload(item))?.type
+  || props.examinations.find(item => (item.type === 'CT' || item.type === 'MRI') && !isLocalUpload(item))?.type
+  || 'CT')
+const available = computed(() => props.examinations.filter(item => item.type === modality.value && !isLocalUpload(item)))
+const localCount = computed(() => props.examinations.filter(item => item.type === modality.value && isLocalUpload(item)).length)
+const preset = ref(defaultPresetFor(modality.value, available.value[0]?.sequence))
 const signature = computed(() => available.value.map(item => item.id).join('|'))
 const paneStudies = computed(() => Array.from({ length: layout.value }, (_, index) =>
   available.value.find(item => item.id === selectedIds.value[index]) || null))
@@ -47,6 +51,9 @@ function reconcileSelections() {
 }
 
 watch([signature, () => props.initialId, layout], reconcileSelections, { immediate: true })
+watch(modality, value => {
+  preset.value = defaultPresetFor(value, available.value.find(item => item.id === props.initialId)?.sequence)
+}, { immediate: true })
 
 function setLayout(value: LayoutCount) {
   layout.value = value
@@ -85,7 +92,21 @@ function findingsFor(id: string) {
           <select v-model="axis"><option value="axial">轴向</option><option value="coronal">冠状</option><option value="sagittal">矢状</option></select>
         </label>
         <label>窗位
-          <select v-model="preset"><option value="lung">肺窗</option><option value="soft">软组织</option><option value="bone">骨窗</option><option value="auto">自动</option></select>
+          <select v-model="preset">
+            <template v-if="modality === 'MRI'">
+              <option value="auto">自动</option>
+              <option value="mri-t1">T1</option>
+              <option value="mri-t2">T2</option>
+              <option value="mri-flair">FLAIR</option>
+              <option value="mri-dwi">DWI</option>
+            </template>
+            <template v-else>
+              <option value="lung">肺窗</option>
+              <option value="soft">软组织</option>
+              <option value="bone">骨窗</option>
+              <option value="auto">自动</option>
+            </template>
+          </select>
         </label>
       </div>
       <div class="toolbar-group">
@@ -104,8 +125,8 @@ function findingsFor(id: string) {
     </header>
 
     <div class="comparison-note">
-      <span>{{ available.length }} 个 CT 检查可比较</span>
-      <span v-if="localCtCount">{{ localCtCount }} 个本地 CT 可在影像列表中单独浏览。</span>
+      <span>{{ available.length }} 个 {{ modality }} 检查可比较</span>
+      <span v-if="localCount">{{ localCount }} 个本地 {{ modality }} 可在影像列表中单独浏览。</span>
       <span v-if="layout > 1 && syncEnabled">按各检查的相对切片位置同步，适配不同切片数量。</span>
       <span v-else-if="layout > 1">每个窗口可单独滚轮、方向键或拖动滑块。</span>
     </div>
@@ -141,11 +162,11 @@ function findingsFor(id: string) {
         </template>
         <div v-else class="empty-pane">
           <Grid2X2 :size="24" />
-          <span>请再上传一个 CT 检查</span>
+          <span>请再上传一个 {{ modality }} 检查</span>
         </div>
       </article>
     </div>
-    <div v-else class="empty-comparison">当前患者还没有 CT 检查，请先上传。</div>
+    <div v-else class="empty-comparison">当前患者还没有 {{ modality }} 检查，请先上传。</div>
   </section>
 </template>
 

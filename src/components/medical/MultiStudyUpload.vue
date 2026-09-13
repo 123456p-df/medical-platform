@@ -5,6 +5,7 @@ import { examinationApi } from '@/api/examinations'
 import { organNames } from '@/api/mappers'
 import type { Examination } from '@/types'
 import { localPreview } from '@/utils/runtime'
+import { zipFiles } from '@/utils/zipStore'
 import LocalStudyUpload from './LocalStudyUpload.vue'
 
 interface UploadEntry {
@@ -27,6 +28,7 @@ const emit = defineEmits<{
 const entries = ref<UploadEntry[]>([])
 const organ = ref('lung')
 const imageType = ref<'CT' | 'MRI'>('CT')
+const sequence = ref<'auto' | 'T1' | 'T2' | 'FLAIR' | 'DWI' | 'unknown'>('auto')
 const busy = ref(false)
 const completed = ref(0)
 const error = ref('')
@@ -47,10 +49,18 @@ function inferredDate(file: File) {
   return Number.isNaN(parsed.getTime()) || value > today ? today : value
 }
 
+function isDicomFile(file: File) {
+  return /\.dcm$/i.test(file.name) || file.type === 'application/dicom'
+}
+
+function isAccepted(file: File) {
+  return /\.nii(?:\.gz)?$/i.test(file.name) || isDicomFile(file) || /\.zip$/i.test(file.name)
+}
+
 function addFiles(files: File[]) {
   error.value = ''
-  const accepted = files.filter(file => /\.nii(?:\.gz)?$/i.test(file.name))
-  const rejected = files.filter(file => !/\.nii(?:\.gz)?$/i.test(file.name))
+  const accepted = files.filter(isAccepted)
+  const rejected = files.filter(file => !isAccepted(file))
   if (rejected.length) error.value = `已忽略不支持的文件：${rejected.map(file => file.name).join('、')}`
   const known = new Set(entries.value.map(entry => entry.id))
   const additions = accepted
@@ -81,6 +91,18 @@ function removeEntry(id: string) {
   entries.value = entries.value.filter(item => item.id !== id)
 }
 
+async function filesToUpload(items: UploadEntry[]) {
+  const dicoms = items.filter(item => isDicomFile(item.file))
+  if (dicoms.length > 1 && dicoms.length === items.length) {
+    return [{
+      id: 'dicom-series',
+      file: await zipFiles(dicoms.map(item => item.file), 'dicom-series.zip'),
+      studyDate: dicoms[0].studyDate,
+    }]
+  }
+  return items
+}
+
 async function uploadAll() {
   if (!entries.value.length || busy.value) return
   busy.value = true
@@ -88,7 +110,8 @@ async function uploadAll() {
   error.value = ''
   const uploaded: Examination[] = []
   const failed = new Set<string>()
-  for (const entry of entries.value) {
+  const queue = await filesToUpload(entries.value)
+  for (const entry of queue) {
     try {
       uploaded.push(await examinationApi.uploadStudy(
         props.patientId,
@@ -96,6 +119,7 @@ async function uploadAll() {
         organ.value,
         effectiveType.value,
         entry.studyDate,
+        effectiveType.value === 'MRI' && sequence.value !== 'auto' ? { sequence: sequence.value } : undefined,
       ))
     } catch (reason) {
       failed.add(entry.id)
@@ -105,7 +129,8 @@ async function uploadAll() {
       completed.value += 1
     }
   }
-  entries.value = entries.value.filter(item => failed.has(item.id))
+  if (queue.length === 1 && queue[0].id === 'dicom-series' && !failed.size) entries.value = []
+  else entries.value = entries.value.filter(item => failed.has(item.id))
   busy.value = false
   if (uploaded.length) emit('complete', uploaded)
 }
@@ -115,13 +140,23 @@ async function uploadAll() {
   <LocalStudyUpload v-if="localPreview" :patient-id="patientId" :ct-only="ctOnly" @complete="emit('complete', $event)" />
   <form v-else class="multi-upload" @submit.prevent="uploadAll">
     <div class="upload-heading">
-      <div><h3>{{ ctOnly ? '批量上传 CT' : '批量上传 CT / MRI' }}</h3><p>可一次选择或拖入多份 NIfTI，并为每份设置检查日期。</p></div>
+      <div><h3>{{ ctOnly ? '批量上传 CT' : '批量上传检查' }}</h3><p>可一次选择或拖入 NIfTI，或一个 DICOM 序列 zip / dcm，并为每份设置检查日期。</p></div>
       <Upload :size="18" />
     </div>
     <div class="upload-options">
       <label class="label">Organ<select v-model="organ" class="select"><option v-for="(name,id) in organNames" :key="id" :value="id">{{ name }}</option></select></label>
       <label v-if="!ctOnly" class="label">Modality<select v-model="imageType" class="select"><option value="CT">CT</option><option value="MRI">MRI</option></select></label>
       <label v-else class="label">Modality<input class="input" value="CT" disabled /></label>
+      <label v-if="effectiveType === 'MRI'" class="label">序列
+        <select v-model="sequence" class="select">
+          <option value="auto">自动识别</option>
+          <option value="T1">T1</option>
+          <option value="T2">T2</option>
+          <option value="FLAIR">FLAIR</option>
+          <option value="DWI">DWI</option>
+          <option value="unknown">未知</option>
+        </select>
+      </label>
     </div>
     <label
       class="file-picker"
@@ -132,8 +167,11 @@ async function uploadAll() {
       @drop.prevent.stop="dropFiles"
     >
       <Upload :size="19" />
-      <span><strong>{{ dragging ? '松开即可加入上传列表' : '拖放 .nii / .nii.gz 文件到这里' }}</strong><small>或点击选择，可分多次继续添加</small></span>
-      <input ref="fileInput" type="file" accept=".nii,.nii.gz" multiple :disabled="busy" @change="selectFiles" />
+      <span>
+        <strong>{{ dragging ? '松开即可加入上传列表' : '拖放 .nii / .nii.gz / .dcm / .zip 到这里' }}</strong>
+        <small>或点击选择，可分多次继续添加</small>
+      </span>
+      <input ref="fileInput" type="file" accept=".nii,.nii.gz,.dcm,.zip,application/zip,application/dicom" multiple :disabled="busy" @change="selectFiles" />
     </label>
     <p v-if="entries.length" class="file-count" role="status">已选择 {{ entries.length }} 份检查</p>
     <div v-if="entries.length" class="upload-queue">

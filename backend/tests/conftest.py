@@ -21,9 +21,9 @@ from app.security import hash_password
 class SyntheticAdapter:
     """Deterministic geometry fixture, never used by the real application."""
 
-    image_types = {"CT"}
+    image_types = {"CT", "MRI"}
 
-    def __call__(self, *, image_path, organ_id, output_dir, progress):
+    def __call__(self, *, image_path, organ_id, output_dir, progress, **_kwargs):
         original = nib.load(image_path)
         data = np.zeros(original.shape, dtype=np.uint8)
         data[2:-2, 2:-2, 2:-2] = 1
@@ -41,7 +41,7 @@ class SyntheticBatchAdapter(SyntheticAdapter):
 
         self.catalog = LabelCatalog(None)
 
-    def run_batch(self, *, image_path, output_dir, progress):
+    def run_batch(self, *, image_path, output_dir, progress, modality="CT_BODY", **_kwargs):
         original = nib.load(image_path)
         data = np.zeros(original.shape, dtype=np.uint8)
         data[2:6, 2:8, 2:10] = 1

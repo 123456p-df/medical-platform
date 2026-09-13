@@ -149,9 +149,10 @@ const label = computed(() => {
 })
 
 const syntheticPreset = computed(() => {
-  if (props.preset === 'auto') return props.examination.type === 'MRI' ? 'brain' : 'lung'
+  if (props.preset === 'auto' || props.preset.startsWith('mri-')) return props.examination.type === 'MRI' ? 'brain' : 'lung'
   return props.preset as 'lung' | 'brain' | 'bone' | 'soft'
 })
+const probeUnit = computed(() => (props.examination.type === 'MRI' ? 'I' : 'HU'))
 
 // Crosshairs composable
 const { visible: crosshairsVisible, updateFromCanvas, getCanvasProjection } = useCrosshairs()
@@ -358,7 +359,7 @@ function render() {
         if (customWindow.value) {
           query.set('window_center', String(customWindow.value[0]))
           query.set('window_width', String(customWindow.value[1]))
-        } else if (windows[props.preset]) {
+        } else if (props.examination.type !== 'MRI' && windows[props.preset]) {
           const [center, width] = windows[props.preset]
           query.set('window_center', String(center))
           query.set('window_width', String(width))
@@ -627,6 +628,7 @@ defineExpose({
           :window-width="windowWidth"
           :probe-h-u="probeState.hu"
           :probe-tissue="probeState.tissue"
+          :probe-unit="probeUnit"
           :rulers="rulers"
           :active-ruler="activeRuler"
           :is-maximized="isMaximized"

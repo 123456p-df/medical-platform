@@ -1,5 +1,6 @@
 from datetime import date
 import logging
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -12,8 +13,9 @@ from app.deps import DB, Config, CurrentUser, check_patient_access
 from app.errors import APIError, Envelope, success
 from app.models import MedicalImage, OrganModel, SegmentationBatch
 from app.organs import require_organ
-from app.schemas import ComparisonCandidateOut, ImageOut
+from app.schemas import ComparisonCandidateOut, ImageAcquisitionPatch, ImageOut
 from app.services.comparison import compare_studies
+from app.services.dicom_ingest import collect_dicom_bytes, convert_series, series_from_files
 from app.services.imaging import (
     acquisition_from_volume,
     canonical_labels,
@@ -23,6 +25,12 @@ from app.services.imaging import (
     prepare_slice_cache,
     slice_cache_path,
     slice_png,
+)
+from app.services.mri_metadata import (
+    SEQUENCES,
+    detect_from_nifti,
+    mode_warning,
+    suggested_mode,
 )
 from app.services.storage import relative_path, stored_path
 logger = logging.getLogger(__name__)
@@ -75,6 +83,12 @@ def image_out(image, db=None, segmentation_batch_id=None, atlas_id=None):
             segmentation_batch_id = latest_batch_id(db, image.id)
         if atlas_id is None:
             atlas = atlas_model_id(db, image.id)
+    acquisition = dict(image.acquisition or {})
+    acquisition.setdefault("sequence", image.sequence)
+    acquisition.setdefault("contrast", image.contrast)
+    acquisition.setdefault("segmentation_mode", image.segmentation_mode)
+    acquisition.setdefault("source_format", image.source_format)
+    acquisition.setdefault("series_description", (image.acquisition or {}).get("series_description"))
     return {
         "image_id": image.id,
         "patient_id": image.patient_id,
@@ -88,7 +102,14 @@ def image_out(image, db=None, segmentation_batch_id=None, atlas_id=None):
         "created_at": image.created_at,
         "segmentation_batch_id": segmentation_batch_id,
         "atlas_model_id": atlas,
-        "acquisition": image.acquisition or None,
+        "acquisition": acquisition or None,
+        "source_format": image.source_format,
+        "series_uid": image.series_uid,
+        "sequence": image.sequence,
+        "contrast": image.contrast,
+        "segmentation_mode": image.segmentation_mode,
+        "sequence_confidence": image.sequence_confidence,
+        "segmentation_warning": mode_warning(image),
     }
 
 
@@ -105,6 +126,9 @@ def upload_image(
     organ_id: str = Form(max_length=64),
     image_type: Literal["CT", "MRI"] = Form(),
     study_date: date | None = Form(None),
+    sequence: Literal["T1", "T2", "FLAIR", "DWI", "other", "unknown"] | None = Form(None),
+    contrast: bool | None = Form(None),
+    segmentation_mode: Literal["CT_BODY", "MRI_BODY", "MRI_BRAIN"] | None = Form(None),
 ):
     # Doctors need an active assignment; patients may upload only to their own record.
     check_patient_access(db, user, patient_id, write=user.role in {"doctor", "admin"})
@@ -112,47 +136,88 @@ def upload_image(
     if study_date and study_date > date.today():
         raise APIError(400, 40010, "Study date cannot be in the future")
     filename = (file.filename or "").lower()
-    extension = (
-        ".nii.gz" if filename.endswith(".nii.gz") else ".nii" if filename.endswith(".nii") else None
-    )
-    if extension is None:
-        raise APIError(400, 40004, "Supported image formats: .nii and .nii.gz")
+    payload = file.file.read(settings.max_upload_bytes + 1)
+    file.file.close()
+    if len(payload) > settings.max_upload_bytes:
+        raise APIError(413, 41301, "Upload exceeds limit")
+    if not payload:
+        raise APIError(400, 40004, "Upload is empty")
     image_id = f"img_{uuid4().hex}"
-    path = stored_path(settings, f"medical-images/{image_id}{extension}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    size = 0
+    nifti_path = None
+    source_format = "nifti"
+    series_uid = None
+    detected = {"sequence": "unknown", "contrast": None, "series_description": None}
     try:
-        with path.open("xb") as output:
-            while chunk := file.file.read(1024 * 1024):
-                size += len(chunk)
-                if size > settings.max_upload_bytes:
-                    raise APIError(413, 41301, "Upload exceeds limit")
-                output.write(chunk)
-        volume, data = load_volume(path, settings)
-        # API slice geometry is canonical; the stored original is kept for the model.
-        canonical = prepare_slice_cache(path, volume, data)
+        looks_dicom = (
+            filename.endswith(".dcm")
+            or filename.endswith(".zip")
+            or payload[:2] == b"PK"
+            or (len(payload) > 132 and payload[128:132] == b"DICM")
+        )
+        if filename.endswith(".nii.gz"):
+            extension = ".nii.gz"
+            nifti_path = stored_path(settings, f"medical-images/{image_id}{extension}")
+            nifti_path.parent.mkdir(parents=True, exist_ok=True)
+            nifti_path.write_bytes(payload)
+        elif filename.endswith(".nii"):
+            extension = ".nii"
+            nifti_path = stored_path(settings, f"medical-images/{image_id}{extension}")
+            nifti_path.parent.mkdir(parents=True, exist_ok=True)
+            nifti_path.write_bytes(payload)
+        elif looks_dicom:
+            source_format = "dicom"
+            files = collect_dicom_bytes(file.filename or "series.dcm", payload)
+            datasets, detected = series_from_files(files)
+            detected_type = detected.get("modality")
+            if detected_type and detected_type != image_type:
+                raise APIError(400, 40004, "DICOM modality does not match the selected image type")
+            series_uid = detected.get("series_uid")
+            nifti_path = stored_path(settings, f"medical-images/{image_id}.nii.gz")
+            convert_series(datasets, nifti_path, dcm2niix=settings.dcm2niix_command)
+            dicom_dir = stored_path(settings, f"medical-images/{image_id}/dicom")
+            dicom_dir.mkdir(parents=True, exist_ok=True)
+            for index, (name, content) in enumerate(files):
+                (dicom_dir / f"{index:04d}_{Path(name).name}").write_bytes(content)
+        else:
+            raise APIError(400, 40004, "Supported image formats: .nii, .nii.gz, .dcm, .zip")
+        volume, data = load_volume(nifti_path, settings)
+        canonical = prepare_slice_cache(nifti_path, volume, data)
+        acquisition = acquisition_from_volume(volume, data)
+        if source_format == "nifti":
+            detected = detect_from_nifti(nifti_path, volume, original_name=file.filename)
+        acquisition.update({k: v for k, v in detected.items() if v is not None})
+        chosen_sequence = sequence or detected.get("sequence") or "unknown"
+        if chosen_sequence not in SEQUENCES:
+            chosen_sequence = "unknown"
+        chosen_contrast = contrast if contrast is not None else detected.get("contrast")
+        mode = segmentation_mode or suggested_mode(image_type, organ_id, chosen_sequence)
         record = MedicalImage(
             id=image_id,
             patient_id=patient_id,
             organ_id=organ_id,
             image_type=image_type,
-            file_path=relative_path(settings, path),
+            file_path=relative_path(settings, nifti_path),
             shape=list(canonical.shape),
-            size_bytes=size,
+            size_bytes=nifti_path.stat().st_size,
             spacing=[float(x) for x in canonical.header.get_zooms()[:3]],
             study_date=study_date,
-            acquisition=acquisition_from_volume(volume, data),
+            source_format=source_format,
+            series_uid=series_uid,
+            sequence=chosen_sequence,
+            contrast=chosen_contrast,
+            segmentation_mode=mode,
+            sequence_confidence="manual" if sequence else "auto",
+            acquisition=acquisition,
         )
         db.add(record)
         audit(db, user.id, patient_id, "image.upload", "medical_image", image_id)
         db.commit()
     except Exception:
         db.rollback()
-        path.unlink(missing_ok=True)
-        slice_cache_path(path).unlink(missing_ok=True)
+        if nifti_path:
+            nifti_path.unlink(missing_ok=True)
+            slice_cache_path(nifti_path).unlink(missing_ok=True)
         raise
-    finally:
-        file.file.close()
     try:
         batch_id = request.app.state.segmentation_runner.enqueue_batch_for_image(image_id, user.id)
     except Exception as exc:
@@ -164,6 +229,37 @@ def upload_image(
 @router.get("/medical-images/{image_id}", response_model=Envelope[ImageOut])
 def get_image(image_id: str, db: DB, user: CurrentUser):
     return success(image_out(accessible_image(db, user, image_id), db))
+
+
+@router.patch("/medical-images/{image_id}", response_model=Envelope[ImageOut])
+def patch_image(image_id: str, body: ImageAcquisitionPatch, db: DB, user: CurrentUser):
+    image = accessible_image(db, user, image_id, write=True)
+    values = body.model_dump(exclude_unset=True)
+    if "already_skull_stripped" in values:
+        acquisition = dict(image.acquisition or {})
+        acquisition["already_skull_stripped"] = bool(values.pop("already_skull_stripped"))
+        image.acquisition = acquisition
+    if "sequence" in values or "segmentation_mode" in values:
+        running = db.scalar(
+            select(SegmentationBatch.id).where(
+                SegmentationBatch.image_id == image_id,
+                SegmentationBatch.status.in_(["queued", "running"]),
+            )
+        )
+        if running:
+            raise APIError(409, 40904, "Cannot change segmentation settings while a job is running")
+        image.sequence_confidence = "manual"
+    if "sequence" in values:
+        image.sequence = values["sequence"]
+        if "segmentation_mode" not in values:
+            image.segmentation_mode = suggested_mode(image.image_type, image.organ_id, image.sequence)
+    if "contrast" in values:
+        image.contrast = values["contrast"]
+    if "segmentation_mode" in values:
+        image.segmentation_mode = values["segmentation_mode"]
+    audit(db, user.id, image.patient_id, "image.patch", "medical_image", image_id)
+    db.commit()
+    return success(image_out(image, db))
 
 
 @router.get(

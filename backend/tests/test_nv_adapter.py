@@ -37,5 +37,5 @@ def test_nvidia_wrapper_uses_organ_labels_and_excludes_unknown_voxels(
     assert np.sum(mask.get_fdata()) == 5
     assert mask.get_fdata()[8, 2, 2] == mask.get_fdata()[9, 2, 2] == 0
     np.testing.assert_allclose(mask.affine, nib.load(nifti_file).affine)
-    assert adapter.image_types == {"CT"}
+    assert adapter.image_types == {"CT", "MRI"}
     assert progress == [20, 75]

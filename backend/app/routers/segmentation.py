@@ -9,6 +9,7 @@ from app.deps import DB, CurrentUser
 from app.errors import APIError, Envelope, success
 from app.models import OrganModel, SegmentationBatch, SegmentationTask
 from app.organs import require_organ
+from app.adapters.nv_segment_ct import LABELS_BY_TYPE
 from app.routers.images import accessible_image
 from app.schemas import BatchItemOut, SegmentationBatchOut, SegmentationInput, TaskCreated, TaskOut
 from app.services.geometry_engine import overlay_style
@@ -105,17 +106,17 @@ def create_or_retry_batch(
     user: CurrentUser,
 ):
     image = accessible_image(db, user, image_id, write=True)
-    if image.image_type != "CT":
-        raise APIError(400, 40005, "Batch segmentation is only supported for CT images")
     runner = request.app.state.segmentation_runner
+    runner.ensure_available(image.image_type)
     if not runner.batch_capable():
         raise APIError(503, 50301, "Segmentation model is not configured or installed")
+    fingerprint = runner.fingerprint_for(image)
 
     existing = db.scalar(
         select(SegmentationBatch)
         .where(
             SegmentationBatch.image_id == image_id,
-            SegmentationBatch.model_fingerprint == runner.settings.segmentation_model_fingerprint,
+            SegmentationBatch.model_fingerprint == fingerprint,
             SegmentationBatch.status.in_(["queued", "running"]),
         )
         .order_by(SegmentationBatch.created_at.desc())
@@ -165,6 +166,9 @@ def create_task(
         )
     if image.organ_id != body.organ_id:
         raise APIError(400, 40006, "organ_id must match the uploaded image")
+    supported = LABELS_BY_TYPE.get(image.image_type, LABELS_BY_TYPE["CT"])
+    if body.organ_id not in supported:
+        raise APIError(400, 40005, "This organ is not available for the current image type")
     runner = request.app.state.segmentation_runner
     runner.ensure_available(image.image_type)
     task = SegmentationTask(
