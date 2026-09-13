@@ -13,6 +13,7 @@ import {
 } from '@/api/viewer'
 import type { Examination } from '@/types'
 import type { LabelVolume, SliceAxis, StainStyle } from '@/utils/volumePixels'
+import { defaultPresetFor } from '@/utils/volumePixels'
 import { sliceCount as axisSliceCount } from '@/utils/sliceAxes'
 import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
@@ -65,7 +66,7 @@ const candidates = ref<ComparisonCandidate[]>([])
 const labels = ref<LabelVolume | null>(null)
 const compareLabels = ref<LabelVolume | null>(null)
 const selectedGroups = ref<string[]>([])
-const preset = ref('lung')
+const preset = ref('auto')
 const volumeRenderer = shallowRef<VolumeRenderer | null>(null)
 const compareRenderer = shallowRef<VolumeRenderer | null>(null)
 const volumeProgress = ref(0)
@@ -77,9 +78,10 @@ const sideBySide = ref(true)
 let resizeStartX = 0, resizeStartWidth = 0, pollTimer: ReturnType<typeof setTimeout> | undefined
 let initialized = false
 
-const ctStudies = computed(() => studies.value.filter((item) => item.type === 'CT'))
-const primary = computed(() => ctStudies.value.find((item) => item.id === imageId.value) || ctStudies.value[0])
-const secondary = computed(() => ctStudies.value.find((item) => item.id === compareId.value) || null)
+const wantedType = computed(() => studies.value.find((item) => item.id === imageId.value)?.type || studies.value[0]?.type)
+const modalityStudies = computed(() => studies.value.filter((item) => item.type === wantedType.value))
+const primary = computed(() => modalityStudies.value.find((item) => item.id === imageId.value) || modalityStudies.value[0])
+const secondary = computed(() => modalityStudies.value.find((item) => item.id === compareId.value) || null)
 
 const mprViewports = computed<MprViewportConfig[]>(() => {
   if (!primary.value) return []
@@ -457,7 +459,7 @@ function selectStudy(id: string) {
   imageId.value = id
   if (compareId.value === id) compareId.value = ''
   selectedGroups.value = []
-  const study = ctStudies.value.find((item) => item.id === id)
+  const study = modalityStudies.value.find((item) => item.id === id)
   if (study) {
     currentAxis.value = detectPrimaryAxis(study)
   }
@@ -528,10 +530,15 @@ watch([imageId, compareId], () => {
   if (!initialized) return
   if (primary.value) {
     currentAxis.value = detectPrimaryAxis(primary.value)
+    preset.value = defaultPresetFor(primary.value.type, primary.value.sequence)
   }
   resetWorldAnchor()
   void refresh().then(schedulePoll)
 })
+watch(() => primary.value?.id, (id) => {
+  if (!id || !primary.value) return
+  preset.value = defaultPresetFor(primary.value.type, primary.value.sequence)
+}, { immediate: true })
 watch([axis, () => primary.value?.id], resetWorldAnchor)
 watch(paneWidth, layoutRight)
 watch(groups, (list) => {
@@ -624,7 +631,7 @@ onBeforeUnmount(() => {
         <strong>3D 查看器</strong>
         <label>检查
           <select :value="primary?.id" @change="selectStudy(($event.target as HTMLSelectElement).value)">
-            <option v-for="study in ctStudies" :key="study.id" :value="study.id">
+            <option v-for="study in modalityStudies" :key="study.id" :value="study.id">
               {{ study.date }} · {{ study.sliceCount }} slices
             </option>
           </select>
@@ -674,10 +681,20 @@ onBeforeUnmount(() => {
       </div>
       <div class="toolbar-block">
         <select v-model="preset" aria-label="窗宽窗位">
-          <option value="lung">肺窗</option>
-          <option value="soft">软组织</option>
-          <option value="bone">骨窗</option>
-          <option value="brain">脑窗</option>
+          <template v-if="primary?.type === 'MRI'">
+            <option value="auto">自动</option>
+            <option value="mri-t1">T1</option>
+            <option value="mri-t2">T2</option>
+            <option value="mri-flair">FLAIR</option>
+            <option value="mri-dwi">DWI</option>
+          </template>
+          <template v-else>
+            <option value="lung">肺窗</option>
+            <option value="soft">软组织</option>
+            <option value="bone">骨窗</option>
+            <option value="brain">脑窗</option>
+            <option value="auto">自动</option>
+          </template>
         </select>
         <label class="opacity">染色
           <input v-model.number="opacity" type="range" min="0" max="1" step="0.05" />

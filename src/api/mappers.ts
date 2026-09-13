@@ -6,6 +6,11 @@ export const organNames: Record<string, string> = {
 export interface ImageDTO {
   image_id: string; patient_id: number; image_type: 'CT' | 'MRI'; organ_id: string
   slice_count: number; study_date: string | null; created_at: string; shape: number[]; spacing: number[]
+  sequence?: 'T1' | 'T2' | 'FLAIR' | 'DWI' | 'other' | 'unknown'
+  contrast?: boolean | null
+  segmentation_mode?: 'CT_BODY' | 'MRI_BODY' | 'MRI_BRAIN' | null
+  segmentation_warning?: string | null
+  acquisition?: Record<string, unknown> | null
 }
 export interface PatientDTO {
   patient_id: number; name: string | null; birth_date: string | null
@@ -31,10 +36,20 @@ export function mapPatient(p: PatientDTO): Patient {
     aiStatus: 'Not assessed', avatarColor: ['#317e82', '#5c6f9c', '#8b5f78'][p.patient_id % 3] }
 }
 export function mapImage(i: ImageDTO): Examination {
+  const sequence = i.sequence || 'unknown'
+  const sequenceBit = i.image_type === 'MRI' && sequence !== 'unknown' ? ` · ${sequence}` : ''
   return { shape: i.shape, spacing: i.spacing, id: i.image_id, patientId: String(i.patient_id), type: i.image_type,
     organId: i.organ_id, organ: organNames[i.organ_id] || i.organ_id,
     bodyPart: organNames[i.organ_id] || i.organ_id, date: i.study_date || i.created_at.slice(0, 10),
-    status: 'Available', description: i.image_type + ' · ' + i.shape.join(' × ') + ' voxels', sliceCount: i.slice_count }
+    status: 'Available',
+    description: i.image_type + sequenceBit + ' · ' + i.shape.join(' × ') + ' voxels',
+    sliceCount: i.slice_count,
+    sequence,
+    contrast: i.contrast,
+    segmentationMode: i.segmentation_mode,
+    segmentationWarning: i.segmentation_warning,
+    acquisition: i.acquisition || undefined,
+  }
 }
 export function mapRecord(r: RecordDTO): Report {
   return { organIds: r.organ_ids, id: String(r.record_id), patientId: String(r.patient_id), organId: r.organ_id,

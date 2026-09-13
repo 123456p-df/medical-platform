@@ -57,8 +57,8 @@ onMounted(async () => {
         </div>
         <div class="card-body">
           <StudyComparisonViewer
-            v-if="examination.type === 'CT'"
-            :examinations="[examination]"
+            v-if="examination.type === 'CT' || examination.type === 'MRI'"
+            :examinations="store.examinations.length ? store.examinations : [examination]"
             :initial-id="examination.id"
           />
           <SliceViewport

@@ -5,6 +5,7 @@ import { examinationApi } from '@/api/examinations'
 import { organNames } from '@/api/mappers'
 import type { Examination } from '@/types'
 import { localPreview } from '@/utils/runtime'
+import { zipFiles } from '@/utils/zipStore'
 
 interface UploadEntry {
   id: string
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 const entries = ref<UploadEntry[]>([])
 const organ = ref('lung')
 const imageType = ref<'CT' | 'MRI'>('CT')
+const sequence = ref<'auto' | 'T1' | 'T2' | 'FLAIR' | 'DWI' | 'unknown'>('auto')
 const busy = ref(false)
 const completed = ref(0)
 const error = ref('')
@@ -59,6 +61,22 @@ function removeEntry(id: string) {
   entries.value = entries.value.filter(item => item.id !== id)
 }
 
+function isDicomFile(file: File) {
+  return /\.dcm$/i.test(file.name) || file.type === 'application/dicom'
+}
+
+async function filesToUpload(items: UploadEntry[]) {
+  const dicoms = items.filter(item => isDicomFile(item.file))
+  if (dicoms.length > 1 && dicoms.length === items.length) {
+    return [{
+      id: 'dicom-series',
+      file: await zipFiles(dicoms.map(item => item.file), 'dicom-series.zip'),
+      studyDate: dicoms[0].studyDate,
+    }]
+  }
+  return items
+}
+
 async function uploadAll() {
   if (!entries.value.length || busy.value || localPreview) return
   busy.value = true
@@ -66,7 +84,8 @@ async function uploadAll() {
   error.value = ''
   const uploaded: Examination[] = []
   const failed = new Set<string>()
-  for (const entry of entries.value) {
+  const queue = await filesToUpload(entries.value)
+  for (const entry of queue) {
     try {
       uploaded.push(await examinationApi.uploadStudy(
         props.patientId,
@@ -74,6 +93,7 @@ async function uploadAll() {
         organ.value,
         effectiveType.value,
         entry.studyDate,
+        effectiveType.value === 'MRI' && sequence.value !== 'auto' ? { sequence: sequence.value } : undefined,
       ))
     } catch (reason) {
       failed.add(entry.id)
@@ -83,7 +103,8 @@ async function uploadAll() {
       completed.value += 1
     }
   }
-  entries.value = entries.value.filter(item => failed.has(item.id))
+  if (queue.length === 1 && queue[0].id === 'dicom-series' && !failed.size) entries.value = []
+  else entries.value = entries.value.filter(item => failed.has(item.id))
   busy.value = false
   if (uploaded.length) emit('complete', uploaded)
 }
@@ -92,18 +113,28 @@ async function uploadAll() {
 <template>
   <form class="multi-upload" @submit.prevent="uploadAll">
     <div class="upload-heading">
-      <div><h3>批量上传 CT</h3><p>可一次选择多份 NIfTI，并为每份设置检查日期。</p></div>
+      <div><h3>批量上传检查</h3><p>可一次选择多份 NIfTI 或一个 DICOM 序列 zip，并为每份设置检查日期。</p></div>
       <Upload :size="18" />
     </div>
     <div class="upload-options">
       <label class="label">Organ<select v-model="organ" class="select"><option v-for="(name,id) in organNames" :key="id" :value="id">{{ name }}</option></select></label>
       <label v-if="!ctOnly" class="label">Modality<select v-model="imageType" class="select"><option value="CT">CT</option><option value="MRI">MRI</option></select></label>
       <label v-else class="label">Modality<input class="input" value="CT" disabled /></label>
+      <label v-if="effectiveType === 'MRI'" class="label">序列
+        <select v-model="sequence" class="select">
+          <option value="auto">自动识别</option>
+          <option value="T1">T1</option>
+          <option value="T2">T2</option>
+          <option value="FLAIR">FLAIR</option>
+          <option value="DWI">DWI</option>
+          <option value="unknown">未知</option>
+        </select>
+      </label>
     </div>
     <label class="file-picker" :class="{ disabled: busy }">
       <Upload :size="19" />
-      <span>选择多份 .nii / .nii.gz 文件</span>
-      <input type="file" accept=".nii,.nii.gz" multiple :disabled="busy" @change="selectFiles" />
+      <span>选择 .nii / .nii.gz 或 DICOM 序列 .zip / .dcm</span>
+      <input type="file" accept=".nii,.nii.gz,.dcm,.zip,application/zip,application/dicom" multiple :disabled="busy" @change="selectFiles" />
     </label>
     <div v-if="entries.length" class="upload-queue">
       <div v-for="entry in entries" :key="entry.id" class="upload-row">

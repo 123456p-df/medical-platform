@@ -123,7 +123,7 @@ def test_bad_uploads_and_mri_rejection(app_env, people, nifti_file):
         headers=people["doctor_a"],
         json={"organ_id": "lung"},
     )
-    assert response.status_code == 400
+    assert response.status_code == 201, response.text
     app.state.segmentation_runner.adapter = None
     image_id = upload(client, people, nifti_file)
     response = client.post(

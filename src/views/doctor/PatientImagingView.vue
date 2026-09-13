@@ -17,12 +17,26 @@ const reviewBusy = ref(false)
 const patientId = computed(() => String(route.params.id))
 const selected = ref(String(route.query.exam || ''))
 const active = computed(() => store.examinations.find(i => i.id === selected.value) || store.examinations[0])
-const ctStudies = computed(() => store.examinations.filter(item => item.type === 'CT'))
+const comparableStudies = computed(() => store.examinations.filter(item => item.type === active.value?.type))
 const studyViewerHref = computed(() => router.resolve({
   name: 'study-viewer',
   params: { patientId: patientId.value },
   query: active.value ? { image: active.value.id } : {},
 }).href)
+const canSegment = computed(() => {
+  if (!active.value) return false
+  if (['eye', 'other'].includes(active.value.organId || '')) return false
+  return active.value.type === 'CT' || active.value.type === 'MRI'
+})
+const segmentationHint = computed(() => {
+  if (!active.value) return ''
+  if (active.value.segmentationWarning) return active.value.segmentationWarning
+  if (active.value.type === 'MRI' && active.value.segmentationMode === 'MRI_BRAIN') {
+    return '将去颅后对 T1 做脑区分割。'
+  }
+  if (active.value.type === 'MRI') return 'MRI 使用 NV-Segment-CTMR 的 MRI_BODY 标签集。'
+  return 'CT 使用已配置的模型分割。'
+})
 const activeFindings = computed(() => store.findings.filter(item => item.examinationId === active.value?.id))
 watch(() => route.query.exam, value => { selected.value = String(value || '') })
 const reviewItem = computed(() => workflow.items.find(i => i.image_id === active.value?.id))
@@ -120,7 +134,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
       <div v-if="active" class="card review-bar" :class="{complete:reviewed}">
         <div class="review-copy">
           <span class="review-kicker">IMAGING REVIEW</span>
-          <div class="review-title"><h2>{{ active.type }} · {{ active.organ }}</h2><StatusBadge :status="reviewed ? 'Reviewed' : 'Pending Review'" /></div>
+          <div class="review-title"><h2>{{ active.type }}<template v-if="active.sequence && active.sequence !== 'unknown'"> · {{ active.sequence }}</template> · {{ active.organ }}</h2><StatusBadge :status="reviewed ? 'Reviewed' : 'Pending Review'" /></div>
           <p>{{ active.date }} · {{ active.sliceCount }} slices · {{ reviewed ? '该影像已完成审核，可重新打开。' : '请浏览影像并核对 AI Findings，完成后确认审核。' }}</p>
         </div>
         <div class="review-actions">
@@ -132,10 +146,10 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
         </div>
       </div>
       <div v-if="active" class="viewer-mode-bar card">
-        <div><strong>影像显示</strong><span>多期 CT 同屏比较；MPR / 3D 在独立查看器中打开</span></div>
+        <div><strong>影像显示</strong><span>多期同模态同屏比较；MPR / 3D 在独立查看器中打开</span></div>
         <div>
           <a
-            v-if="active.type === 'CT'"
+            v-if="active.type === 'CT' || active.type === 'MRI'"
             class="btn btn-sm btn-secondary"
             :href="studyViewerHref"
             target="_blank"
@@ -146,7 +160,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
         </div>
       </div>
       <StudyComparisonViewer
-        v-if="ctStudies.length && (!active || active.type === 'CT')"
+        v-if="comparableStudies.length && active && (active.type === 'CT' || active.type === 'MRI')"
         :examinations="store.examinations"
         :findings="store.findings"
         :initial-id="active?.id"
@@ -166,8 +180,8 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
       <p v-if="error" class="integration-error" role="alert">{{ error }}</p>
       <div v-if="active" class="task-grid">
         <div class="card task-card">
-          <div><h3>Organ segmentation</h3><p class="muted">CT 使用已配置的模型分割；MRI 当前支持浏览。</p></div>
-          <button class="btn btn-primary" :disabled="active.type !== 'CT' || ['eye','other'].includes(active.organId || '') || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> Start segmentation</button>
+          <div><h3>Organ segmentation</h3><p class="muted">{{ segmentationHint }}</p></div>
+          <button class="btn btn-primary" :disabled="!canSegment || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> Start segmentation</button>
           <p v-if="segmentationTask">Task: {{ segmentationTask.status }} · {{ segmentationTask.progress || 0 }}%</p>
           <a v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :href="studyViewerHref" target="_blank" rel="noopener"><Box :size="16" /> View 3D result</a>
         </div>
@@ -198,7 +212,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
         <div class="card-header"><h3>Imaging studies</h3><span class="muted">{{ store.examinations.length }}</span></div>
         <div class="study-list">
           <button v-for="image in store.examinations" :key="image.id" class="study-item" :class="{ active:image.id === active?.id }" @click="selectStudy(image.id)">
-            <strong>{{ image.type }} · {{ image.organ }}</strong><span>{{ image.date }} · {{ image.sliceCount }} slices</span>
+            <strong>{{ image.type }}<template v-if="image.sequence && image.sequence !== 'unknown'"> · {{ image.sequence }}</template> · {{ image.organ }}</strong><span>{{ image.date }} · {{ image.sliceCount }} slices</span>
           </button>
         </div>
       </section>

@@ -32,6 +32,8 @@ export interface Patient {
   avatarColor: string
 }
 
+export type MriSequence = 'T1' | 'T2' | 'FLAIR' | 'DWI' | 'other' | 'unknown'
+
 export interface Examination {
   shape?: number[]
   spacing?: number[]
@@ -46,6 +48,10 @@ export interface Examination {
   status: ReviewStatus
   description: string
   sliceCount: number
+  sequence?: MriSequence
+  contrast?: boolean | null
+  segmentationMode?: 'CT_BODY' | 'MRI_BODY' | 'MRI_BRAIN' | null
+  segmentationWarning?: string | null
 }
 
 export interface Finding {

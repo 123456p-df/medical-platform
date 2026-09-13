@@ -12,6 +12,9 @@ import trimesh
 from sqlalchemy import select, update
 
 from app.adapters.nv_segment_ct import NVSegmentCT
+from app.adapters.synthstrip import SynthStrip
+from app.services.brain_preprocess import preprocess_brain_t1
+from app.services.mri_metadata import resolve_segmentation_mode
 from app.audit import audit
 from app.deps import check_patient_access
 from app.errors import APIError
@@ -61,6 +64,10 @@ class SegmentationRunner:
                 self.dispatcher = dispatch_segmentation
             except Exception:
                 logger.warning("Task queue is enabled but Celery is unavailable; using local runner")
+
+    def fingerprint_for(self, image) -> str:
+        mode = resolve_segmentation_mode(image)
+        return f"{self.settings.segmentation_model_fingerprint}-{mode}"
 
     def ensure_available(self, image_type):
         if self.adapter is None or (
@@ -196,14 +203,24 @@ class SegmentationRunner:
                 self.ensure_available(image.image_type)
                 image_path = stored_path(self.settings, image.file_path)
                 patient_id, organ_id, image_id = image.patient_id, task.organ_id, image.id
+                image_type = image.image_type
             output_dir = stored_path(self.settings, f"segmentations/{task_id}")
             output_dir.mkdir(parents=True, exist_ok=True)
-            returned = self.adapter(
-                image_path=image_path,
-                organ_id=organ_id,
-                output_dir=output_dir,
-                progress=lambda p: self.progress(task_id, p),
-            )
+            try:
+                returned = self.adapter(
+                    image_path=image_path,
+                    organ_id=organ_id,
+                    output_dir=output_dir,
+                    progress=lambda p: self.progress(task_id, p),
+                    image_type=image_type,
+                )
+            except TypeError:
+                returned = self.adapter(
+                    image_path=image_path,
+                    organ_id=organ_id,
+                    output_dir=output_dir,
+                    progress=lambda p: self.progress(task_id, p),
+                )
             mask_path = Path(returned).resolve()
             if not mask_path.is_relative_to(output_dir.resolve()) or not mask_path.is_file():
                 raise ValueError("Adapter output must be a file inside its task output directory")
@@ -267,18 +284,19 @@ class SegmentationRunner:
         return callable(getattr(self.adapter, "run_batch", None))
 
     def enqueue_batch_for_image(self, image_id, requested_by):
-        """Create one deduplicated all-label batch after a CT upload."""
+        """Create one deduplicated all-label batch after a CT or MRI upload."""
         if not self.batch_capable():
             return None
         with self.sessions() as db:
             image = db.get(MedicalImage, image_id)
-            if image is None or image.image_type != "CT":
+            if image is None or image.image_type not in {"CT", "MRI"}:
                 return None
+            fingerprint = self.fingerprint_for(image)
             active = db.scalar(
                 select(SegmentationBatch)
                 .where(
                     SegmentationBatch.image_id == image_id,
-                    SegmentationBatch.model_fingerprint == self.settings.segmentation_model_fingerprint,
+                    SegmentationBatch.model_fingerprint == fingerprint,
                     SegmentationBatch.status.in_(["queued", "running"]),
                 )
                 .order_by(SegmentationBatch.created_at.desc())
@@ -289,7 +307,7 @@ class SegmentationRunner:
                 id=f"batch_{uuid4().hex}",
                 image_id=image_id,
                 requested_by=requested_by,
-                model_fingerprint=self.settings.segmentation_model_fingerprint,
+                model_fingerprint=fingerprint,
             )
             db.add(batch)
             try:
@@ -302,7 +320,7 @@ class SegmentationRunner:
                     select(SegmentationBatch)
                     .where(
                         SegmentationBatch.image_id == image_id,
-                        SegmentationBatch.model_fingerprint == self.settings.segmentation_model_fingerprint,
+                        SegmentationBatch.model_fingerprint == fingerprint,
                         SegmentationBatch.status.in_(["queued", "running"]),
                     )
                     .order_by(SegmentationBatch.created_at.desc())
@@ -365,13 +383,31 @@ class SegmentationRunner:
                 self.ensure_available(image.image_type)
                 image_path = stored_path(self.settings, image.file_path)
                 patient_id, image_id = image.patient_id, image.id
+                mode = resolve_segmentation_mode(image)
+                already_stripped = bool((image.acquisition or {}).get("already_skull_stripped"))
             output_dir = stored_path(self.settings, f"segmentations/{batch_id}")
             output_dir.mkdir(parents=True, exist_ok=True)
-            result = self.adapter.run_batch(
-                image_path=image_path,
-                output_dir=output_dir,
-                progress=lambda value: self.progress_batch(batch_id, value),
-            )
+            if mode == "MRI_BRAIN":
+                image_path = preprocess_brain_t1(
+                    image_path,
+                    output_dir,
+                    already_stripped=already_stripped,
+                    stripper=SynthStrip(self.settings.synthstrip_command),
+                )
+            run_batch = self.adapter.run_batch
+            try:
+                result = run_batch(
+                    image_path=image_path,
+                    output_dir=output_dir,
+                    progress=lambda value: self.progress_batch(batch_id, value),
+                    modality=mode,
+                )
+            except TypeError:
+                result = run_batch(
+                    image_path=image_path,
+                    output_dir=output_dir,
+                    progress=lambda value: self.progress_batch(batch_id, value),
+                )
             label_path = self._inside(Path(result["label_map_1mm"]), output_dir)
             native_path = self._inside(Path(result["label_map_native"]), output_dir)
             label_image = nib.load(str(label_path))
