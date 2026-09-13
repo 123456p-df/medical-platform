@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ScanLine, Box, CheckCircle2, RotateCcw, Sparkles } from 'lucide-vue-next'
 import { usePatientStore } from '@/stores/patients'
 import SliceViewport from '@/components/medical/SliceViewport.vue'
+import UploadedStudyViewer from '@/components/medical/UploadedStudyViewer.vue'
 import StudyComparisonViewer from '@/components/medical/StudyComparisonViewer.vue'
 import MultiStudyUpload from '@/components/medical/MultiStudyUpload.vue'
 import { api } from '@/api/client'
@@ -12,24 +13,27 @@ import { analysisApi, type AnalysisStatus, type AnalysisTask } from '@/api/analy
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { localPreview } from '@/utils/runtime'
 import type { Examination } from '@/types'
+import { isLocalUpload } from '@/api/localUploads'
 const route = useRoute(), router = useRouter(), store = usePatientStore(), workflow = useWorkflowStore()
 const reviewBusy = ref(false)
 const patientId = computed(() => String(route.params.id))
 const selected = ref(String(route.query.exam || ''))
 const active = computed(() => store.examinations.find(i => i.id === selected.value) || store.examinations[0])
-const comparableStudies = computed(() => store.examinations.filter(item => item.type === active.value?.type))
+const isLocalActive = computed(() => isLocalUpload(active.value))
+const comparableStudies = computed(() => store.examinations.filter(item => item.type === active.value?.type && !isLocalUpload(item)))
 const studyViewerHref = computed(() => router.resolve({
   name: 'study-viewer',
   params: { patientId: patientId.value },
   query: active.value ? { image: active.value.id } : {},
 }).href)
 const canSegment = computed(() => {
-  if (!active.value) return false
+  if (!active.value || isLocalActive.value) return false
   if (['eye', 'other'].includes(active.value.organId || '')) return false
   return active.value.type === 'CT' || active.value.type === 'MRI'
 })
 const segmentationHint = computed(() => {
   if (!active.value) return ''
+  if (isLocalActive.value) return '本地影像可直接阅片；分割需先通过后端模式上传。'
   if (active.value.segmentationWarning) return active.value.segmentationWarning
   if (active.value.type === 'MRI' && active.value.segmentationMode === 'MRI_BRAIN') {
     return '将去颅后对 T1 做脑区分割。'
@@ -145,7 +149,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           </button>
         </div>
       </div>
-      <div v-if="active" class="viewer-mode-bar card">
+      <div v-if="active && !isLocalActive" class="viewer-mode-bar card">
         <div><strong>影像显示</strong><span>多期同模态同屏比较；MPR / 3D 在独立查看器中打开</span></div>
         <div>
           <a
@@ -159,8 +163,9 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           </a>
         </div>
       </div>
+      <UploadedStudyViewer v-if="active && isLocalActive" :key="active.id" :examination="active" />
       <StudyComparisonViewer
-        v-if="comparableStudies.length && active && (active.type === 'CT' || active.type === 'MRI')"
+        v-else-if="comparableStudies.length && active && (active.type === 'CT' || active.type === 'MRI')"
         :examinations="store.examinations"
         :findings="store.findings"
         :initial-id="active?.id"
@@ -181,7 +186,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
       <div v-if="active" class="task-grid">
         <div class="card task-card">
           <div><h3>Organ segmentation</h3><p class="muted">{{ segmentationHint }}</p></div>
-          <button class="btn btn-primary" :disabled="!canSegment || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> Start segmentation</button>
+          <button class="btn btn-primary" :disabled="!canSegment || busy || ['queued','running'].includes(segmentationTask?.status || '')" @click="segment"><ScanLine :size="16" /> {{ isLocalActive ? '后端上传后可分割' : 'Start segmentation' }}</button>
           <p v-if="segmentationTask">Task: {{ segmentationTask.status }} · {{ segmentationTask.progress || 0 }}%</p>
           <a v-if="segmentationTask?.status === 'completed'" class="btn btn-secondary" :href="studyViewerHref" target="_blank" rel="noopener"><Box :size="16" /> View 3D result</a>
         </div>
@@ -194,7 +199,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           </div>
           <button
             class="btn btn-primary"
-            :disabled="localPreview || !analysisStatus?.configured || active.type !== 'CT' || active.organId !== 'lung' || analysisBusy || ['queued','running'].includes(analysisTask?.status || '')"
+            :disabled="isLocalActive || localPreview || !analysisStatus?.configured || active.type !== 'CT' || active.organId !== 'lung' || analysisBusy || ['queued','running'].includes(analysisTask?.status || '')"
             @click="analyzeLungNodules"
           ><Sparkles :size="16" /> {{ analysisBusy ? '正在启动…' : '开始肺结节检测' }}</button>
           <p v-if="analysisTask">任务：{{ analysisTask.status }} · {{ analysisTask.progress || 0 }}%</p>
@@ -211,8 +216,8 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
       <section class="card">
         <div class="card-header"><h3>Imaging studies</h3><span class="muted">{{ store.examinations.length }}</span></div>
         <div class="study-list">
-          <button v-for="image in store.examinations" :key="image.id" class="study-item" :class="{ active:image.id === active?.id }" @click="selectStudy(image.id)">
-            <strong>{{ image.type }}<template v-if="image.sequence && image.sequence !== 'unknown'"> · {{ image.sequence }}</template> · {{ image.organ }}</strong><span>{{ image.date }} · {{ image.sliceCount }} slices</span>
+          <button v-for="image in store.examinations" :key="image.id" class="study-item" :class="{ active: image.id === active?.id }" @click="selectStudy(image.id)">
+            <strong>{{ image.type }}<template v-if="image.sequence && image.sequence !== 'unknown'"> · {{ image.sequence }}</template> · {{ image.organ }}<em v-if="isLocalUpload(image)">本地</em></strong><span>{{ image.date }} · {{ image.sliceCount }} slices</span>
           </button>
         </div>
       </section>
@@ -226,6 +231,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
 .viewer-mode-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px;padding:12px 14px}.viewer-mode-bar>div{display:flex;align-items:center;gap:9px}.viewer-mode-bar span{color:var(--text-muted);font-size:10px}.viewer-mode-bar .btn{min-height:32px}
 .task-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}.task-card{padding:18px;display:flex;flex-wrap:wrap;align-items:center;gap:14px}.task-card>div{flex:1;min-width:210px}.task-card h3{display:flex;align-items:center;gap:7px}.analysis-card{border-color:#b9d9d5;background:linear-gradient(130deg,#f1f8f7,#fff 70%)}.finding-summary{color:var(--accent-strong);font-weight:650}
 .study-list{padding:8px}.study-item{width:100%;display:grid;text-align:left;gap:5px;padding:13px;border:1px solid transparent;background:transparent;border-radius:6px;color:var(--text)}.study-item span{font-size:11px;color:var(--text-muted)}.study-item.active{background:#e7f3f2;border-color:#b9d9d5}
+.study-item em{display:inline-block;margin-left:4px;padding:2px 5px;border-radius:4px;background:#dcefed;color:var(--accent-strong);font-size:8px;font-style:normal;vertical-align:1px}
 .integration-error{padding:14px;background:#fbeded;color:#a24e50;border-radius:8px}
 @media(max-width:1050px){.imaging-layout{grid-template-columns:1fr}}@media(max-width:760px){.review-bar,.review-actions,.viewer-mode-bar,.viewer-mode-bar>div{align-items:stretch;flex-direction:column}.review-actions .btn{width:100%}.task-grid{grid-template-columns:1fr}}
 </style>

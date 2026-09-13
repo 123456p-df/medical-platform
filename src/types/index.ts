@@ -39,6 +39,7 @@ export interface Examination {
   spacing?: number[]
   organId?: string
   acquisition?: { affine?: number[][]; [key: string]: any }
+  source?: 'remote' | 'preview' | 'local-upload'
   id: string
   patientId: string
   type: ExaminationType

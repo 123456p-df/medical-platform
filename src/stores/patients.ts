@@ -8,6 +8,7 @@ import { reportApi } from '@/api/reports'
 import type { Examination, Finding, Patient, Report } from '@/types'
 import { mockExaminations, mockFindings, mockPatients, mockReports } from '@/data/mockData'
 import { localPreview } from '@/utils/runtime'
+import { getLocalUploads } from '@/api/localUploads'
 
 const PREVIEW_PATIENTS_KEY = 'pulmolink-preview-patients'
 const PREVIEW_ARCHIVED_PATIENTS_KEY = 'pulmolink-preview-archived-patients'
@@ -74,7 +75,24 @@ export const usePatientStore = defineStore('patients', () => {
     loading.value = true
     error.value = null
     if (localPreview) {
-      patients.value = structuredClone(readPreviewPatients() || mockPatients)
+      const previewPatients = structuredClone(readPreviewPatients() || mockPatients)
+      try {
+        const uploaded = await getLocalUploads()
+        const reviewed = readReviewStatus()
+        for (const patient of previewPatients) {
+          const latest = uploaded
+            .map(study => study.examination)
+            .filter(examination => examination.patientId === patient.id)
+            .sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id))[0]
+          if (latest && latest.date >= patient.lastExamDate) {
+            patient.lastExamDate = latest.date
+            patient.modality = latest.type
+            patient.organ = latest.organ
+            patient.status = reviewed[latest.id] ? 'Reviewed' : latest.status
+          }
+        }
+      } catch { /* Preview records remain available when browser storage is blocked. */ }
+      if (revision === generation) patients.value = previewPatients
       loading.value = false
       return
     }
@@ -96,7 +114,14 @@ export const usePatientStore = defineStore('patients', () => {
     examinations.value = []; reports.value = []; findings.value = []
     loading.value = true; error.value = null
     if (localPreview) {
-      examinations.value = structuredClone(mockExaminations.filter(item => item.patientId === id))
+      let uploaded: Examination[] = []
+      try { uploaded = (await getLocalUploads(id)).map(study => study.examination) }
+      catch { /* Keep the bundled preview studies available. */ }
+      if (revision !== generation) return
+      examinations.value = [
+        ...structuredClone(uploaded),
+        ...structuredClone(mockExaminations.filter(item => item.patientId === id)),
+      ].sort((left, right) => right.date.localeCompare(left.date) || right.id.localeCompare(left.id))
       const reviewed = readReviewStatus()
       examinations.value.forEach(item => { if (reviewed[item.id]) item.status = 'Reviewed' })
       reports.value = structuredClone((readPreviewReports() || mockReports).filter(item => item.patientId === id))

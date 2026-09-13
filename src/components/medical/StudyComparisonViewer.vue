@@ -5,6 +5,7 @@ import type { Examination, Finding } from '@/types'
 import type { SliceAxis } from '@/utils/volumePixels'
 import { defaultPresetFor } from '@/utils/volumePixels'
 import SliceViewport from './SliceViewport.vue'
+import { isLocalUpload } from '@/api/localUploads'
 
 type LayoutCount = 1 | 2 | 4
 
@@ -28,10 +29,11 @@ const axis = ref<SliceAxis>('axial')
 const zoom = ref(1)
 const selectedIds = ref<string[]>([])
 
-const modality = computed(() => props.examinations.find(item => item.id === props.initialId)?.type
-  || props.examinations.find(item => item.type === 'CT' || item.type === 'MRI')?.type
+const modality = computed(() => props.examinations.find(item => item.id === props.initialId && !isLocalUpload(item))?.type
+  || props.examinations.find(item => (item.type === 'CT' || item.type === 'MRI') && !isLocalUpload(item))?.type
   || 'CT')
-const available = computed(() => props.examinations.filter(item => item.type === modality.value))
+const available = computed(() => props.examinations.filter(item => item.type === modality.value && !isLocalUpload(item)))
+const localCount = computed(() => props.examinations.filter(item => item.type === modality.value && isLocalUpload(item)).length)
 const preset = ref(defaultPresetFor(modality.value, available.value[0]?.sequence))
 const signature = computed(() => available.value.map(item => item.id).join('|'))
 const paneStudies = computed(() => Array.from({ length: layout.value }, (_, index) =>
@@ -124,6 +126,7 @@ function findingsFor(id: string) {
 
     <div class="comparison-note">
       <span>{{ available.length }} 个 {{ modality }} 检查可比较</span>
+      <span v-if="localCount">{{ localCount }} 个本地 {{ modality }} 可在影像列表中单独浏览。</span>
       <span v-if="layout > 1 && syncEnabled">按各检查的相对切片位置同步，适配不同切片数量。</span>
       <span v-else-if="layout > 1">每个窗口可单独滚轮、方向键或拖动滑块。</span>
     </div>
