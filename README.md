@@ -17,22 +17,55 @@
 
 ## 启动完整预览
 
-Windows 环境先安装前后端依赖，然后运行：
+先安装 Node.js 20+ 和 pnpm。Windows 使用本机 PostgreSQL/Python，macOS 和 Linux 使用 Docker 启动数据库与 FastAPI。
+
+### Windows
+
+安装前后端依赖和 PostgreSQL 18 后运行：
 
 ```powershell
 pnpm start
 ```
 
-Windows 下该入口会启动 PostgreSQL、FastAPI 和前端，并在数据库及 API 健康检查通过后报告就绪。首次启动会写入四个固定账号和真实 CT，之后保留已有资料；重复执行会复用本项目的健康进程，并修复只启动了前端的情况。默认地址是 <http://127.0.0.1:4173>，后端端口为 `8000`。
+该入口会启动 PostgreSQL、FastAPI 和前端，并在数据库及 API 健康检查通过后报告就绪。首次启动会写入四个固定账号和真实 CT，之后保留已有资料；重复执行会复用本项目的健康进程，并修复只启动了前端的情况。默认地址是 <http://127.0.0.1:4173>，后端端口为 `8000`。
 
 也可以直接运行 `powershell -ExecutionPolicy Bypass -File scripts/start-preview.ps1`，通过 `-FrontendPort`、`-BackendPort`、`-DatabasePort` 指定端口。停止服务使用 `scripts/stop-preview.ps1`，数据会保留。
 
-`pnpm dev` 只启动前端，需要后端已运行；默认代理到 `http://127.0.0.1:8000`。使用 Docker 的 `8080` 入口时，设置 `VMRB_BACKEND_URL=http://127.0.0.1:8080`。macOS/Linux 的 `pnpm start` 会先检查配置的后端（默认 Docker `8080` 入口），健康后启动前端。
+### macOS / Linux
+
+先安装并启动 Docker Desktop（Linux 可使用 Docker Engine + Compose），然后运行：
+
+```bash
+pnpm install --frozen-lockfile
+pnpm start
+```
+
+这里不会调用 PowerShell。`pnpm start` 会自动补齐本地预览所需的空白密钥，调用 `scripts/start-services.sh` 启动 PostgreSQL、FastAPI 和 Nginx，再在 <http://127.0.0.1:4173> 启动前端。全新的数据库还会下载经过 SHA-256 校验的公开示例影像并创建四个固定账号；普通重启不会改写已有资料。也可在 macOS 中双击 `start.command`。
+
+只启动后端服务可运行 `bash scripts/start-services.sh`；停止 Docker 预览使用 `bash scripts/stop-services.sh`。停止操作会保留数据库卷和上传资料。
+
+如果已经单独启动了本机后端，或由其他机器提供后端，可显式指定地址；此时不会启动本机 Docker：
+
+```bash
+VMRB_BACKEND_URL=http://server.example:8080 pnpm start
+```
+
+> macOS 可以运行网页、数据库和普通 FastAPI 功能，但 NV-Segment-CTMR 原模型依赖 NVIDIA CUDA，不能直接使用 Apple GPU 推理。需要分割功能时，应把模型部署在带 NVIDIA GPU 的 Linux 机器上。
+
+`pnpm dev` 只启动前端，需要后端已运行；默认代理到 `http://127.0.0.1:8000`。Docker 后端入口为 `http://127.0.0.1:8080`。
 
 如缺少真实样本，先运行：
 
+Windows：
+
 ```powershell
 backend\.venv\Scripts\python.exe scripts\real-imaging-samples.py
+```
+
+macOS / Linux（使用本地 Python 虚拟环境时）：
+
+```bash
+backend/.venv/bin/python scripts/real-imaging-samples.py
 ```
 
 示例使用 3D Slicer 官方公开的去标识化 `CT-chest` 数据，下载地址、固定 SHA-256 和 NRRD→NIfTI 转换逻辑均记录在 `scripts/real-imaging-samples.py`。该影像仅用于技术演示，不能用于医疗诊断。
@@ -59,10 +92,10 @@ NIfTI 首次导入时解压并生成 canonical `.slices.npy`。后端后续通�
 
 ## 开发与验证
 
-```powershell
+```text
 pnpm typecheck
 pnpm build
-backend\.venv\Scripts\python.exe -m pytest backend\tests -q
+python -m pytest backend/tests -q
 pnpm test:modalities
 pnpm test:volume
 pnpm test:comparison
