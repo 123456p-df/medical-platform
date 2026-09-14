@@ -21,6 +21,20 @@ htmlcov/
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite3
+*.sql
+*.sql.gz
+*.dump
+*.backup
+*.pgdump
+
+# Database exports can contain credentials, password hashes, audit logs, or PHI.
+# Version only deliberately sanitized, human-reviewed demo fixtures.
+/backend/fixtures/**
+!/backend/fixtures/
+!/backend/fixtures/README.md
+!/backend/fixtures/*.fixture.json
 build/
 .cache/
 .vite/

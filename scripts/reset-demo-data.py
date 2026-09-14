@@ -1,4 +1,4 @@
-"""Replace the explicitly approved demo database with three real CT fixtures."""
+"""Replace the explicitly marked demo database with three local CT samples."""
 
 import os
 import sys
@@ -16,19 +16,30 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.config import Settings  # noqa: E402
 from app.db import make_engine, make_session_factory  # noqa: E402
-from app.demo import DEMO_PATIENTS, seed  # noqa: E402
+from app.demo import (  # noqa: E402
+    DEMO_FIXTURE,
+    DEMO_PATIENTS,
+    DEMO_SCAN_FILENAMES,
+    seed,
+)
+from app.demo_fixture import is_fixture_user  # noqa: E402
 from app.models import OrganModel, User  # noqa: E402
 
 
-ALLOWED_USERNAMES = {"demo_doctor", "demo_patient", "demo_patient_2", "demo_patient_3"}
+ALLOWED_USERNAMES = {user.username for user in DEMO_FIXTURE.users}
 
 
 def assert_demo_only(db):
-    usernames = set(db.scalars(select(User.username)))
-    unexpected = usernames - ALLOWED_USERNAMES
+    users = list(db.scalars(select(User)))
+    unexpected = {
+        user.username
+        for user in users
+        if user.username not in ALLOWED_USERNAMES
+        or not is_fixture_user(username=user.username, role=user.role, profile=user.profile)
+    }
     if unexpected:
         names = ", ".join(sorted(unexpected))
-        raise SystemExit(f"Refusing to clear non-demo users: {names}")
+        raise SystemExit(f"Refusing to clear an unmarked or non-demo database: {names}")
 
 
 def clear_demo_rows(db):
@@ -103,7 +114,7 @@ def main():
     clear_image_storage(settings)
     seed(settings)
     prune_orphan_default_assets(settings)
-    scans = ", ".join(scan_name for _, _, scan_name, _, _, _ in DEMO_PATIENTS)
+    scans = ", ".join(DEMO_SCAN_FILENAMES[patient.fixture_id] for patient in DEMO_PATIENTS)
     print(f"Demo database reset: 3 patients seeded with {scans}.")
 
 
