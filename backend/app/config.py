@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     segmentation_model_fingerprint: str = "nv-segment-ctmr-vista3d-1mm"
     synthstrip_command: str | None = None
     dcm2niix_command: str | None = "dcm2niix"
-    segmentation_min_component_voxels: int = Field(default=30, ge=1, le=100000)
+    segmentation_min_component_voxels: int = Field(default=5000, ge=1, le=100000)
     segmentation_target_faces: int = Field(default=40000, ge=1000, le=200000)
     segmentation_label_map_retention_days: int = Field(default=7, ge=0, le=365)
     lung_nodule_callable: str | None = None
@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     dicom_timeout_seconds: float = Field(default=30, gt=0, le=300)
     task_queue_url: str | None = None
     task_queue_enabled: bool = False
+    watermark_enabled: bool = True
+    watermark_delta: float = Field(default=20.0, gt=0, le=100.0)
+    watermark_cache_size: int = Field(default=256, ge=16, le=4096)
 
     @model_validator(mode="after")
     def validate_secrets(self):

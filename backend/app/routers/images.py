@@ -1,5 +1,5 @@
-from datetime import date
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -18,13 +18,13 @@ from app.services.comparison import compare_studies
 from app.services.dicom_ingest import collect_dicom_bytes, convert_series, series_from_files
 from app.services.imaging import (
     acquisition_from_volume,
-    canonical_labels,
-    canonical_voxels,
-    label_cache_path,
     load_volume,
+    prepare_label_wire,
     prepare_slice_cache,
+    prepare_volume_wire,
     slice_cache_path,
-    slice_png,
+    slice_image,
+    volume_wire_path,
 )
 from app.services.mri_metadata import (
     SEQUENCES,
@@ -33,6 +33,7 @@ from app.services.mri_metadata import (
     suggested_mode,
 )
 from app.services.storage import relative_path, stored_path
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Medical Image"])
@@ -217,6 +218,7 @@ def upload_image(
         if nifti_path:
             nifti_path.unlink(missing_ok=True)
             slice_cache_path(nifti_path).unlink(missing_ok=True)
+            volume_wire_path(nifti_path).unlink(missing_ok=True)
         raise
     try:
         batch_id = request.app.state.segmentation_runner.enqueue_batch_for_image(image_id, user.id)
@@ -279,18 +281,20 @@ def comparison_candidates(image_id: str, db: DB, user: CurrentUser):
     return success([compare_studies(image, other) for other in others])
 
 
+PRIVATE_CACHE = "private, max-age=86400"
+
+
 @router.get("/medical-images/{image_id}/volume", response_class=FileResponse)
 def get_volume(image_id: str, db: DB, user: CurrentUser, settings: Config):
     image = accessible_image(db, user, image_id)
     path = stored_path(settings, image.file_path)
     if not path.is_file():
         raise APIError(404, 40404, "Medical image file not found")
-    # Prepare legacy uploads once; FileResponse streams the existing uncompressed file.
-    canonical_voxels(path, settings)
+    wire, meta = prepare_volume_wire(path, settings)
     return FileResponse(
-        slice_cache_path(path),
+        wire,
         media_type="application/octet-stream",
-        headers={"X-Image-Orientation": "RAS"},
+        headers={"X-Image-Orientation": "RAS", "Cache-Control": PRIVATE_CACHE, **meta},
     )
 
 
@@ -300,18 +304,23 @@ def get_label_volume(image_id: str, db: DB, user: CurrentUser, settings: Config)
     path = native_label_path(db, settings, image_id)
     if path is None:
         raise APIError(404, 40409, "Segmentation label map is not available")
-    canonical_labels(path, settings)
+    wire = prepare_label_wire(path, settings)
     return FileResponse(
-        label_cache_path(path),
+        wire,
         media_type="application/octet-stream",
-        headers={"X-Image-Orientation": "RAS", "X-Volume-Kind": "labels"},
+        headers={
+            "X-Image-Orientation": "RAS",
+            "X-Volume-Kind": "labels",
+            "X-Volume-Encoding": "gzip",
+            "Cache-Control": PRIVATE_CACHE,
+        },
     )
 
 
 @router.get(
     "/medical-images/{image_id}/slice/{slice_index}",
     response_class=Response,
-    responses={200: {"content": {"image/png": {}}}},
+    responses={200: {"content": {"image/webp": {}, "image/png": {}}}},
 )
 def get_slice(
     image_id: str,
@@ -322,13 +331,20 @@ def get_slice(
     window_center: float | None = Query(None, allow_inf_nan=False),
     window_width: float | None = Query(None, gt=0, allow_inf_nan=False),
     axis: Literal["axial", "coronal", "sagittal"] = Query("axial"),
+    fmt: Literal["webp", "png"] = Query("webp", alias="format"),
 ):
     image = accessible_image(db, user, image_id)
     path = stored_path(settings, image.file_path)
     if not path.is_file():
         raise APIError(404, 40404, "Medical image file not found")
+    body = slice_image(path, slice_index, settings, window_center, window_width, axis, fmt=fmt, user=user)
+    media = "image/png" if fmt == "png" else "image/webp"
     return Response(
-        slice_png(path, slice_index, settings, window_center, window_width, axis),
-        media_type="image/png",
-        headers={"X-Image-Orientation": "RAS", "X-Slice-Axis": axis},
+        body,
+        media_type=media,
+        headers={
+            "X-Image-Orientation": "RAS",
+            "X-Slice-Axis": axis,
+            "Cache-Control": "private, max-age=120",
+        },
     )

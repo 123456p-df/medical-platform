@@ -5,6 +5,33 @@ import re
 from pathlib import Path
 
 
+# Official NV-Segment-CTMR label_dict.json entries with empty datasets.
+DEPRECATED_LABEL_IDS = frozenset(
+    {
+        16,
+        129,
+        130,
+        131,
+        133,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145,
+        155,
+        162,
+    }
+)
+
+
+def keep_detected_label(label_id: int, count: int, min_voxels: int) -> bool:
+    return int(label_id) > 0 and int(label_id) not in DEPRECATED_LABEL_IDS and int(count) >= min_voxels
+
+
 _FALLBACK = {
     1: "liver",
     3: "spleen",

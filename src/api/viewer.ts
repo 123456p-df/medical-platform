@@ -1,6 +1,6 @@
 import { api, request } from './client'
 import type { SliceAxis } from '@/utils/volumePixels'
-import { parseLabelVolume, parseVolume, type LabelVolume, type VolumeData } from '@/utils/volumePixels'
+import { decodeLabelPayload, decodeVolumePayload, type LabelVolume, type VolumeData } from '@/utils/volumePixels'
 
 export interface ViewerOrgan {
   task_id: string
@@ -75,14 +75,21 @@ export const viewerApi = {
   },
   async loadVolume(imageId: string, shape: [number, number, number]): Promise<VolumeData> {
     const response = await request('/medical-images/' + imageId + '/volume')
-    return parseVolume(await response.arrayBuffer(), shape)
+    const buffer = await response.arrayBuffer()
+    return decodeVolumePayload(
+      buffer,
+      shape,
+      buffer.byteLength,
+      response.headers.get('X-Voxel-Dtype'),
+      Number(response.headers.get('X-Byte-Shuffle') || '0'),
+    )
   },
   async loadLabels(imageId: string, shape: [number, number, number]): Promise<LabelVolume> {
     const response = await request('/medical-images/' + imageId + '/label-volume')
-    return parseLabelVolume(await response.arrayBuffer(), shape)
+    return decodeLabelPayload(await response.arrayBuffer(), shape)
   },
   async loadGlb(modelId: string) {
-    const response = await request('/organ-models/' + modelId + '/file')
+    const response = await request('/organ-models/' + modelId + '/file', { priority: 'low' } as RequestInit)
     return response.arrayBuffer()
   },
 }

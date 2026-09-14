@@ -11,10 +11,11 @@ import {
   type SegmentationBatch,
   type ViewerOrgan,
 } from '@/api/viewer'
-import type { Examination } from '@/types'
+import type { Examination, Finding } from '@/types'
+import { findingApi } from '@/api/findings'
 import type { LabelVolume, SliceAxis, StainStyle } from '@/utils/volumePixels'
 import { defaultPresetFor } from '@/utils/volumePixels'
-import { sliceCount as axisSliceCount } from '@/utils/sliceAxes'
+import { sliceCount as axisSliceCount, voxelToRas } from '@/utils/sliceAxes'
 import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
 import { VolumeRenderer } from '@/utils/volumeRenderer'
@@ -65,11 +66,15 @@ const compareBatch = ref<SegmentationBatch | null>(null)
 const candidates = ref<ComparisonCandidate[]>([])
 const labels = ref<LabelVolume | null>(null)
 const compareLabels = ref<LabelVolume | null>(null)
+const findings = ref<Finding[]>([])
+const activeFindingId = ref<string | null>(null)
+const findingsVisible = ref(true)
 const selectedGroups = ref<string[]>([])
 const preset = ref('auto')
 const volumeRenderer = shallowRef<VolumeRenderer | null>(null)
 const compareRenderer = shallowRef<VolumeRenderer | null>(null)
 const volumeProgress = ref(0)
+const atlasAllowed = ref(false)
 const workspace = ref<HTMLElement | null>(null)
 const storedWidth = Number(localStorage.getItem('vmrb-3d-pane-width'))
 const paneWidth = ref(Number.isFinite(storedWidth) && storedWidth >= 320 ? storedWidth : 420)
@@ -391,18 +396,30 @@ async function loadLabelsFor(study: Examination | null, target: typeof labels) {
   }
 }
 
+async function loadFindings() {
+  if (!primary.value) {
+    findings.value = []
+    return
+  }
+  try {
+    findings.value = await findingApi.getFindingsByExamination(primary.value.id)
+  } catch (err) {
+    console.warn('Failed to load findings for study', err)
+    findings.value = []
+  }
+}
+
 async function refresh() {
   if (!primary.value) return
   error.value = ''
   await Promise.all([
     loadBatch(primary.value.id, batch),
     viewerApi.getCandidates(primary.value.id).then((items) => { candidates.value = items }).catch(() => { candidates.value = [] }),
+    loadFindings(),
   ])
   if (groups.value.length && !selectedGroups.value.length) restoreSelection()
-  await loadLabelsFor(primary.value, labels)
   if (secondary.value) {
     await loadBatch(secondary.value.id, compareBatch)
-    await loadLabelsFor(secondary.value, compareLabels)
   } else {
     compareBatch.value = null
     compareLabels.value = null
@@ -493,7 +510,7 @@ function invertAffine(affine: number[][], ras: number[]): [number, number, numbe
     [(m[1][2] * m[2][0] - m[1][0] * m[2][2]) / det, (m[0][0] * m[2][2] - m[0][2] * m[2][0]) / det, (m[0][2] * m[1][0] - m[0][0] * m[1][2]) / det],
     [(m[1][0] * m[2][1] - m[1][1] * m[2][0]) / det, (m[0][1] * m[2][0] - m[0][0] * m[2][1]) / det, (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / det],
   ]
-  const x = ras[0] - m[0][3], y = ras[1] - m[1][3], z = ras[2] - m[2][3]
+  const x = ras[0] - (m[0]?.[3] || 0), y = ras[1] - (m[1]?.[3] || 0), z = ras[2] - (m[2]?.[3] || 0)
   return [
     inv[0][0] * x + inv[0][1] * y + inv[0][2] * z,
     inv[1][0] * x + inv[1][1] * y + inv[1][2] * z,
@@ -508,7 +525,8 @@ function jumpToOrgan(labelId: number) {
   if (!centroid || !study) return
   const ras = [centroid[0] * 1000, -centroid[2] * 1000, centroid[1] * 1000]
   const affine = affineOf(study)
-  const voxel = affine ? invertAffine(affine, ras) : ras
+  const spacing = spacingOf(study)
+  const voxel = affine ? invertAffine(affine, ras) : [ras[0] / (spacing[0] || 1), ras[1] / (spacing[1] || 1), ras[2] / (spacing[2] || 1)]
   const index =
     axis.value === 'axial'
       ? voxel[2]
@@ -517,6 +535,60 @@ function jumpToOrgan(labelId: number) {
         : voxel[0]
   const count = sliceCount(study)
   position.value = sliceToPosition(Math.round(Math.min(count - 1, Math.max(0, index))), count)
+}
+
+function handleUpdateFindingBox(
+  id: string,
+  centerVoxel: [number, number, number],
+  boxVoxel: [number, number, number, number, number, number],
+  diameterMm: number
+) {
+  const f = findings.value.find((item) => item.id === id)
+  if (f) {
+    f.centerVoxel = centerVoxel
+    f.boxVoxel = boxVoxel
+    f.diameterMm = diameterMm
+  }
+}
+
+function jumpToFinding(target: Finding | string) {
+  const finding = typeof target === 'string' ? findings.value.find((item) => item.id === target) : target
+  if (!finding) return
+  activeFindingId.value = finding.id
+  const study = primary.value
+  if (!study) return
+
+  let ras: [number, number, number] | null = null
+  let voxel: [number, number, number] | null = null
+
+  if (finding.centerVoxel && finding.centerVoxel.length >= 3) {
+    voxel = [finding.centerVoxel[0], finding.centerVoxel[1], finding.centerVoxel[2]]
+    const affine = affineOf(study)
+    if (affine) {
+      ras = voxelToRas(voxel[0], voxel[1], voxel[2], affine)
+    }
+  } else if (finding.centerWorldMm && finding.centerWorldMm.length >= 3) {
+    ras = [finding.centerWorldMm[0], finding.centerWorldMm[1], finding.centerWorldMm[2]]
+    const affine = affineOf(study)
+    if (affine) {
+      voxel = invertAffine(affine, ras)
+    }
+  }
+
+  if (ras) {
+    worldAnchor.value = ras
+  }
+
+  if (voxel) {
+    const index =
+      axis.value === 'axial'
+        ? voxel[2]
+        : axis.value === 'coronal'
+          ? voxel[1]
+          : voxel[0]
+    const count = sliceCount(study)
+    position.value = sliceToPosition(Math.round(Math.min(count - 1, Math.max(0, index))), count)
+  }
 }
 
 function layoutRight() {
@@ -553,11 +625,16 @@ async function loadVolume(study: Examination | null, target: typeof volumeRender
   try {
     await engine.load(study.id, shapeOf(study), (value) => { volumeProgress.value = value })
     target.value = engine
+    if (target === volumeRenderer) await loadLabelsFor(study, labels)
+    else await loadLabelsFor(study, compareLabels)
   } catch {
     engine.dispose()
   }
 }
 
+watch(volumeProgress, (value) => {
+  if (value > 0) atlasAllowed.value = true
+})
 watch(
   () => primary.value?.id,
   (id) => { void loadVolume(primary.value || null, volumeRenderer); void id },
@@ -587,6 +664,7 @@ onMounted(async () => {
     }
     await refresh()
     initialized = true
+    window.setTimeout(() => { atlasAllowed.value = true }, 350)
     schedulePoll()
     layoutRight()
     if (typeof ResizeObserver !== 'undefined' && rightPaneRef.value) {
@@ -722,7 +800,7 @@ onBeforeUnmount(() => {
       <section class="left-pane">
         <div class="scenes" :class="{ compare: Boolean(secondary) }">
           <AnatomyScene
-            v-if="primary"
+            v-if="primary && atlasAllowed"
             :model-id="batch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
@@ -732,10 +810,14 @@ onBeforeUnmount(() => {
             :affine="affineOf(primary)"
             :status="batch ? `分割${batch.status}` : '尚未分割'"
             :organ-meta="organMetaMap"
+            :findings="findings"
+            :active-finding-id="activeFindingId"
+            :show-findings="findingsVisible"
             @select-label="jumpToOrgan"
+            @select-finding="jumpToFinding"
           />
           <AnatomyScene
-            v-if="secondary"
+            v-if="secondary && atlasAllowed"
             :model-id="compareBatch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
@@ -747,7 +829,15 @@ onBeforeUnmount(() => {
             @select-label="jumpToOrgan"
           />
         </div>
-        <OrganVisibilityList :groups="groups" :selected="selectedGroups" @toggle="toggleOrgan" @set-all="setAll" />
+        <OrganVisibilityList
+          :groups="groups"
+          :selected="selectedGroups"
+          :findings-count="findings.length"
+          :findings-visible="findingsVisible"
+          @toggle="toggleOrgan"
+          @set-all="setAll"
+          @toggle-findings="findingsVisible = $event"
+        />
       </section>
       <div
         class="pane-resizer"
@@ -789,7 +879,11 @@ onBeforeUnmount(() => {
             :compact="vp.compact"
             :sync-crosshairs="false"
             :show-crosshairs="false"
+            :findings="findingsVisible && vp.study.id === primary?.id ? findings : []"
+            :selected-finding-id="activeFindingId"
             @position-change="onPositionFrom(vp.study, $event, vp.axis)"
+            @select-finding="jumpToFinding"
+            @update-finding-box="handleUpdateFindingBox"
           />
         </template>
         <template v-else>
@@ -808,7 +902,11 @@ onBeforeUnmount(() => {
             :title="secondary ? '当前检查' : undefined"
             :sync-crosshairs="false"
             :show-crosshairs="false"
+            :findings="findingsVisible ? findings : []"
+            :selected-finding-id="activeFindingId"
             @position-change="onPositionFrom(primary, $event, axis)"
+            @select-finding="jumpToFinding"
+            @update-finding-box="handleUpdateFindingBox"
           />
           <SliceViewport
             v-if="secondary"

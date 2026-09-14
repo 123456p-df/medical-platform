@@ -87,6 +87,16 @@ def test_label_catalog_includes_mri_lungs():
     assert catalog.labels[136] == "right lung"
 
 
+def test_keep_detected_label_requires_5000_voxels_and_drops_deprecated():
+    from app.services.label_catalog import keep_detected_label
+
+    assert keep_detected_label(1, 5000, 5000) is True
+    assert keep_detected_label(1, 4999, 5000) is False
+    assert keep_detected_label(16, 50_000, 5000) is False
+    assert keep_detected_label(118, 5000, 5000) is True
+    assert keep_detected_label(0, 8000, 5000) is False
+
+
 def _mr_bytes(index: int, series_uid: str, description="T1W AX", extra=None) -> bytes:
     pydicom = pytest.importorskip("pydicom")
     from pydicom.dataset import FileDataset, FileMetaDataset

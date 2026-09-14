@@ -32,8 +32,12 @@ def test_upload_slice_segmentation_glb_permissions(app_env, people, nifti_file):
     metadata = client.get(route, headers=people["patient_a"])
     assert "file_path" not in metadata.text
     assert metadata.json()["data"]["slice_count"] == 16
-    png = client.get(route + "/slice/0", headers=people["patient_a"])
-    assert png.content.startswith(b"\x89PNG") and png.headers["cache-control"] == "no-store"
+    webp = client.get(route + "/slice/0", headers=people["patient_a"])
+    assert webp.content.startswith(b"RIFF") and webp.content[8:12] == b"WEBP"
+    assert webp.headers["cache-control"].startswith("private")
+    assert webp.headers["content-type"].startswith("image/webp")
+    png = client.get(route + "/slice/0?format=png", headers=people["patient_a"])
+    assert png.content.startswith(b"\x89PNG")
     assert client.get(route + "/slice/16", headers=people["doctor_a"]).status_code == 404
     assert (
         client.get(route + "/slice/0?window_center=10", headers=people["doctor_a"]).status_code
@@ -76,8 +80,11 @@ def test_upload_slice_segmentation_glb_permissions(app_env, people, nifti_file):
         assert client.get(model_route, headers=people[who]).status_code == 403
         assert client.get(model_route + "/file", headers=people[who]).status_code == 403
     glb = client.get(model_route + "/file", headers=people["patient_a"])
-    assert glb.content.startswith(b"glTF")
-    mesh = trimesh.load(io.BytesIO(glb.content), file_type="glb", force="scene")
+    glb_bytes = glb.content
+    if glb_bytes.startswith(b"\x1f\x8b"):
+        glb_bytes = __import__("gzip").decompress(glb_bytes)
+    assert glb_bytes.startswith(b"glTF")
+    mesh = trimesh.load(io.BytesIO(glb_bytes), file_type="glb", force="scene")
     np.testing.assert_allclose(mesh.extents, [0.016, 0.048, 0.030], atol=1e-3)
     organ = client.get(
         f"/api/v1/patients/{people['patient_a_pid']}/organs/lung", headers=people["doctor_a"]
@@ -256,7 +263,10 @@ def test_default_model_and_path_confinement(app_env, people, tmp_path):
     with app.state.session_factory() as db:
         install_default(db, settings, "lung", source)
     assert client.get(route, headers=people["patient_a"]).json()["data"]["available"] is True
-    assert client.get(route + "/file", headers=people["patient_b"]).content.startswith(b"glTF")
+    default_glb = client.get(route + "/file", headers=people["patient_b"]).content
+    if default_glb.startswith(b"\x1f\x8b"):
+        default_glb = __import__("gzip").decompress(default_glb)
+    assert default_glb.startswith(b"glTF")
     with pytest.raises(APIError):
         stored_path(settings, "../outside")
 
@@ -291,3 +301,19 @@ def test_axial_preview_has_radiological_left_right(app_env, tmp_path):
     output = np.asarray(Image.open(io.BytesIO(slice_png(path, 0, settings, 50, 100))))
     assert np.all(output[:, 0] == 255)
     assert np.all(output[:, -1] == 0)
+
+
+def test_int16_shuffle_roundtrip_and_webp_matches_png(app_env, tmp_path):
+    from PIL import Image
+
+    from app.services.imaging import shuffle_i16, slice_image, unshuffle_i16
+
+    _, _, settings, _ = app_env
+    values = np.arange(4 * 5 * 6, dtype=np.float32).reshape(4, 5, 6)
+    path = tmp_path / "ct.nii"
+    nib.save(nib.Nifti1Image(values, np.eye(4)), path)
+    packed = np.rint(values).astype(np.int16)
+    assert np.array_equal(unshuffle_i16(shuffle_i16(packed), packed.shape), packed)
+    png = np.asarray(Image.open(io.BytesIO(slice_image(path, 1, settings, 50, 100, "axial", "png"))).convert("L"))
+    webp = np.asarray(Image.open(io.BytesIO(slice_image(path, 1, settings, 50, 100, "axial", "webp"))).convert("L"))
+    np.testing.assert_array_equal(png, webp)

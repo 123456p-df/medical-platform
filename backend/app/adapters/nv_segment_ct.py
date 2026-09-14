@@ -39,7 +39,7 @@ except ImportError:
 from app.config import Settings
 from app.services.imaging import get_organ_color, refine_boundary_native_grid
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
-from app.services.label_catalog import LabelCatalog
+from app.services.label_catalog import LabelCatalog, keep_detected_label
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ class NVSegmentCT:
         recognized = [
             int(label)
             for label, count in zip(labels.tolist(), counts.tolist())
-            if int(label) > 0 and int(count) >= min_voxels
+            if keep_detected_label(int(label), int(count), min_voxels)
         ]
         label_map_path = output_dir / "label_map_1mm.nii.gz"
         one_header = native_img.header.copy()

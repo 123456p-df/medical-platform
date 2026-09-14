@@ -448,17 +448,10 @@ class SegmentationRunner:
                 except Exception as exc:
                     logger.error("Segmentation batch label %s failed (%s)", spec[0], type(exc).__name__)
             with self.sessions() as db:
-                batch = db.get(SegmentationBatch, batch_id)
                 tasks = list(db.scalars(select(SegmentationTask).where(SegmentationTask.batch_id == batch_id)))
                 completed = sum(task.status == "completed" for task in tasks)
                 failed = sum(task.status == "failed" for task in tasks)
-                batch.completed_count = completed
-                batch.failed_count = failed
-                batch.progress = 100
-                batch.status = "completed" if not failed else "partial" if completed else "failed"
-                batch.error_message = None if not failed else "Some recognized labels failed to generate"
-                batch.updated_at = utcnow()
-                db.commit()
+
             if completed:
                 try:
                     prepare_label_cache(native_path, self.settings)
@@ -468,6 +461,16 @@ class SegmentationRunner:
                     self._store_atlas(batch_id, image_id, patient_id)
                 except Exception:
                     logger.error("Atlas GLB for batch %s failed", batch_id)
+
+            with self.sessions() as db:
+                batch = db.get(SegmentationBatch, batch_id)
+                batch.completed_count = completed
+                batch.failed_count = failed
+                batch.progress = 100
+                batch.status = "completed" if not failed else "partial" if completed else "failed"
+                batch.error_message = None if not failed else "Some recognized labels failed to generate"
+                batch.updated_at = utcnow()
+                db.commit()
         except Exception as exc:
             logger.error("Segmentation batch %s failed (%s)", batch_id, type(exc).__name__)
             with self.sessions() as db:

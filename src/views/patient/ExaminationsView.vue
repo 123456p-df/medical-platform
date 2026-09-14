@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
@@ -19,15 +19,25 @@ function openExam(examId: string) {
   router.push({ name: 'patient-examination-detail', params: { id: examId } })
 }
 
-onMounted(async () => {
-  if (!store.examinations.length) {
-    await store.loadPatientContext(patientId.value)
+watch(patientId, async (newId) => {
+  if (newId) {
+    await store.loadPatientContext(newId)
+    if (!comparisonId.value || !store.examinations.some(e => e.id === comparisonId.value)) {
+      comparisonId.value = store.examinations.find(item => item.type === 'CT')?.id || store.examinations[0]?.id || ''
+    }
   }
-  comparisonId.value ||= store.examinations.find(item => item.type === 'CT')?.id || ''
-})
+}, { immediate: true })
+
+watch(() => store.examinations, (exams) => {
+  if (exams.length && (!comparisonId.value || !exams.some(e => e.id === comparisonId.value))) {
+    comparisonId.value = exams.find(item => item.type === 'CT')?.id || exams[0]?.id || ''
+  }
+}, { immediate: true })
 
 async function handleUploaded(studies: Examination[]) {
-  await store.loadPatientContext(patientId.value)
+  if (patientId.value) {
+    await store.loadPatientContext(patientId.value)
+  }
   comparisonId.value = studies.at(-1)?.id || comparisonId.value
 }
 </script>
@@ -67,7 +77,7 @@ async function handleUploaded(studies: Examination[]) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
-.comparison-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start;margin-bottom:24px}
+.comparison-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:stretch;margin-bottom:24px}
 
 @media (max-width: 760px) {
   .comparison-layout,
