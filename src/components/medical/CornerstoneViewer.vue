@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as cornerstone from '@cornerstonejs/core'
 import * as cornerstoneTools from '@cornerstonejs/tools'
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader'
 import { initializeImaging } from '@/utils/initializeImaging'
+import { t } from '@/i18n'
 
 const props = defineProps<{
   files: File[]
+  framesPerFile?: number[]
 }>()
 
 const emit = defineEmits<{
@@ -16,14 +18,34 @@ const emit = defineEmits<{
 
 const hostRef = ref<HTMLDivElement | null>(null)
 const status = ref<'loading' | 'ready' | 'error'>('loading')
+const stage = ref<'initializing' | 'registering' | 'decoding' | 'rendering'>('initializing')
 const errorMessage = ref('')
+const stageLabels = {
+  initializing: 'ui.viewer.stage.initializing',
+  registering: 'ui.viewer.stage.registering',
+  decoding: 'ui.viewer.stage.decoding',
+  rendering: 'ui.viewer.stage.rendering',
+} as const
+const stageLabel = computed(() => stageLabels[stage.value])
 const instanceId = `cornerstone-${Math.random().toString(36).slice(2, 9)}`
 let renderingEngine: cornerstone.RenderingEngine | null = null
 let toolGroup: cornerstoneTools.Types.IToolGroup | undefined
 let resizeObserver: ResizeObserver | null = null
 let disposed = false
 let loadTimer: ReturnType<typeof setTimeout> | undefined
+let loadVersion = 0
 const registeredImages: string[] = []
+
+function releaseStack() {
+  clearTimeout(loadTimer)
+  resizeObserver?.disconnect()
+  resizeObserver = null
+  if (toolGroup) cornerstoneTools.ToolGroupManager.destroyToolGroup(toolGroup.id)
+  toolGroup = undefined
+  renderingEngine?.destroy()
+  renderingEngine = null
+  registeredImages.splice(0).forEach((id) => dicomImageLoader.wadouri.fileManager.remove(Number(id.split(':').pop())))
+}
 
 async function resetView() {
   const viewport = renderingEngine?.getViewport<cornerstone.Types.IStackViewport>('stack')
@@ -37,12 +59,23 @@ async function resetView() {
 async function loadStack() {
   if (!hostRef.value || !props.files.length) return
 
+  const version = ++loadVersion
+  releaseStack()
+  status.value = 'loading'
+  stage.value = 'initializing'
+  errorMessage.value = ''
+
   try {
     await initializeImaging()
-    if (disposed) return
+    if (disposed || version !== loadVersion) return
 
-    const imageIds = props.files.map((file) => dicomImageLoader.wadouri.fileManager.add(file))
-    registeredImages.push(...imageIds)
+    stage.value = 'registering'
+    const baseImageIds = props.files.map((file) => dicomImageLoader.wadouri.fileManager.add(file))
+    registeredImages.push(...baseImageIds)
+    const imageIds = baseImageIds.flatMap((imageId, index) => {
+      const count = props.framesPerFile?.[index] || 1
+      return count > 1 ? Array.from({ length: count }, (_, frame) => `${imageId}?frame=${frame + 1}`) : [imageId]
+    })
 
     renderingEngine = new cornerstone.RenderingEngine(instanceId)
     renderingEngine.enableElement({
@@ -52,15 +85,17 @@ async function loadStack() {
     })
 
     const viewport = renderingEngine.getViewport<cornerstone.Types.IStackViewport>('stack')
+    stage.value = 'decoding'
     await Promise.race([
       (async () => {
         await cornerstone.imageLoader.loadAndCacheImage(imageIds[0])
-        if (!disposed) await viewport.setStack(imageIds, 0)
+        if (!disposed && version === loadVersion) await viewport.setStack(imageIds, 0)
       })(),
-      new Promise<never>((_, reject) => { loadTimer = setTimeout(() => reject(new Error('Study loading timed out. Please reopen the examination.')), 30000) }),
+      new Promise<never>((_, reject) => { loadTimer = setTimeout(() => reject(new Error(t('ui.viewer.decodeTimeout'))), 30000) }),
     ])
     clearTimeout(loadTimer)
-    if (disposed) return
+    if (disposed || version !== loadVersion) return
+    stage.value = 'rendering'
     viewport.render()
 
 
@@ -93,11 +128,13 @@ async function loadStack() {
     emit('ready', imageIds.length)
   } catch (error) {
     clearTimeout(loadTimer)
-    if (disposed) return
-    const message = error instanceof Error ? error.message : 'Unable to open the DICOM study.'
+    if (disposed || version !== loadVersion) return
+    const message = error instanceof Error ? error.message : t('ui.viewer.openFailed')
     errorMessage.value = message
     status.value = 'error'
     emit('error', message)
+    loadVersion++
+    releaseStack()
   }
 }
 
@@ -105,13 +142,8 @@ onMounted(loadStack)
 
 onBeforeUnmount(() => {
   disposed = true
-  clearTimeout(loadTimer)
-  resizeObserver?.disconnect()
-  if (toolGroup) {
-    cornerstoneTools.ToolGroupManager.destroyToolGroup(toolGroup.id)
-  }
-  renderingEngine?.destroy()
-  registeredImages.forEach((id) => dicomImageLoader.wadouri.fileManager.remove(Number(id.split(':').pop())))
+  loadVersion++
+  releaseStack()
 })
 </script>
 
@@ -119,10 +151,14 @@ onBeforeUnmount(() => {
   <div class="cornerstone-viewer">
     <div v-if="status === 'ready'" class="dicom-tools"><span>{{ $t("Drag: window / level · Right drag: pan · Wheel: slices") }}</span><button type="button" class="btn btn-sm btn-secondary" @click="resetView">{{ $t("Reset view") }}</button></div>
     <div ref="hostRef" class="viewport-host" />
-    <div v-if="status === 'loading'" class="viewer-state">{{ $t("Loading DICOM study...") }}</div>
+    <div v-if="status === 'loading'" class="viewer-state" role="status">
+      <strong>{{ $t(stageLabel) }}</strong>
+      <span>{{ $t('ui.viewer.stageDetail', { stage: $t(stageLabel), count: files.length }) }}</span>
+    </div>
     <div v-else-if="status === 'error'" class="viewer-state error">
       <strong>{{ $t("DICOM load failed") }}</strong>
       <span>{{ $t(errorMessage) }}</span>
+      <button type="button" class="btn btn-sm btn-secondary" @click="loadStack">{{ $t('ui.viewer.retry') }}</button>
     </div>
     <div class="viewer-badge">{{ $t("Cornerstone3D") }}</div>
   </div>

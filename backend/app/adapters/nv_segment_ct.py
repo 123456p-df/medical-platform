@@ -44,40 +44,20 @@ from app.services.label_catalog import LabelCatalog
 logger = logging.getLogger(__name__)
 
 # Prompt IDs and grouped anatomical parts from the upstream model metadata.
-LABELS_BY_TYPE = {
-    "CT": {
-        "liver": [1],
-        "kidney": [5, 14],
-        "spleen": [3],
-        "pancreas": [4],
-        "stomach": [12],
-        "lung": [28, 29, 30, 31, 32],
-        "brain": [22],
-        "heart": [115],
-    },
-    "MRI": {
-        "liver": [1],
-        "kidney": [5, 14],
-        "spleen": [3],
-        "pancreas": [4],
-        "stomach": [12],
-        "lung": [135, 136],
-        "brain": [22],
-        "heart": [115],
-    },
+LABELS = {
+    "liver": [1],
+    "kidney": [5, 14],
+    "spleen": [3],
+    "pancreas": [4],
+    "stomach": [12],
+    "lung": [28, 29, 30, 31, 32],
+    "brain": [22],
+    "heart": [115],
 }
-LABELS = LABELS_BY_TYPE["CT"]
-
-
-def labels_for(organ_id: str, image_type: str = "CT") -> list[int]:
-    table = LABELS_BY_TYPE.get(image_type, LABELS_BY_TYPE["CT"])
-    if organ_id not in table:
-        raise KeyError(organ_id)
-    return table[organ_id]
 
 
 class NVSegmentCT:
-    image_types = {"CT", "MRI"}
+    image_types = {"CT"}
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -109,8 +89,8 @@ class NVSegmentCT:
                 device=device,
             )
 
-    def run_batch(self, *, image_path: Path, output_dir: Path, progress, modality="CT_BODY", **_kwargs):
-        """Run one all-label inference and persist one shared label map."""
+    def run_batch(self, *, image_path: Path, output_dir: Path, progress):
+        """Run one CT_BODY inference and persist one shared label map."""
         self._ensure_pipelines()
         if not hasattr(self.pipeline, "preprocess"):
             raise RuntimeError("All-label batch mode requires the modern NVIDIA pipeline")
@@ -119,7 +99,7 @@ class NVSegmentCT:
         raw_dir = output_dir / "raw"
         raw_dir.mkdir(exist_ok=True)
         native_img = nib.load(str(image_path))
-        prep = self.pipeline.preprocess({"image": str(image_path), "modality": modality})
+        prep = self.pipeline.preprocess({"image": str(image_path), "modality": "CT_BODY"})
         affine_1mm = prep["image"].affine[0].cpu().numpy()
         progress(25)
         outputs = self.pipeline._forward(prep)
@@ -169,11 +149,11 @@ class NVSegmentCT:
         progress(100)
         return {"label_map_1mm": label_map_path, "label_map_native": native_path, "labels": recognized}
 
-    def __call__(self, *, image_path: Path, organ_id: str, output_dir: Path, progress, image_type="CT", **_kwargs):
+    def __call__(self, *, image_path: Path, organ_id: str, output_dir: Path, progress):
         self._ensure_pipelines()
         raw_dir = output_dir / "raw"
         raw_dir.mkdir(exist_ok=True, parents=True)
-        labels = labels_for(organ_id, image_type)
+        labels = LABELS[organ_id]
 
         if not hasattr(self.pipeline, "preprocess"):
             progress(20)

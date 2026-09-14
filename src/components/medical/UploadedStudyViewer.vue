@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from 'lucide-vue-next'
-import { getLocalUploadFiles } from '@/api/localUploads'
+import { getLocalUploadFiles } from '@/api/localStudyRepository'
 import { isRasterFile } from '@/utils/studyLoader'
 import type { Examination } from '@/types'
+import { t } from '@/i18n'
 
 const CornerstoneViewer = defineAsyncComponent(() => import('./CornerstoneViewer.vue'))
 const props = defineProps<{ examination: Examination }>()
@@ -35,12 +36,12 @@ async function loadStudy() {
     if (version !== loadVersion) return
     files.value = stored
     if (!stored.length) {
-      error.value = '本地影像文件已不可用，请重新导入这项检查。'
+      error.value = t('ui.viewer.localFilesMissing')
     } else if (stored.every(isRasterFile)) {
       urls.value = stored.map(file => URL.createObjectURL(file))
     }
   } catch {
-    if (version === loadVersion) error.value = '读取本地影像失败，请检查浏览器存储权限。'
+    if (version === loadVersion) error.value = t('ui.viewer.localReadFailed')
   } finally {
     if (version === loadVersion) loading.value = false
   }
@@ -63,29 +64,29 @@ onBeforeUnmount(() => { loadVersion += 1; revokeUrls() })
   <section class="uploaded-viewer">
     <div class="uploaded-heading">
       <strong>{{ examination.type }}</strong>
-      <span>本地导入影像</span>
-      <span>{{ files.length || examination.sliceCount }} 张</span>
+      <span>{{ $t('ui.viewer.localImport') }}</span>
+      <span>{{ $t('ui.viewer.frameCount', { count: files.length || examination.sliceCount }) }}</span>
     </div>
-    <div v-if="loading" class="empty-state dark">正在读取本地影像…</div>
+    <div v-if="loading" class="empty-state dark">{{ $t('ui.viewer.localLoading') }}</div>
     <div v-else-if="error" class="empty-state dark error" role="alert">{{ error }}</div>
     <template v-else-if="isRaster">
       <div class="image-tools">
-        <button type="button" class="icon-btn" aria-label="上一张" :disabled="slice === 0" @click="changeSlice(-1)"><ChevronLeft :size="17" /></button>
+        <button type="button" class="icon-btn" :aria-label="$t('ui.viewer.previousImage')" :disabled="slice === 0" @click="changeSlice(-1)"><ChevronLeft :size="17" /></button>
         <span>{{ slice + 1 }} / {{ files.length }}</span>
-        <button type="button" class="icon-btn" aria-label="下一张" :disabled="slice >= files.length - 1" @click="changeSlice(1)"><ChevronRight :size="17" /></button>
+        <button type="button" class="icon-btn" :aria-label="$t('ui.viewer.nextImage')" :disabled="slice >= files.length - 1" @click="changeSlice(1)"><ChevronRight :size="17" /></button>
         <span class="divider" />
-        <button type="button" class="icon-btn" aria-label="缩小" :disabled="zoom <= .25" @click="zoom = Math.max(.25, zoom - .25)"><Minus :size="17" /></button>
+        <button type="button" class="icon-btn" :aria-label="$t('Zoom out')" :disabled="zoom <= .25" @click="zoom = Math.max(.25, zoom - .25)"><Minus :size="17" /></button>
         <span>{{ Math.round(zoom * 100) }}%</span>
-        <button type="button" class="icon-btn" aria-label="放大" :disabled="zoom >= 4" @click="zoom = Math.min(4, zoom + .25)"><Plus :size="17" /></button>
-        <button type="button" class="btn btn-sm btn-secondary" :disabled="zoom === 1 && slice === 0" @click="resetView"><RotateCcw :size="15" /> 重置</button>
-        <label v-if="files.length > 1">切片 <input v-model.number="slice" type="range" min="0" :max="files.length - 1" /></label>
+        <button type="button" class="icon-btn" :aria-label="$t('Zoom in')" :disabled="zoom >= 4" @click="zoom = Math.min(4, zoom + .25)"><Plus :size="17" /></button>
+        <button type="button" class="btn btn-sm btn-secondary" :disabled="zoom === 1 && slice === 0" @click="resetView"><RotateCcw :size="15" /> {{ $t('Reset') }}</button>
+        <label v-if="files.length > 1">{{ $t('Slice') }} <input v-model.number="slice" type="range" min="0" :max="files.length - 1" /></label>
       </div>
       <div class="raster-viewport">
-        <img :src="urls[slice]" :alt="files[slice]?.name" :style="{ transform: `scale(${zoom})` }" @error="error = '这张图片无法显示。'" />
+        <img :src="urls[slice]" :alt="files[slice]?.name" :style="{ transform: `scale(${zoom})` }" @error="error = t('ui.viewer.rasterDisplayFailed')" />
       </div>
       <div class="file-caption">{{ files[slice]?.name }}</div>
     </template>
-    <CornerstoneViewer v-else-if="files.length" :key="examination.id" :files="files" />
+    <CornerstoneViewer v-else-if="files.length" :key="examination.id" :files="files" :frames-per-file="examination.acquisition?.framesPerFile" />
   </section>
 </template>
 

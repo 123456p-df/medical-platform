@@ -40,18 +40,18 @@ const normalized = computed(() => props.status.toLowerCase().replace(/\s+/g, '-'
 
 .pending-review {
   background: #f8efe4;
-  color: #a56b25;
+  color: #8a5418;
 }
 
 .ai-completed {
   background: #e8eef9;
-  color: #4a6fa6;
+  color: #3f6390;
 }
 
 .reviewed,
 .completed {
   background: #e6f1eb;
-  color: #3f7d5d;
+  color: #2f6a4c;
 }
 
 .abnormal {

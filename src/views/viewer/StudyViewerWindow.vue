@@ -13,17 +13,17 @@ import {
 } from '@/api/viewer'
 import type { Examination } from '@/types'
 import type { LabelVolume, SliceAxis, StainStyle } from '@/utils/volumePixels'
-import { defaultPresetFor } from '@/utils/volumePixels'
 import { sliceCount as axisSliceCount } from '@/utils/sliceAxes'
 import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
 import { VolumeRenderer } from '@/utils/volumeRenderer'
 import { activeMedicalTool } from '@/composables/useViewportGestures'
+import { t } from '@/i18n'
 
 const ORIENTATION_OPTIONS = [
-  { id: 'axial', label: '轴向 (Axial)' },
-  { id: 'sagittal', label: '矢状 (Sagittal)' },
-  { id: 'coronal', label: '冠状 (Coronal)' },
+  { id: 'axial', label: 'ui.viewer3d.axis.axial' },
+  { id: 'sagittal', label: 'ui.viewer3d.axis.sagittal' },
+  { id: 'coronal', label: 'ui.viewer3d.axis.coronal' },
 ] as const
 
 interface MprViewportConfig {
@@ -66,7 +66,7 @@ const candidates = ref<ComparisonCandidate[]>([])
 const labels = ref<LabelVolume | null>(null)
 const compareLabels = ref<LabelVolume | null>(null)
 const selectedGroups = ref<string[]>([])
-const preset = ref('auto')
+const preset = ref('lung')
 const volumeRenderer = shallowRef<VolumeRenderer | null>(null)
 const compareRenderer = shallowRef<VolumeRenderer | null>(null)
 const volumeProgress = ref(0)
@@ -78,10 +78,9 @@ const sideBySide = ref(true)
 let resizeStartX = 0, resizeStartWidth = 0, pollTimer: ReturnType<typeof setTimeout> | undefined
 let initialized = false
 
-const wantedType = computed(() => studies.value.find((item) => item.id === imageId.value)?.type || studies.value[0]?.type)
-const modalityStudies = computed(() => studies.value.filter((item) => item.type === wantedType.value))
-const primary = computed(() => modalityStudies.value.find((item) => item.id === imageId.value) || modalityStudies.value[0])
-const secondary = computed(() => modalityStudies.value.find((item) => item.id === compareId.value) || null)
+const ctStudies = computed(() => studies.value.filter((item) => item.type === 'CT'))
+const primary = computed(() => ctStudies.value.find((item) => item.id === imageId.value) || ctStudies.value[0])
+const secondary = computed(() => ctStudies.value.find((item) => item.id === compareId.value) || null)
 
 const mprViewports = computed<MprViewportConfig[]>(() => {
   if (!primary.value) return []
@@ -90,29 +89,29 @@ const mprViewports = computed<MprViewportConfig[]>(() => {
 
   if (!s) {
     return [
-      { key: 'p-axial', study: p, axis: 'axial', title: '轴向 (Axial)', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 'p-sagittal', study: p, axis: 'sagittal', title: '矢状 (Sagittal)', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 'p-coronal', study: p, axis: 'coronal', title: '冠状 (Coronal)', renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-axial', study: p, axis: 'axial', title: t('ui.viewer3d.axis.axial'), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-sagittal', study: p, axis: 'sagittal', title: t('ui.viewer3d.axis.sagittal'), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-coronal', study: p, axis: 'coronal', title: t('ui.viewer3d.axis.coronal'), renderer: volumeRenderer.value, labelVolume: labels.value },
     ]
   }
 
   if (mprCompareLayout.value === '2x3') {
     return [
-      { key: 'p-axial', study: p, axis: 'axial', title: '当前检查 · 轴向 (Axial)', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 'p-sagittal', study: p, axis: 'sagittal', title: '当前检查 · 矢状 (Sagittal)', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 'p-coronal', study: p, axis: 'coronal', title: '当前检查 · 冠状 (Coronal)', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 's-axial', study: s, axis: 'axial', title: '对比检查 · 轴向 (Axial)', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
-      { key: 's-sagittal', study: s, axis: 'sagittal', title: '对比检查 · 矢状 (Sagittal)', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
-      { key: 's-coronal', study: s, axis: 'coronal', title: '对比检查 · 冠状 (Coronal)', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 'p-axial', study: p, axis: 'axial', title: t('ui.viewer3d.currentAxis', { axis: t('ui.viewer3d.axis.axial') }), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-sagittal', study: p, axis: 'sagittal', title: t('ui.viewer3d.currentAxis', { axis: t('ui.viewer3d.axis.sagittal') }), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 'p-coronal', study: p, axis: 'coronal', title: t('ui.viewer3d.currentAxis', { axis: t('ui.viewer3d.axis.coronal') }), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-axial', study: s, axis: 'axial', title: t('ui.viewer3d.compareAxis', { axis: t('ui.viewer3d.axis.axial') }), renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 's-sagittal', study: s, axis: 'sagittal', title: t('ui.viewer3d.compareAxis', { axis: t('ui.viewer3d.axis.sagittal') }), renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 's-coronal', study: s, axis: 'coronal', title: t('ui.viewer3d.compareAxis', { axis: t('ui.viewer3d.axis.coronal') }), renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
     ]
   } else {
     return [
-      { key: 'p-axial', study: p, axis: 'axial', title: '当前检查 · 轴向', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 's-axial', study: s, axis: 'axial', title: '对比检查 · 轴向', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
-      { key: 'p-sagittal', study: p, axis: 'sagittal', title: '当前检查 · 矢状', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 's-sagittal', study: s, axis: 'sagittal', title: '对比检查 · 矢状', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
-      { key: 'p-coronal', study: p, axis: 'coronal', title: '当前检查 · 冠状', renderer: volumeRenderer.value, labelVolume: labels.value },
-      { key: 's-coronal', study: s, axis: 'coronal', title: '对比检查 · 冠状', renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 'p-axial', study: p, axis: 'axial', title: t('ui.viewer3d.currentAxis', { axis: t('ui.viewer3d.axis.axial') }), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-axial', study: s, axis: 'axial', title: t('ui.viewer3d.compareAxis', { axis: t('ui.viewer3d.axis.axial') }), renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 'p-sagittal', study: p, axis: 'sagittal', title: t('ui.viewer3d.currentAxis', { axis: t('ui.viewer3d.axis.sagittal') }), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-sagittal', study: s, axis: 'sagittal', title: t('ui.viewer3d.compareAxis', { axis: t('ui.viewer3d.axis.sagittal') }), renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
+      { key: 'p-coronal', study: p, axis: 'coronal', title: t('ui.viewer3d.currentAxis', { axis: t('ui.viewer3d.axis.coronal') }), renderer: volumeRenderer.value, labelVolume: labels.value },
+      { key: 's-coronal', study: s, axis: 'coronal', title: t('ui.viewer3d.compareAxis', { axis: t('ui.viewer3d.axis.coronal') }), renderer: compareRenderer.value, labelVolume: compareLabels.value, compact: true },
     ]
   }
 })
@@ -334,7 +333,7 @@ function restoreSelection() {
     try {
       const parsed = JSON.parse(saved) as string[]
       selectedGroups.value = parsed.filter((id) => ids.includes(id))
-      if (selectedGroups.value.length) return
+      return
     } catch { /* default to all */ }
   }
   selectedGroups.value = ids
@@ -449,7 +448,7 @@ async function startBatchSegmentation() {
     await loadBatch(primary.value.id, batch)
     schedulePoll()
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : '启动全器官分割失败'
+    error.value = reason instanceof Error ? reason.message : t('ui.viewer3d.segmentationFailed')
   } finally {
     batchBusy.value = false
   }
@@ -459,7 +458,7 @@ function selectStudy(id: string) {
   imageId.value = id
   if (compareId.value === id) compareId.value = ''
   selectedGroups.value = []
-  const study = modalityStudies.value.find((item) => item.id === id)
+  const study = ctStudies.value.find((item) => item.id === id)
   if (study) {
     currentAxis.value = detectPrimaryAxis(study)
   }
@@ -530,29 +529,28 @@ watch([imageId, compareId], () => {
   if (!initialized) return
   if (primary.value) {
     currentAxis.value = detectPrimaryAxis(primary.value)
-    preset.value = defaultPresetFor(primary.value.type, primary.value.sequence)
   }
   resetWorldAnchor()
   void refresh().then(schedulePoll)
 })
-watch(() => primary.value?.id, (id) => {
-  if (!id || !primary.value) return
-  preset.value = defaultPresetFor(primary.value.type, primary.value.sequence)
-}, { immediate: true })
 watch([axis, () => primary.value?.id], resetWorldAnchor)
 watch(paneWidth, layoutRight)
 watch(groups, (list) => {
   if (list.length && !selectedGroups.value.length) restoreSelection()
 })
 
-async function loadVolume(study: Examination | null, target: typeof volumeRenderer) {
+const volumeVersions = { primary: 0, compare: 0 }
+
+async function loadVolume(study: Examination | null, target: typeof volumeRenderer, slot: 'primary' | 'compare') {
+  const revision = ++volumeVersions[slot]
   target.value?.dispose()
   target.value = null
   if (!study?.shape || study.shape.length !== 3) return
   const engine = new VolumeRenderer()
   try {
     await engine.load(study.id, shapeOf(study), (value) => { volumeProgress.value = value })
-    target.value = engine
+    if (revision === volumeVersions[slot]) target.value = engine
+    else engine.dispose()
   } catch {
     engine.dispose()
   }
@@ -560,15 +558,15 @@ async function loadVolume(study: Examination | null, target: typeof volumeRender
 
 watch(
   () => primary.value?.id,
-  (id) => { void loadVolume(primary.value || null, volumeRenderer); void id },
+  (id) => { void loadVolume(primary.value || null, volumeRenderer, 'primary'); void id },
 )
 watch(
   () => secondary.value?.id,
-  (id) => { void loadVolume(secondary.value || null, compareRenderer); void id },
+  (id) => { void loadVolume(secondary.value || null, compareRenderer, 'compare'); void id },
 )
 
 onMounted(async () => {
-  document.title = '3D 查看器'
+  document.title = t('ui.viewer3d.title')
   document.documentElement.style.overflow = 'hidden'
   document.documentElement.style.height = '100%'
   document.body.style.overflow = 'hidden'
@@ -577,7 +575,7 @@ onMounted(async () => {
 
   activeMedicalTool.value = 'ww_wl'
   if (localPreview) {
-    error.value = '本地预览没有真实 CT 重建，请连接后端后打开 3D 窗口。'
+    error.value = t('ui.viewer3d.previewNoReconstruction')
     return
   }
   try {
@@ -603,10 +601,12 @@ onMounted(async () => {
       rightPaneObserver.observe(rightPaneRef.value)
     }
   } catch (reason) {
-    error.value = reason instanceof Error ? reason.message : '加载失败'
+    error.value = reason instanceof Error ? reason.message : t('ui.viewer3d.loadFailed')
   }
 })
 onBeforeUnmount(() => {
+  volumeVersions.primary++
+  volumeVersions.compare++
   document.documentElement.style.overflow = ''
   document.documentElement.style.height = ''
   document.body.style.overflow = ''
@@ -628,47 +628,47 @@ onBeforeUnmount(() => {
   <div ref="workspace" class="viewer-window" :class="{ resizing }" :style="workspaceStyle" @wheel.passive.stop>
     <header class="viewer-toolbar" @wheel.prevent>
       <div class="toolbar-block">
-        <strong>3D 查看器</strong>
-        <label>检查
+        <strong>{{ $t('ui.viewer3d.title') }}</strong>
+        <label>{{ $t('ui.viewer3d.examination') }}
           <select :value="primary?.id" @change="selectStudy(($event.target as HTMLSelectElement).value)">
-            <option v-for="study in modalityStudies" :key="study.id" :value="study.id">
+            <option v-for="study in ctStudies" :key="study.id" :value="study.id">
               {{ study.date }} · {{ study.sliceCount }} slices
             </option>
           </select>
         </label>
-        <label>对比
+        <label>{{ $t('ui.viewer3d.comparison') }}
           <select :value="compareId" @change="selectCompare(($event.target as HTMLSelectElement).value)">
-            <option value="">不对比</option>
+            <option value="">{{ $t('ui.viewer3d.noComparison') }}</option>
             <option
               v-for="item in candidates"
               :key="item.image_id"
               :value="item.image_id"
               :disabled="!item.comparable"
             >
-              {{ item.study_date || item.image_id }} {{ item.comparable ? '' : '（' + (item.reasons[0] || '不可比') + '）' }}
+              {{ item.study_date || item.image_id }} {{ item.comparable ? '' : '(' + (item.reasons[0] || $t('ui.viewer3d.notComparable')) + ')' }}
             </option>
           </select>
         </label>
       </div>
       <div class="toolbar-block">
-        <span>视图模式</span>
+        <span>{{ $t('ui.viewer3d.viewMode') }}</span>
         <button
           type="button"
           :class="{ active: viewMode === 'mpr' }"
           @click="viewMode = 'mpr'"
         >
-          3视图 (MPR)
+          {{ $t('ui.viewer3d.mpr') }}
         </button>
         <button
           type="button"
           :class="{ active: viewMode === 'single' }"
           @click="viewMode = 'single'"
         >
-          单视图
+          {{ $t('ui.viewer3d.single') }}
         </button>
       </div>
       <div v-if="viewMode === 'single'" class="toolbar-block">
-        <span>切片方位</span>
+        <span>{{ $t('ui.viewer3d.sliceAxis') }}</span>
         <button
           v-for="item in ORIENTATION_OPTIONS"
           :key="item.id"
@@ -676,27 +676,17 @@ onBeforeUnmount(() => {
           :class="{ active: currentAxis === item.id }"
           @click="currentAxis = item.id"
         >
-          {{ item.label }}
+          {{ $t(item.label) }}
         </button>
       </div>
       <div class="toolbar-block">
-        <select v-model="preset" aria-label="窗宽窗位">
-          <template v-if="primary?.type === 'MRI'">
-            <option value="auto">自动</option>
-            <option value="mri-t1">T1</option>
-            <option value="mri-t2">T2</option>
-            <option value="mri-flair">FLAIR</option>
-            <option value="mri-dwi">DWI</option>
-          </template>
-          <template v-else>
-            <option value="lung">肺窗</option>
-            <option value="soft">软组织</option>
-            <option value="bone">骨窗</option>
-            <option value="brain">脑窗</option>
-            <option value="auto">自动</option>
-          </template>
+        <select v-model="preset" :aria-label="$t('ui.viewer3d.windowPreset')">
+          <option value="lung">{{ $t('ui.viewer3d.preset.lung') }}</option>
+          <option value="soft">{{ $t('Soft tissue') }}</option>
+          <option value="bone">{{ $t('Bone') }}</option>
+          <option value="brain">{{ $t('ui.viewer3d.preset.brain') }}</option>
         </select>
-        <label class="opacity">染色
+        <label class="opacity">{{ $t('ui.viewer3d.stain') }}
           <input v-model.number="opacity" type="range" min="0" max="1" step="0.05" />
         </label>
       </div>
@@ -708,10 +698,10 @@ onBeforeUnmount(() => {
           :disabled="batchBusy"
           @click="startBatchSegmentation"
         >
-          {{ batchBusy ? '正在启动…' : batch?.status === 'failed' ? '重新分割' : '⚡ 开始全器官 AI 分割' }}
+          {{ batchBusy ? $t('ui.viewer3d.starting') : batch?.status === 'failed' ? $t('ui.viewer3d.resegment') : $t('ui.viewer3d.startSegmentation') }}
         </button>
         <p v-else class="batch-status" :class="batch.status">
-          分割 {{ batch.status }} · {{ batch.progress }}% · {{ batch.completed_count }}/{{ batch.total_labels }}
+          {{ $t('ui.viewer3d.segmentationProgress', { status: batch.status, progress: batch.progress, completed: batch.completed_count, total: batch.total_labels }) }}
         </p>
       </div>
     </header>
@@ -730,7 +720,7 @@ onBeforeUnmount(() => {
             :shape="shapeOf(primary)"
             :spacing="spacingOf(primary)"
             :affine="affineOf(primary)"
-            :status="batch ? `分割${batch.status}` : '尚未分割'"
+            :status="batch ? $t('ui.viewer3d.segmentationStatus', { status: batch.status }) : $t('ui.viewer3d.notSegmented')"
             :organ-meta="organMetaMap"
             @select-label="jumpToOrgan"
           />
@@ -805,7 +795,7 @@ onBeforeUnmount(() => {
             :visible-labels="visibleLabels"
             :stain-colors="stainColors"
             :stain-opacity="opacity"
-            :title="secondary ? '当前检查' : undefined"
+            :title="secondary ? $t('ui.viewer3d.currentStudy') : undefined"
             :sync-crosshairs="false"
             :show-crosshairs="false"
             @position-change="onPositionFrom(primary, $event, axis)"
@@ -822,7 +812,7 @@ onBeforeUnmount(() => {
             :visible-labels="visibleLabels"
             :stain-colors="stainColors"
             :stain-opacity="opacity"
-            title="对比检查"
+            :title="$t('ui.viewer3d.comparisonStudy')"
             compact
             :sync-crosshairs="false"
             :show-crosshairs="false"

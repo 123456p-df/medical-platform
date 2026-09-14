@@ -13,17 +13,17 @@ from app.cli import provision_patient, set_access
 from app.config import Settings
 from app.db import Base, make_engine
 from app.main import create_app
-from app.services.ai import AIAnswer
 from app.models import Doctor, User
 from app.security import hash_password
+from app.services.ai import AIAnswer
 
 
 class SyntheticAdapter:
     """Deterministic geometry fixture, never used by the real application."""
 
-    image_types = {"CT", "MRI"}
+    image_types = {"CT"}
 
-    def __call__(self, *, image_path, organ_id, output_dir, progress, **_kwargs):
+    def __call__(self, *, image_path, organ_id, output_dir, progress):
         original = nib.load(image_path)
         data = np.zeros(original.shape, dtype=np.uint8)
         data[2:-2, 2:-2, 2:-2] = 1
@@ -41,7 +41,7 @@ class SyntheticBatchAdapter(SyntheticAdapter):
 
         self.catalog = LabelCatalog(None)
 
-    def run_batch(self, *, image_path, output_dir, progress, modality="CT_BODY", **_kwargs):
+    def run_batch(self, *, image_path, output_dir, progress):
         original = nib.load(image_path)
         data = np.zeros(original.shape, dtype=np.uint8)
         data[2:6, 2:8, 2:10] = 1
@@ -145,6 +145,17 @@ def app_env(tmp_path):
 def people(app_env):
     app, client, settings, _ = app_env
     result = {}
+    with app.state.session_factory() as db:
+        admin_user = User(
+            username="admin",
+            password_hash=hash_password("password-test-123"),
+            role="admin",
+        )
+        db.add(admin_user)
+        db.flush()
+        db.add(Doctor(user_id=admin_user.id))
+        db.commit()
+        result["admin_id"] = admin_user.id
     for username, role in [
         ("doctor_a", "doctor"),
         ("doctor_b", "doctor"),
@@ -174,6 +185,10 @@ def people(app_env):
             "/api/v1/auth/login", json={"username": username, "password": "password-test-123"}
         ).json()["data"]["access_token"]
         result[username] = {"Authorization": f"Bearer {token}"}
+    admin_token = client.post(
+        "/api/v1/auth/login", json={"username": "admin", "password": "password-test-123"}
+    ).json()["data"]["access_token"]
+    result["admin"] = {"Authorization": f"Bearer {admin_token}"}
     with app.state.session_factory() as db:
         for username, name, identity in [
             ("patient_a", "测试患者甲", "TEST-ID-000001"),
@@ -213,6 +228,7 @@ def record(client, people, **fields):
         "diagnosis": "测试记录",
         "description": "仅用于软件测试",
         "record_date": "2026-08-20",
+        "reviewed": True,
     } | fields
     response = client.post(
         f"/api/v1/patients/{people['patient_a_pid']}/medical-records",

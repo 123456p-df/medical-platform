@@ -1,0 +1,44 @@
+name: frontend
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --locked --project backend
+      - run: pnpm typecheck
+      - run: pnpm test:p0
+      - run: pnpm test:p1-consistency
+      - run: pnpm test:volume
+      - run: pnpm test:comparison
+      - run: pnpm test:viewer-stability
+      - run: pnpm test:docs
+      - run: pnpm test:i18n
+      - run: pnpm test:profile
+      - run: pnpm test:a11y
+      - run: pnpm test:contract
+      - run: pnpm test:bundle-budget
+      - run: pnpm build --outDir dist-v5-ci-final
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: pnpm test:e2e:real
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

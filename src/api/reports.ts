@@ -1,6 +1,6 @@
 import { api, collection } from './client'
-import { mapRecord, type RecordDTO } from './mappers'
-import type { Report } from '@/types'
+import { mapAddendum, mapRecord, type AddendumDTO, type RecordDTO } from './mappers'
+import type { Report, ReportAddendum } from '@/types'
 export const reportApi = {
   async getReportsByPatient(id: string) { return (await collection<RecordDTO>('/patients/' + id + '/medical-records')).map(mapRecord) },
   async getReviewedReportsByPatient(id: string) { return this.getReportsByPatient(id) },
@@ -13,5 +13,13 @@ export const reportApi = {
         recommendation: report.recommendation, reviewed: report.reviewed, record_date: report.date }),
     })
     return mapRecord(data)
+  },
+  async getAddenda(id: string): Promise<ReportAddendum[]> {
+    return (await api<AddendumDTO[]>('/medical-records/' + id + '/addenda')).map(mapAddendum)
+  },
+  async addAddendum(id: string, reason: string, content: string): Promise<ReportAddendum> {
+    return mapAddendum(await api<AddendumDTO>('/medical-records/' + id + '/addenda', {
+      method: 'POST', body: JSON.stringify({ reason, content }),
+    }))
   },
 }

@@ -34,13 +34,13 @@ const emit = defineEmits<{
     </div>
     <div v-if="!compact" class="finding-actions">
       <button type="button" class="btn btn-sm btn-secondary" @click="emit('updateStatus', 'confirmed')">
-        <Check :size="14" /> Confirm
+        <Check :size="14" /> {{ $t('Confirm') }}
       </button>
       <button type="button" class="btn btn-sm btn-secondary" @click="emit('updateStatus', 'modified')">
-        <RotateCcw :size="14" /> Modify
+        <RotateCcw :size="14" /> {{ $t('Modify') }}
       </button>
       <button type="button" class="btn btn-sm btn-danger" @click="emit('updateStatus', 'dismissed')">
-        <X :size="14" /> Dismiss
+        <X :size="14" /> {{ $t('Dismiss') }}
       </button>
     </div>
   </article>

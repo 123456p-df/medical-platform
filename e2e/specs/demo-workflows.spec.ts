@@ -1,0 +1,144 @@
+import { expect, test } from '@playwright/test'
+import { onePixelPng } from '../fixtures/synthetic-avatar'
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('pulmolink-language', 'en')
+  })
+})
+
+test('doctor opens a patient, preserves a report draft, signs it, and the patient sees it', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /Doctor Portal/ }).click()
+  await expect(page).toHaveURL(/\/doctor\/dashboard/)
+
+  const search = page.getByRole('searchbox')
+  await search.fill('Zhang')
+  await expect(page.getByText('Zhang San', { exact: true }).first()).toBeVisible()
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Open patient record: Zhang San' }).first().click()
+  await expect(page).toHaveURL(/\/doctor\/patients\/P20260021/)
+
+  await page.getByRole('link', { name: 'Medical Imaging' }).first().click()
+  await expect(page).toHaveURL(/\/imaging/)
+  await expect(page.locator('canvas').first()).toBeVisible()
+
+  await page.getByRole('link', { name: 'Clinical report' }).first().click()
+  await expect(page).toHaveURL(/\/report/)
+  await page.locator('#diagnosis').fill('E2E draft diagnosis')
+  await page.locator('#description').fill('E2E draft imaging description')
+  await page.getByRole('button', { name: 'Save draft' }).click()
+  await expect(page.getByText('Draft saved.')).toBeVisible()
+
+  await page.reload()
+  await expect(page.locator('#diagnosis')).toHaveValue('E2E draft diagnosis')
+  await expect(page.locator('#description')).toHaveValue('E2E draft imaging description')
+
+  await page.getByRole('button', { name: 'Mark reviewed and sign' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Confirm sign and publish' }).click()
+  await expect(page.getByText('Signed', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('button', { name: /Patient Portal/ }).click()
+  await expect(page).toHaveURL(/\/patient\/dashboard/)
+  await page.getByRole('link', { name: 'My Reports' }).first().click()
+  await expect(page.getByText('E2E draft diagnosis').first()).toBeVisible()
+})
+
+test('new patient registration completes onboarding with an isolated profile', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: 'Sign up' }).click()
+  await page.locator('#username').fill('e2e_new_patient')
+  await page.locator('#password').fill('Password123!')
+  await page.locator('#confirm-password').fill('Password123!')
+  await page.getByRole('button', { name: 'Create account' }).click()
+
+  await expect(page).toHaveURL(/\/patient\/onboarding/)
+  await page.locator('[data-testid="onboarding-name"]').fill('E2E Onboarding Patient')
+  await page.locator('[data-testid="onboarding-id"]').fill('E2E-IDENTITY-000001')
+  await page.getByRole('button', { name: 'Complete profile' }).click()
+  await expect(page).toHaveURL(/\/patient\/dashboard/)
+  await expect(page.getByText('My Health').first()).toBeVisible()
+
+  await page.reload()
+  await expect(page).toHaveURL(/\/patient\/dashboard/)
+  await expect(page.getByRole('heading', { name: 'My Health', exact: true })).toBeVisible()
+})
+
+test('doctor invitation links a newly registered patient to one existing record', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /Doctor Portal/ }).click()
+  await expect(page).toHaveURL(/\/doctor\/dashboard/)
+
+  await page.getByRole('button', { name: 'Add patient' }).click()
+  await page.locator('[data-testid="patient-create-name"]').fill('Invited E2E Patient')
+  await page.locator('[data-testid="patient-create-id"]').fill('E2E-INVITED-IDENTITY')
+  await page.getByRole('button', { name: 'Create patient record' }).click()
+  await expect(page.getByText('Invited E2E Patient').first()).toBeVisible()
+
+  const invitationButton = page.locator('button[aria-label="Generate record invitation for Invited E2E Patient"]').first()
+  await invitationButton.click()
+  const code = (await page.locator('.invite-code code').textContent())?.trim() || ''
+  expect(code.length).toBeGreaterThan(32)
+  await page.locator('dialog[open]').getByRole('button', { name: 'Close', exact: true }).click()
+
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('button', { name: 'Sign up' }).click()
+  await page.locator('#username').fill('e2e_invited_patient')
+  await page.locator('#password').fill('Password123!')
+  await page.locator('#confirm-password').fill('Password123!')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await expect(page).toHaveURL(/\/patient\/onboarding/)
+
+  await page.getByRole('tab', { name: 'Link existing record' }).click()
+  await page.locator('[data-testid="onboarding-token"]').fill(code)
+  await page.locator('[data-testid="onboarding-link-name"]').fill('Invited E2E Patient')
+  await page.locator('[data-testid="onboarding-link-id"]').fill('E2E-INVITED-IDENTITY')
+  await page.getByRole('button', { name: 'Link existing record' }).last().click()
+  await expect(page).toHaveURL(/\/patient\/dashboard/)
+  await expect(page.getByText('e2e_invited_patient').first()).toBeVisible()
+})
+
+test('admin archives a patient with a reason and restores it from the archive manager', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /Administrator/ }).click()
+  await expect(page).toHaveURL(/\/doctor\/dashboard/)
+
+  await page.locator('button[aria-label="Archive patient Zhang San"]').first().click()
+  await page.locator('dialog[open] [data-testid="archive-reason"]').fill('E2E archive verification')
+  await page.getByRole('button', { name: 'Confirm global archive' }).click()
+  await expect(page.getByText('Zhang San', { exact: true })).toHaveCount(0)
+
+  await page.getByRole('link', { name: 'Archived patients' }).click()
+  await expect(page).toHaveURL(/\/doctor\/archived/)
+  await expect(page.getByText('Zhang San', { exact: true })).toBeVisible()
+  await expect(page.getByText('E2E archive verification')).toBeVisible()
+  await page.getByRole('button', { name: 'Restore' }).click()
+  await expect(page.getByText('Zhang San', { exact: true })).toHaveCount(0)
+})
+
+test('profile avatar and attachment upload persist for the demo doctor account', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /Doctor Portal/ }).click()
+  await expect(page).toHaveURL(/\/doctor\/dashboard/)
+  await page.getByRole('link', { name: 'Open profile' }).click()
+  await expect(page).toHaveURL(/\/doctor\/profile/)
+
+  await page.locator('input[type="file"][accept^="image/png"]').setInputFiles({
+    name: 'e2e-avatar.png',
+    mimeType: 'image/png',
+    buffer: onePixelPng,
+  })
+  await page.getByRole('button', { name: 'Use this avatar' }).click()
+  await expect(page.getByText('Avatar updated')).toBeVisible()
+
+  await page.locator('input[type="file"][accept*=".pdf"]').setInputFiles({
+    name: 'e2e-credential.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('synthetic pdf attachment'),
+  })
+  await expect(page.getByText('e2e-credential.pdf')).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByText('e2e-credential.pdf')).toBeVisible()
+})

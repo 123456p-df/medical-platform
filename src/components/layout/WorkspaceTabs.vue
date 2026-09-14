@@ -1,39 +1,86 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { X } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs'
+import { useReportDraftStore } from '@/stores/reportDrafts'
+import { t } from '@/i18n'
 
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const workspace = useWorkspaceTabsStore()
+const drafts = useReportDraftStore()
 const visibleTabs = computed(() => workspace.tabs.filter(tab => tab.portal === auth.portal))
+const tabButtons = ref<HTMLButtonElement[]>([])
+const legacyTitles: Record<string, string> = {
+  '患者工作台': 'Patient Workspace',
+  '患者概览': 'Overview',
+  '医学影像': 'Medical Imaging',
+  'AI 辅助诊断': 'AI Findings',
+  '临床报告': 'Doctor Report',
+  '3D 影像': '3D Viewer',
+  '我的健康': 'My Health',
+  '我的检查': 'My Examinations',
+  '检查详情': 'Examination Detail',
+  '我的报告': 'My Reports',
+  '我的身体': 'My Body',
+  'AI 助手': 'AI Assistant',
+  '个人资料': 'ui.topbar.profile',
+}
 
-function closeTab(id: string) {
+function displayTitle(title: string) {
+  const separator = title.lastIndexOf(' · ')
+  const prefix = separator >= 0 ? title.slice(0, separator + 3) : ''
+  const base = separator >= 0 ? title.slice(separator + 3) : title
+  return prefix + t(legacyTitles[base] || base)
+}
+
+function setTabButton(element: unknown, index: number) {
+  if (element instanceof HTMLButtonElement) tabButtons.value[index] = element
+}
+
+function focusTab(index: number) {
+  const count = visibleTabs.value.length
+  if (!count) return
+  tabButtons.value[(index + count) % count]?.focus()
+}
+
+function onTabKeydown(event: KeyboardEvent, index: number) {
+  if (event.key === 'ArrowRight') focusTab(index + 1)
+  else if (event.key === 'ArrowLeft') focusTab(index - 1)
+  else if (event.key === 'Home') focusTab(0)
+  else if (event.key === 'End') focusTab(visibleTabs.value.length - 1)
+  else return
+  event.preventDefault()
+}
+
+async function closeTab(id: string) {
   const active = route.fullPath === id
   const index = workspace.closeTab(id)
   if (!active) return
   const remaining = visibleTabs.value
   const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)]
-  router.push(next?.path || (auth.portal === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard'))
+  await router.push(next?.path || (auth.portal === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard'))
+  await nextTick()
+  focusTab(Math.min(Math.max(index, 0), remaining.length - 1))
 }
 </script>
 
 <template>
-  <div class="workspace-tabs" role="tablist" aria-label="已打开的工作页面">
+  <div class="workspace-tabs" role="group" :aria-label="$t('ui.shell.openTabs')">
     <div
       v-for="tab in visibleTabs"
       :key="tab.id"
       class="workspace-tab"
-      :class="{ active: route.fullPath === tab.id }"
-      :title="tab.title"
+      :class="{ active: route.fullPath === tab.id, dirty: drafts.hasDirtyPath(tab.path) }"
+      :title="displayTitle(tab.title)"
     >
-      <button class="tab-main" type="button" role="tab" :aria-selected="route.fullPath === tab.id" @click="router.push(tab.path)">
-        <span>{{ tab.title }}</span>
+      <button :ref="element => setTabButton(element, visibleTabs.findIndex(item => item.id === tab.id))" class="tab-main" type="button" :tabindex="route.fullPath === tab.id ? 0 : -1" :aria-current="route.fullPath === tab.id ? 'page' : undefined" @keydown="onTabKeydown($event, visibleTabs.findIndex(item => item.id === tab.id))" @click="router.push(tab.path)">
+        <span>{{ displayTitle(tab.title) }}<i v-if="drafts.hasDirtyPath(tab.path)" :aria-label="$t('ui.shell.unsavedDraft')">●</i></span>
       </button>
-      <button class="tab-close" type="button" :aria-label="`关闭 ${tab.title}`" @click="closeTab(tab.id)">
+      <button class="tab-close" type="button" :aria-label="$t('ui.shell.closeTab', { title: displayTitle(tab.title) })" @click="closeTab(tab.id)">
         <X :size="13" />
       </button>
     </div>
@@ -94,6 +141,7 @@ function closeTab(id: string) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tab-main i { margin-left: 6px; color: var(--amber); font-size: 9px; font-style: normal; }
 
 .workspace-tab:hover {
   background: var(--surface-3);

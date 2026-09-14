@@ -14,6 +14,7 @@ import CrosshairsOverlay from './CrosshairsOverlay.vue'
 import { useCrosshairs } from '@/composables/useCrosshairs'
 import { useViewportGestures, activeMedicalTool } from '@/composables/useViewportGestures'
 import { useMeasurementTools } from '@/composables/useMeasurementTools'
+import { t } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -57,6 +58,12 @@ const emit = defineEmits<{
   positionChange: [position: number]
   selectFinding: [id: string]
   updateFindingBox: [
+    id: string,
+    centerVoxel: [number, number, number],
+    boxVoxel: [number, number, number, number, number, number],
+    diameterMm: number,
+  ]
+  commitFindingBox: [
     id: string,
     centerVoxel: [number, number, number],
     boxVoxel: [number, number, number, number, number, number],
@@ -142,20 +149,19 @@ const fitStyle = computed(() => {
 const label = computed(() => {
   if (props.title) return props.title
   return ({
-    axial: '轴向 · Axial',
-    coronal: '冠状 · Coronal',
-    sagittal: '矢状 · Sagittal',
+    axial: t('ui.viewer3d.axis.axial'),
+    coronal: t('ui.viewer3d.axis.coronal'),
+    sagittal: t('ui.viewer3d.axis.sagittal'),
   })[props.axis] || props.axis
 })
 
 const syntheticPreset = computed(() => {
-  if (props.preset === 'auto' || props.preset.startsWith('mri-')) return props.examination.type === 'MRI' ? 'brain' : 'lung'
+  if (props.preset === 'auto') return props.examination.type === 'MRI' ? 'brain' : 'lung'
   return props.preset as 'lung' | 'brain' | 'bone' | 'soft'
 })
-const probeUnit = computed(() => (props.examination.type === 'MRI' ? 'I' : 'HU'))
 
 // Crosshairs composable
-const { visible: crosshairsVisible, updateFromCanvas, getCanvasProjection } = useCrosshairs()
+const { visible: crosshairsVisible, updateFromCanvas, getCanvasProjection, releaseCrosshairs } = useCrosshairs(props.examination.id)
 
 // Measurement and HU probe
 const {
@@ -164,6 +170,7 @@ const {
   startRuler,
   updateRuler,
   finishRuler,
+  clearRulers,
   sampleHU,
   getTissueDescription,
 } = useMeasurementTools()
@@ -185,6 +192,22 @@ const WINDOW_PRESETS: Record<string, [number, number]> = {
 
 // Custom dynamic windowing state
 const customWindow = ref<[number, number] | undefined>(undefined)
+
+function resetViewport() {
+  resetPanZoom()
+  customWindow.value = undefined
+  windowCenter.value = null
+  windowWidth.value = null
+  clearRulers()
+  probeState.value = { col: -1, row: -1, hu: null }
+  lastBasePixels = null
+  render()
+}
+
+function onResetRequest(event: Event) {
+  const scope = (event as CustomEvent<{ examinationId?: string }>).detail?.examinationId
+  if (!scope || scope === props.examination.id) resetViewport()
+}
 
 let lastBasePixels: ImageData | null = null
 let lastBaseIndex = -1
@@ -359,7 +382,7 @@ function render() {
         if (customWindow.value) {
           query.set('window_center', String(customWindow.value[0]))
           query.set('window_width', String(customWindow.value[1]))
-        } else if (props.examination.type !== 'MRI' && windows[props.preset]) {
+        } else if (windows[props.preset]) {
           const [center, width] = windows[props.preset]
           query.set('window_center', String(center))
           query.set('window_width', String(width))
@@ -386,7 +409,7 @@ function render() {
 
       if (current === revision) displayed.value = index
     } catch (e) {
-      if (current === revision) error.value = e instanceof Error ? e.message : '加载失败'
+      if (current === revision) error.value = e instanceof Error ? e.message : t('ui.slice.loadFailed')
     } finally {
       if (current === revision) busy.value = false
     }
@@ -469,6 +492,7 @@ watch(
 )
 
 onMounted(() => {
+  window.addEventListener('pulmolink-reset-viewport', onResetRequest)
   if (stage.value) {
     stageObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -536,14 +560,16 @@ function keydown(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pulmolink-reset-viewport', onResetRequest)
   stageObserver?.disconnect()
   revision++
   controller?.abort()
   cancelAnimationFrame(frame)
+  releaseCrosshairs()
 })
 
 defineExpose({
-  resetPanZoom,
+  resetPanZoom: resetViewport,
   render,
   setSlice(index: number) {
     move(index)
@@ -560,7 +586,7 @@ defineExpose({
         <strong>{{ label }}</strong>
       </div>
       <div class="heading-right">
-        <span class="meta-tag">{{ geometry.spacing.toFixed(2) }} mm</span>
+        <span class="meta-tag">{{ examination.spacing?.length ? geometry.spacing.toFixed(2) + ' mm' : $t('ui.slice.spacingMissing') }}</span>
       </div>
     </div>
 
@@ -569,7 +595,7 @@ defineExpose({
       ref="stage"
       :class="['slice-stage', cursorClass]"
       tabindex="0"
-      :aria-label="label + '视图，方向键切层，右键调窗，中键平移'"
+      :aria-label="$t('ui.slice.viewportLabel', { label })"
       @contextmenu.prevent
       @wheel="gestureHandleWheel"
       @pointerdown="onStagePointerDown"
@@ -577,10 +603,10 @@ defineExpose({
       @pointerup="onStagePointerUp"
     >
       <!-- 解剖方位标记 (RAS) -->
-      <span class="orientation top">{{ axis === 'axial' ? 'A' : 'S' }}</span>
-      <span class="orientation bottom">{{ axis === 'axial' ? 'P' : 'I' }}</span>
-      <span class="orientation left">{{ axis === 'sagittal' ? 'A' : 'R' }}</span>
-      <span class="orientation right">{{ axis === 'sagittal' ? 'P' : 'L' }}</span>
+      <span v-if="examination.type !== 'X-Ray'" class="orientation top">{{ axis === 'axial' ? 'A' : 'S' }}</span>
+      <span v-if="examination.type !== 'X-Ray'" class="orientation bottom">{{ axis === 'axial' ? 'P' : 'I' }}</span>
+      <span v-if="examination.type !== 'X-Ray'" class="orientation left">{{ axis === 'sagittal' ? 'A' : 'R' }}</span>
+      <span v-if="examination.type !== 'X-Ray'" class="orientation right">{{ axis === 'sagittal' ? 'P' : 'L' }}</span>
 
       <!-- 核心画布容器 (平移与缩放 transform) -->
       <div
@@ -602,7 +628,7 @@ defineExpose({
           v-else
           ref="canvas"
           role="img"
-          :aria-label="examination.type + ' ' + axis + ' 切片'"
+          :aria-label="$t('ui.slice.imageLabel', { type: examination.type, axis })"
           :data-slice-index="displayed"
           :data-render-mode="renderer ? 'local' : 'preview'"
         />
@@ -628,21 +654,21 @@ defineExpose({
           :window-width="windowWidth"
           :probe-h-u="probeState.hu"
           :probe-tissue="probeState.tissue"
-          :probe-unit="probeUnit"
           :rulers="rulers"
           :active-ruler="activeRuler"
           :is-maximized="isMaximized"
           @toggle-maximize="emit('toggleMaximize')"
           @select-finding="emit('selectFinding', $event)"
           @update-finding-box="(id, centerV, boxV, dia) => emit('updateFindingBox', id, centerV, boxV, dia)"
+          @commit-finding-box="(id, centerV, boxV, dia) => emit('commitFindingBox', id, centerV, boxV, dia)"
         />
       </div>
 
       <!-- 加载中与错误提示 -->
-      <span v-if="busy && displayed < 0" class="slice-message">加载体素切片…</span>
+      <span v-if="busy && displayed < 0" class="slice-message">{{ $t('ui.slice.loading') }}</span>
       <div v-if="error" role="alert" class="slice-message error">
         {{ error }}
-        <button @click="retry++">重试</button>
+        <button @click="retry++">{{ $t('Retry') }}</button>
       </div>
     </div>
 
@@ -650,7 +676,7 @@ defineExpose({
     <div class="slice-controls">
       <button
         :disabled="slice === 0 || blocked"
-        :aria-label="label + '上一层'"
+        :aria-label="$t('ui.slice.previous', { label })"
         @click="move(slice - 1)"
       >
         <ChevronLeft :size="14" />
@@ -658,7 +684,7 @@ defineExpose({
       <input
         :value="slice"
         :disabled="blocked"
-        :aria-label="label + '切片位置'"
+        :aria-label="$t('ui.slice.position', { label })"
         type="range"
         min="0"
         :max="geometry.count - 1"
@@ -666,7 +692,7 @@ defineExpose({
       />
       <button
         :disabled="slice >= geometry.count - 1 || blocked"
-        :aria-label="label + '下一层'"
+        :aria-label="$t('ui.slice.next', { label })"
         @click="move(slice + 1)"
       >
         <ChevronRight :size="14" />

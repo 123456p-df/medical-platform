@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import WorkflowQueue from '@/components/medical/WorkflowQueue.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   Activity,
   CalendarDays,
@@ -12,7 +12,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { usePatientStore } from '@/stores/patients'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import StatsCard from '@/components/ui/StatsCard.vue'
@@ -21,45 +21,53 @@ import FilterBar from '@/components/ui/FilterBar.vue'
 import PatientTable from '@/components/patient/PatientTable.vue'
 import PatientCreateDialog from '@/components/patient/PatientCreateDialog.vue'
 import PatientDeleteButton from '@/components/patient/PatientDeleteButton.vue'
+import PatientInvitationButton from '@/components/patient/PatientInvitationButton.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
+import StatePanel from '@/components/ui/StatePanel.vue'
 import type { Patient } from '@/types'
+import { localCalendarDate } from '@/utils/dates'
+import { organNames } from '@/api/mappers'
 
 const router = useRouter()
-function openStudyViewer(patientId: string) {
-  const href = router.resolve({ name: 'study-viewer', params: { patientId } }).href
-  window.open(href, '_blank', 'noopener')
-}
+const route = useRoute()
 const store = usePatientStore()
 
+function queryValue(key: string, fallback: string) {
+  return typeof route.query[key] === 'string' ? String(route.query[key]) : fallback
+}
+
 const filters = reactive({
-  search: '',
-  modality: 'All',
-  organ: 'All',
-  status: 'All',
-  risk: 'All',
-  date: 'All',
+  search: queryValue('search', ''),
+  modality: queryValue('modality', 'All'),
+  organ: queryValue('organ', 'All'),
+  status: queryValue('status', 'All'),
+  risk: queryValue('risk', 'All'),
+  date: queryValue('date', 'All'),
+  sort: queryValue('sort', 'name'),
+  direction: queryValue('direction', 'asc'),
 })
 
 const selectedPatientId = ref<string | null>(null)
 const patientDialog = ref<InstanceType<typeof PatientCreateDialog>>()
-const today = new Date().toISOString().slice(0, 10)
-const recent = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+const today = localCalendarDate()
+const recent = localCalendarDate(new Date(Date.now() - 7 * 86400000))
 
-const totalPatients = computed(() => store.patients.length)
+const totalPatients = computed(() => store.patientTotal)
+const totalPages = computed(() => Math.max(1, Math.ceil(store.patientTotal / store.patientPageSize)))
 const pendingReview = computed(
-  () => store.patients.filter((patient) => patient.modality !== '—').length,
+  () => store.patients.filter((patient) => patient.status === 'Pending Review').length,
 )
 const abnormalFindings = computed(
-  () => store.patients.filter((patient) => patient.modality === '—').length,
+  () => store.patients.filter((patient) => patient.risk === 'High' || patient.risk === 'Medium').length,
 )
 const todaysExams = computed(
-  () => store.patients.filter((patient) => patient.lastExamDate === today).length,
+  () => store.patients.filter((patient) => patient.lastUploadedAt?.slice(0, 10) === today).length,
 )
 
 const modalityOptions = ['All', 'CT', 'MRI', 'X-Ray']
 const organOptions = computed(() => ['All', ...new Set(store.patients.map((patient) => patient.organ))])
-const statusOptions = computed(() => ['All', ...new Set(store.patients.map((patient) => patient.status))])
+const statusOptions = ['All', 'Pending Review', 'Reviewed', 'Not assessed']
 const riskOptions = computed(() => ['All', ...new Set(store.patients.map((patient) => patient.risk))])
 
 const filteredPatients = computed(() => {
@@ -93,7 +101,9 @@ const selectedPatient = computed(
 )
 
 const hasActiveFilters = computed(
-  () => filters.search.trim() !== '' || Object.entries(filters).some(([key, value]) => key !== 'search' && value !== 'All'),
+  () => filters.search.trim() !== ''
+    || ['modality', 'organ', 'status', 'risk', 'date'].some(key => filters[key as keyof typeof filters] !== 'All')
+    || filters.sort !== 'name' || filters.direction !== 'asc',
 )
 
 function selectPatient(patient: Patient) {
@@ -109,6 +119,7 @@ function openPatient(patient: Patient) {
 function patientCreated(id: string) {
   selectedPatientId.value = id
   store.selectedPatientId = id
+  void loadRoster(1)
 }
 
 function patientRemoved(id: string) {
@@ -116,14 +127,76 @@ function patientRemoved(id: string) {
     selectedPatientId.value = store.patients[0]?.id || null
     store.selectedPatientId = selectedPatientId.value
   }
+  void loadRoster(Math.min(store.patientPage, totalPages.value))
 }
 
 function resetFilters() {
-  Object.assign(filters, { search: '', modality: 'All', organ: 'All', status: 'All', risk: 'All', date: 'All' })
+  Object.assign(filters, { search: '', modality: 'All', organ: 'All', status: 'All', risk: 'All', date: 'All', sort: 'name', direction: 'asc' })
 }
 
+let rosterTimer: ReturnType<typeof setTimeout> | undefined
+let rosterController: AbortController | undefined
+
+function organIdForFilter() {
+  if (filters.organ === 'All') return undefined
+  return Object.entries(organNames).find(([, name]) => name === filters.organ)?.[0]
+}
+
+function reviewStatusForFilter() {
+  return ({ 'Pending Review': 'pending', Reviewed: 'reviewed', 'Not assessed': 'unassessed' } as Record<string, string>)[filters.status]
+}
+
+function persistRosterQuery(page: number) {
+  const query: Record<string, string> = {}
+  if (page > 1) query.page = String(page)
+  if (filters.search.trim()) query.search = filters.search.trim()
+  for (const key of ['modality', 'organ', 'status', 'risk', 'date'] as const) {
+    if (filters[key] !== 'All') query[key] = filters[key]
+  }
+  if (filters.sort !== 'name') query.sort = filters.sort
+  if (filters.direction !== 'asc') query.direction = filters.direction
+  void router.replace({ query })
+}
+
+async function loadRoster(page = store.patientPage) {
+  persistRosterQuery(page)
+  rosterController?.abort()
+  rosterController = new AbortController()
+  await store.loadPatientRoster({
+    page,
+    pageSize: 20,
+    search: filters.search.trim() || undefined,
+    modality: filters.modality === 'All' ? undefined : filters.modality,
+    organId: organIdForFilter(),
+    reviewStatus: reviewStatusForFilter(),
+    sort: filters.sort === 'id' ? 'id' : 'name',
+    direction: filters.direction === 'desc' ? 'desc' : 'asc',
+    signal: rosterController.signal,
+  })
+  if (!selectedPatientId.value || !store.patients.some(patient => patient.id === selectedPatientId.value)) {
+    selectedPatientId.value = store.patients[0]?.id || null
+    store.selectedPatientId = selectedPatientId.value
+  }
+}
+
+watch(
+  [() => filters.search, () => filters.modality, () => filters.organ, () => filters.status, () => filters.sort, () => filters.direction],
+  () => {
+    clearTimeout(rosterTimer)
+    rosterTimer = setTimeout(() => void loadRoster(1), 300)
+  },
+)
+
+watch([() => filters.risk, () => filters.date], () => persistRosterQuery(store.patientPage))
+
+onBeforeUnmount(() => {
+  clearTimeout(rosterTimer)
+  rosterController?.abort()
+})
+
 onMounted(async () => {
-  if (!store.patients.length) await store.loadPatients()
+  const requestedPage = Math.max(1, Number.parseInt(queryValue('page', '1'), 10) || 1)
+  await loadRoster(requestedPage)
   if (!selectedPatientId.value || !store.patients.some((patient) => patient.id === selectedPatientId.value)) {
     selectedPatientId.value = store.patients[0]?.id || null
   }
@@ -150,8 +223,8 @@ onMounted(async () => {
     <WorkflowQueue />
 
     <div v-if="store.lastArchivedPatient" class="undo-banner" role="status">
-      <span>已从工作台移除患者 <strong>{{ store.lastArchivedPatient.name }}</strong></span>
-      <button class="btn btn-secondary btn-sm" type="button" @click="store.restoreLastPatient()">撤销</button>
+      <span>{{ $t('ui.dashboard.archived', { name: store.lastArchivedPatient.name }) }}</span>
+      <button class="btn btn-secondary btn-sm" type="button" @click="store.restoreLastPatient()">{{ $t('ui.dashboard.undo') }}</button>
     </div>
 
     <section class="dashboard-grid">
@@ -159,26 +232,26 @@ onMounted(async () => {
         <div class="card">
           <div class="card-header">
             <div>
-              <h2>All Patients</h2>
-              <p class="muted">搜索、添加或管理患者档案。</p>
+              <h2>{{ $t('ui.dashboard.allPatients') }}</h2>
+              <p class="muted">{{ $t('ui.dashboard.manageRoster') }}</p>
             </div>
             <div class="roster-heading-actions">
-              <span class="patient-count">{{ filteredPatients.length }} / {{ totalPatients }}</span>
-              <button class="btn btn-primary" type="button" @click="patientDialog?.open()"><UserPlus :size="16" /> 加入患者</button>
+              <span class="patient-count">{{ $t('ui.dashboard.pageCount', { shown: filteredPatients.length, total: totalPatients }) }}</span>
+              <button class="btn btn-primary" type="button" @click="patientDialog?.open()"><UserPlus :size="16" /> {{ $t('ui.dashboard.addPatient') }}</button>
             </div>
           </div>
           <div class="patient-search-row">
-            <SearchBar v-model="filters.search" placeholder="搜索患者姓名或患者 ID…" />
-            <span v-if="filters.search">正在显示与“{{ filters.search }}”匹配的患者</span>
-            <span v-else>输入姓名或患者 ID 即可快速查找</span>
+            <SearchBar v-model="filters.search" :placeholder="$t('ui.dashboard.searchPlaceholder')" />
+            <span v-if="filters.search">{{ $t('ui.dashboard.searchResult', { query: filters.search }) }}</span>
+            <span v-else>{{ $t('ui.dashboard.searchHint') }}</span>
           </div>
           <div class="filter-row">
             <FilterBar>
               <select v-model="filters.modality" class="select" aria-label="Modality filter">
-                <option v-for="option in modalityOptions" :key="option" :value="option">{{ option }}</option>
+                <option v-for="option in modalityOptions" :key="option" :value="option">{{ $t(option) }}</option>
               </select>
               <select v-model="filters.organ" class="select" aria-label="Organ filter">
-                <option v-for="option in organOptions" :key="option" :value="option">{{ option }}</option>
+                <option v-for="option in organOptions" :key="option" :value="option">{{ $t(option) }}</option>
               </select>
               <select v-model="filters.status" class="select" aria-label="Status filter">
                 <option v-for="option in statusOptions" :key="option" :value="option">{{ $t(option) }}</option>
@@ -187,20 +260,27 @@ onMounted(async () => {
                 <option v-for="option in riskOptions" :key="option" :value="option">{{ $t(option) }}</option>
               </select>
               <select v-model="filters.date" class="select" aria-label="Date filter">
-                <option value="All">All dates</option>
-                <option value="Today">Today</option>
-                <option value="Recent">Last 7 days</option>
+                <option value="All">{{ $t('All dates') }}</option>
+                <option value="Today">{{ $t('Today') }}</option>
+                <option value="Recent">{{ $t('Last 7 days') }}</option>
+              </select>
+              <select v-model="filters.sort" class="select" :aria-label="$t('ui.dashboard.sort')">
+                <option value="name">{{ $t('ui.dashboard.sortName') }}</option>
+                <option value="id">{{ $t('ui.dashboard.sortId') }}</option>
+              </select>
+              <select v-model="filters.direction" class="select" :aria-label="$t('ui.dashboard.direction')">
+                <option value="asc">{{ $t('ui.dashboard.ascending') }}</option>
+                <option value="desc">{{ $t('ui.dashboard.descending') }}</option>
               </select>
               <button v-if="hasActiveFilters" type="button" class="btn btn-secondary btn-sm" @click="resetFilters">
                 <RotateCcw :size="14" /> {{ $t('Clear filters') }}
               </button>
             </FilterBar>
           </div>
-          <p v-if="store.error" class="roster-message error-message" role="alert">
-            {{ store.error }}
-            <button type="button" class="btn btn-secondary btn-sm" @click="store.loadPatients()">重试</button>
-          </p>
-          <p v-else-if="store.loading" class="roster-message">正在加载患者列表…</p>
+          <StatePanel v-if="store.error" kind="error" compact :message="store.error">
+            <template #actions><button type="button" class="btn btn-secondary btn-sm" @click="loadRoster()">{{ $t('ui.dashboard.retry') }}</button></template>
+          </StatePanel>
+          <StatePanel v-else-if="store.loading" kind="loading" compact :message="$t('ui.dashboard.loading')" />
           <PatientTable
             v-else
             :patients="filteredPatients"
@@ -208,16 +288,20 @@ onMounted(async () => {
             @open="openPatient"
             @removed="patientRemoved"
           />
-          <div v-if="!store.loading && !store.error && !filteredPatients.length" class="empty-state">
-            没有找到匹配的患者。
-            <button v-if="hasActiveFilters" type="button" class="btn btn-secondary btn-sm" @click="resetFilters">清除筛选</button>
-          </div>
+          <nav v-if="totalPages > 1 && !store.loading" class="pagination" :aria-label="$t('ui.dashboard.pagination')">
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="store.patientPage <= 1" @click="loadRoster(store.patientPage - 1)">{{ $t('ui.dashboard.previousPage') }}</button>
+            <span>{{ $t('ui.dashboard.page', { page: store.patientPage, total: totalPages }) }}</span>
+            <button type="button" class="btn btn-secondary btn-sm" :disabled="store.patientPage >= totalPages" @click="loadRoster(store.patientPage + 1)">{{ $t('ui.dashboard.nextPage') }}</button>
+          </nav>
+          <StatePanel v-if="!store.loading && !store.error && !filteredPatients.length" kind="empty" compact :message="$t('ui.dashboard.noMatch')">
+            <template v-if="hasActiveFilters" #actions><button type="button" class="btn btn-secondary btn-sm" @click="resetFilters">{{ $t('ui.reports.clear') }}</button></template>
+          </StatePanel>
         </div>
       </div>
 
       <aside class="selected-panel card">
         <div class="card-header">
-          <h3>Selected Patient</h3>
+          <h3>{{ $t('ui.dashboard.selectedPatient') }}</h3>
         </div>
         <div v-if="selectedPatient" class="selected-content">
           <div class="selected-person">
@@ -230,7 +314,7 @@ onMounted(async () => {
             </div>
           </div>
           <div class="selected-meta">
-            <span>{{ selectedPatient.age === null ? '年龄未登记' : selectedPatient.age + ' ' + $t('years') }}</span>
+            <span>{{ selectedPatient.age === null ? $t('ui.dashboard.ageUnknown') : selectedPatient.age + ' ' + $t('years') }}</span>
             <span>{{ $t(selectedPatient.gender) }}</span>
             <span>{{ $t(selectedPatient.modality) }} · {{ $t(selectedPatient.organ) }}</span>
           </div>
@@ -238,7 +322,7 @@ onMounted(async () => {
             <ScanLine :size="48" style="color:#83b5b8;position:absolute;left:calc(50% - 24px);top:calc(50% - 24px)" />
           </div>
           <div class="preview-caption">
-            <span><ScanLine :size="14" /> Latest examination</span>
+            <span><ScanLine :size="14" /> {{ $t('ui.dashboard.latestExam') }}</span>
             <span>{{ selectedPatient.lastExamDate }}</span>
           </div>
           <div class="selected-status">
@@ -247,20 +331,19 @@ onMounted(async () => {
           </div>
           <div class="selected-actions">
             <button type="button" class="btn btn-primary" @click="router.push({ name: 'doctor-patient-imaging', params: { id: selectedPatient.id } })">
-              <ScanLine :size="16" /> View Imaging
+              <ScanLine :size="16" /> {{ $t('ui.dashboard.viewImaging') }}
             </button>
             <button type="button" class="btn btn-secondary" @click="router.push({ name: 'doctor-patient-report', params: { id: selectedPatient.id } })">
-              <FileText :size="16" /> View Report
+              <FileText :size="16" /> {{ $t('ui.dashboard.viewReport') }}
             </button>
-            <button type="button" class="btn btn-secondary" @click="openStudyViewer(selectedPatient.id)">
-              <Activity :size="16" /> View 3D
+            <button type="button" class="btn btn-secondary" @click="router.push({ name: 'doctor-patient-3d', params: { id: selectedPatient.id } })">
+              <Activity :size="16" /> {{ $t('ui.dashboard.view3d') }}
             </button>
             <PatientDeleteButton :id="selectedPatient.id" :name="selectedPatient.name" stay @removed="patientRemoved" />
+            <PatientInvitationButton :id="selectedPatient.id" :name="selectedPatient.name" :id-number="selectedPatient.idNumber" />
           </div>
         </div>
-        <div v-else class="empty-state">
-          Select a patient to preview their record.
-        </div>
+        <StatePanel v-else kind="empty" compact :message="$t('ui.dashboard.selectPreview')" />
       </aside>
     </section>
   </div>
@@ -291,6 +374,7 @@ onMounted(async () => {
   font-size: 12px;
   font-weight: 700;
 }
+.pagination{display:flex;align-items:center;justify-content:center;gap:12px;padding:14px}.pagination span{color:var(--text-muted);font-size:11px}
 
 .roster-heading-actions,
 .patient-search-row {
@@ -398,6 +482,10 @@ onMounted(async () => {
 .selected-person span {
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.selected-person .large-avatar {
+  color: #ffffff;
 }
 
 .selected-meta {

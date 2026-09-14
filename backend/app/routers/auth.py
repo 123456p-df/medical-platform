@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from app.audit import audit
 
+from app.audit import audit
 from app.deps import DB, Config, CurrentUser, require_admin
 from app.errors import APIError, Envelope, success
 from app.models import Doctor, JwtRevocation, Patient, User
@@ -13,7 +13,13 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 def user_out(user: User):
-    return {"user_id": user.id, "username": user.username, "role": user.role}
+    return {
+        "user_id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "account_role": user.role,
+        "profile_completed": False,
+    }
 
 
 @router.post("/register", status_code=201, response_model=Envelope[UserOut])
@@ -62,7 +68,11 @@ def login(body: Credentials, db: DB, settings: Config):
 @router.get("/me", response_model=Envelope[UserOut])
 def me(user: CurrentUser, db: DB):
     result = user_out(user)
-    result["patient_id"] = db.scalar(select(Patient.id).where(Patient.user_id == user.id))
+    patient = db.scalar(
+        select(Patient).where(Patient.user_id == user.id, Patient.deleted_at.is_(None))
+    )
+    result["patient_id"] = patient.id if patient else None
+    result["profile_completed"] = patient.profile_completed_at is not None if patient else True
     return success(result)
 
 

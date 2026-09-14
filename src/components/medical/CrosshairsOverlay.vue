@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { Maximize2, Minimize2 } from 'lucide-vue-next'
 import type { Shape3D, SliceAxis } from '@/utils/volumePixels'
 import { voxelToCanvas, canvasToVoxel } from '@/utils/volumePixels'
 import type { RulerMeasurement } from '@/composables/useMeasurementTools'
 import type { Finding } from '@/types'
+import { t } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -24,7 +25,6 @@ const props = withDefaults(
     windowWidth: number | null
     probeHU: number | null
     probeTissue?: string
-    probeUnit?: string
     probeVoxel?: [number, number, number] | null
     rulers: RulerMeasurement[]
     activeRuler: { startCol: number; startRow: number; endCol: number; endRow: number; lengthMm: number } | null
@@ -37,7 +37,6 @@ const props = withDefaults(
     spacing: () => [1, 1, 1],
     findings: () => [],
     selectedFindingId: null,
-    probeUnit: 'HU',
   },
 )
 
@@ -45,6 +44,12 @@ const emit = defineEmits<{
   toggleMaximize: []
   selectFinding: [id: string]
   updateFindingBox: [
+    id: string,
+    centerVoxel: [number, number, number],
+    boxVoxel: [number, number, number, number, number, number],
+    diameterMm: number,
+  ]
+  commitFindingBox: [
     id: string,
     centerVoxel: [number, number, number],
     boxVoxel: [number, number, number, number, number, number],
@@ -76,10 +81,15 @@ const draggingHandle = ref<{
   startW: number
   startH: number
 } | null>(null)
+const pendingCommit = ref<{
+  id: string
+  centerVoxel: [number, number, number]
+  boxVoxel: [number, number, number, number, number, number]
+  diameterMm: number
+} | null>(null)
 
 // Project findings into 2D canvas coordinates
 const projectedFindings = computed(() => {
-  const [nx, ny, nz] = props.shape
   const result: Array<{
     finding: Finding
     col: number
@@ -93,21 +103,9 @@ const projectedFindings = computed(() => {
   }> = []
 
   for (const f of props.findings) {
-    // Determine 3D voxel coordinate, fallback to deterministic center if not provided
-    let vx = f.centerVoxel ? f.centerVoxel[0] : Math.floor(nx * 0.42)
-    let vy = f.centerVoxel ? f.centerVoxel[1] : Math.floor(ny * 0.46)
-    let vz = f.centerVoxel ? f.centerVoxel[2] : Math.floor(nz * 0.5)
-
-    // For specific mock finding IDs, give distinct coordinates in the lungs
-    if (!f.centerVoxel) {
-      if (f.id.endsWith('1')) {
-        vx = Math.floor(nx * 0.35); vy = Math.floor(ny * 0.42); vz = Math.floor(nz * 0.6)
-      } else if (f.id.endsWith('2')) {
-        vx = Math.floor(nx * 0.65); vy = Math.floor(ny * 0.55); vz = Math.floor(nz * 0.45)
-      }
-    }
-
-    const box = f.boxVoxel || [vx, vy, vz, 24, 24, 6]
+    if (!f.centerVoxel || !f.boxVoxel) continue
+    const [vx, vy, vz] = f.centerVoxel
+    const box = f.boxVoxel
     const proj = voxelToCanvas(props.axis, vx, vy, vz, props.shape)
 
     let depthDiff = 0
@@ -136,19 +134,19 @@ const projectedFindings = computed(() => {
     const maxDepth = Math.max(1, Math.round(boxDepth / 2))
     if (depthDiff <= maxDepth) {
       let color = '#f59e0b' // Pending (Amber)
-      let statusLabel = '待复核'
+      let statusLabel = t('ui.finding.pending')
       if (f.status === 'confirmed') {
         color = '#22c55e'
-        statusLabel = '已采纳'
+        statusLabel = t('ui.finding.confirmed')
       } else if (f.status === 'dismissed') {
         color = '#64748b'
-        statusLabel = '已忽略'
+        statusLabel = t('ui.finding.dismissed')
       } else if (f.status === 'modified') {
         color = '#38bdf8'
-        statusLabel = '已修改'
+        statusLabel = t('ui.finding.modified')
       } else if (f.severity === 'High') {
         color = '#ef4444'
-        statusLabel = '高风险'
+        statusLabel = t('ui.finding.highRisk')
       }
 
       result.push({
@@ -261,14 +259,32 @@ function onHandlePointerMove(e: PointerEvent) {
     boxSizeZ,
   ]
 
-  emit('updateFindingBox', target.id, [vx, vy, vz], newBox, Number(newDiameter.toFixed(1)))
+  const diameterMm = Number(newDiameter.toFixed(1))
+  const centerVoxel: [number, number, number] = [vx, vy, vz]
+  pendingCommit.value = { id: target.id, centerVoxel, boxVoxel: newBox, diameterMm }
+  emit('updateFindingBox', target.id, centerVoxel, newBox, diameterMm)
 }
 
 function onHandlePointerUp() {
+  if (pendingCommit.value) {
+    emit(
+      'commitFindingBox',
+      pendingCommit.value.id,
+      pendingCommit.value.centerVoxel,
+      pendingCommit.value.boxVoxel,
+      pendingCommit.value.diameterMm,
+    )
+  }
+  pendingCommit.value = null
   draggingHandle.value = null
   window.removeEventListener('pointermove', onHandlePointerMove)
   window.removeEventListener('pointerup', onHandlePointerUp)
 }
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onHandlePointerMove)
+  window.removeEventListener('pointerup', onHandlePointerUp)
+})
 </script>
 
 <template>
@@ -414,7 +430,7 @@ function onHandlePointerUp() {
             font-weight="600"
             font-family="system-ui, sans-serif"
           >
-            {{ pf.statusLabel }} · {{ (pf.finding.diameterMm || 10).toFixed(1) }}mm
+            {{ pf.statusLabel }}{{ pf.finding.diameterMm ? ` · ${pf.finding.diameterMm.toFixed(1)}mm` : ` · ${$t('ui.finding.sizeMissing')}` }}
           </text>
         </g>
 
@@ -549,7 +565,7 @@ function onHandlePointerUp() {
     <div class="hud-top-right">
       <button
         class="hud-btn"
-        :title="isMaximized ? '还原网格布局' : '最大化视口'"
+        :title="$t(isMaximized ? 'ui.viewer.restoreGrid' : 'ui.viewer.maximizeViewport')"
         @click.stop="emit('toggleMaximize')"
       >
         <component :is="isMaximized ? Minimize2 : Maximize2" :size="13" />
@@ -569,7 +585,7 @@ function onHandlePointerUp() {
         W: <strong>{{ windowWidth }}</strong> L: <strong>{{ windowCenter }}</strong>
       </span>
       <span v-if="probeHU !== null" class="hud-item probe-hud">
-        {{ probeUnit }}: <strong>{{ probeHU }}</strong>
+        HU: <strong>{{ probeHU }}</strong>
         <small v-if="probeTissue">({{ probeTissue }})</small>
       </span>
     </div>

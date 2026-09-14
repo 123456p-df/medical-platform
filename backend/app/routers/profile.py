@@ -66,7 +66,7 @@ def read_upload(file, limit):
     if len(data) > limit:
         raise APIError(413, 41301, "File exceeds upload limit")
     if not data:
-        raise APIError(400, 40010, "File is empty")
+        raise APIError(400, 40011, "File is empty")
     return data
 
 
@@ -79,7 +79,7 @@ def decode_image(data):
         return ImageOps.exif_transpose(image).convert("RGB")
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         raise APIError(
-            400, 40010, "Use a valid JPEG, PNG or WebP image (up to 16 megapixels)"
+            400, 40011, "Use a valid JPEG, PNG or WebP image (up to 16 megapixels)"
         ) from None
 
 

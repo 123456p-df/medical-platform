@@ -1,6 +1,13 @@
+import { t } from '@/i18n'
+
 export const SESSION_KEY = 'vmrb-session-v1'
 export class ApiError extends Error {
-  constructor(public status: number, public code: number, message: string) { super(message) }
+  constructor(
+    public status: number,
+    public code: number,
+    message: string,
+    public details: { fieldErrors?: Record<string, string>; retryable?: boolean; requestId?: string } = {},
+  ) { super(message) }
 }
 export function readSession(): string | null {
   try {
@@ -9,14 +16,13 @@ export function readSession(): string | null {
     return null
   }
 }
-export function writeSession(value: string | null) {
+export function writeSession(value: string | null, remember = false) {
   try {
+    sessionStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(SESSION_KEY)
     if (value) {
-      sessionStorage.setItem(SESSION_KEY, value)
-      localStorage.setItem(SESSION_KEY, value)
-    } else {
-      sessionStorage.removeItem(SESSION_KEY)
-      localStorage.removeItem(SESSION_KEY)
+      if (remember) localStorage.setItem(SESSION_KEY, value)
+      else sessionStorage.setItem(SESSION_KEY, value)
     }
   } catch { /* private mode */ }
 }
@@ -26,15 +32,11 @@ export function inheritSessionFromOpener() {
       const inherited = window.opener.sessionStorage.getItem(SESSION_KEY)
       if (inherited) sessionStorage.setItem(SESSION_KEY, inherited)
     }
-    if (!sessionStorage.getItem(SESSION_KEY)) {
-      const stored = localStorage.getItem(SESSION_KEY)
-      if (stored) sessionStorage.setItem(SESSION_KEY, stored)
-    }
   } catch { /* opener blocked */ }
 }
 export function token(): string | null {
   try {
-    const stored = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY)
+    const stored = readSession()
     return JSON.parse(stored || 'null')?.accessToken ?? null
   }
   catch { return null }
@@ -44,9 +46,22 @@ export async function request(path: string, options: RequestInit = {}): Promise<
   const accessToken = token()
   if (accessToken) headers.set('Authorization', 'Bearer ' + accessToken)
   if (typeof options.body === 'string') headers.set('Content-Type', 'application/json')
+  const controller = new AbortController()
+  let timedOut = false
+  const abortFromCaller = () => controller.abort(options.signal?.reason)
+  options.signal?.addEventListener('abort', abortFromCaller, { once: true })
+  const timeout = globalThis.setTimeout(() => { timedOut = true; controller.abort() }, 30_000)
   let response: Response
-  try { response = await fetch(path.startsWith('/api/') ? path : '/api/v1' + path, { ...options, headers }) }
-  catch { throw new ApiError(0, 0, '无法连接后端，请检查服务是否已启动。') }
+  try {
+    response = await fetch(path.startsWith('/api/') ? path : '/api/v1' + path, { ...options, headers, signal: controller.signal })
+  } catch (reason) {
+    if (options.signal?.aborted) throw reason
+    if (timedOut) throw new ApiError(0, 40800, t('errors.timeout'), { retryable: true })
+    throw new ApiError(0, 0, t('errors.offline'), { retryable: true })
+  } finally {
+    globalThis.clearTimeout(timeout)
+    options.signal?.removeEventListener('abort', abortFromCaller)
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
     if (response.status === 401 && accessToken && accessToken !== 'local-preview' && token() === accessToken) {
@@ -55,18 +70,38 @@ export async function request(path: string, options: RequestInit = {}): Promise<
       window.dispatchEvent(new Event('vmrb-session-expired'))
     }
     const messages: Record<number, string> = {
-      40103: '用户名或密码错误。', 40301: '没有访问此患者的权限。',
-      40901: '该用户名已经被注册。',
-      50301: '分割模型尚未配置，请先设置模型目录和 GPU 运行环境。',
-      50302: 'AI 服务尚未配置，请填写 backend/.env 中的 AI 服务信息。',
-      50304: '肺结节检测模型尚未配置，请填写模型服务地址。',
-      40005: '当前分割模型不支持此影像类型。', 42201: '请检查输入格式和必填字段。',
-      40008: '肺结节检测当前只支持 CT 影像。',
-      40009: '肺结节检测只接受器官标记为 lung 的影像。',
-      40010: '检查日期不能晚于今天。',
-      40903: '该影像已有正在排队或运行的肺结节检测任务。',
+      40103: 'errors.40103', 40301: 'errors.40301',
+      40305: 'errors.40305', 40306: 'errors.40306',
+      40405: 'errors.40405', 40406: 'errors.40406',
+      40901: 'errors.40901',
+      40904: 'errors.40904',
+      40910: 'errors.40910', 40911: 'errors.40911',
+      40912: 'errors.40912', 40913: 'errors.40913',
+      40914: 'errors.40914', 40915: 'errors.40915',
+      40916: 'errors.40916', 40917: 'errors.40917',
+      40918: 'errors.40918', 40919: 'errors.40919',
+      50301: 'errors.50301',
+      50302: 'errors.50302',
+      50304: 'errors.50304',
+      50305: 'errors.50305',
+      40005: 'errors.40005', 40012: 'errors.40012', 42201: 'errors.42201',
+      40008: 'errors.40008',
+      40009: 'errors.40009',
+      40010: 'errors.40010',
+      40011: 'errors.40011',
+      40903: 'errors.40903',
+      40908: 'errors.40908',
+      40909: 'errors.40909',
+      50206: 'errors.50206',
     }
-    throw new ApiError(response.status, payload.code, messages[payload.code] || payload.message || '请求失败')
+    const translated = messages[payload.code]
+      ? t(messages[payload.code], { message: payload.message })
+      : payload.message || t('errors.generic')
+    throw new ApiError(response.status, payload.code, translated, {
+      fieldErrors: payload.field_errors,
+      retryable: payload.retryable ?? response.status >= 500,
+      requestId: payload.request_id || response.headers.get('x-request-id') || undefined,
+    })
   }
   return response
 }

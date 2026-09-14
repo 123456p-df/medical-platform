@@ -82,12 +82,16 @@ export function useViewportGestures(options?: {
     }
 
     // Determine drag action based on mouse button or active tool
-    if (event.button === 2 || activeMedicalTool.value === 'ww_wl') {
+    if (event.button === 2) {
       dragMode.value = 'ww_wl'
-    } else if (event.button === 1 || activeMedicalTool.value === 'pan' || (event.button === 0 && isSpaceDown)) {
+    } else if (event.button === 1 || (event.button === 0 && isSpaceDown)) {
       dragMode.value = 'pan'
     } else if (event.button === 0) {
-      if (activeMedicalTool.value === 'crosshairs') {
+      if (activeMedicalTool.value === 'ww_wl') {
+        dragMode.value = 'ww_wl'
+      } else if (activeMedicalTool.value === 'pan') {
+        dragMode.value = 'pan'
+      } else if (activeMedicalTool.value === 'crosshairs') {
         dragMode.value = 'crosshairs'
         options?.onCrosshairMove?.(canvasX, canvasY)
       } else if (activeMedicalTool.value === 'ruler') {

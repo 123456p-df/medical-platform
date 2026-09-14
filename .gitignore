@@ -29,12 +29,14 @@ htmlcov/
 *.backup
 *.pgdump
 
-# Database exports can contain credentials, password hashes, audit logs, or PHI.
-# Version only deliberately sanitized, human-reviewed demo fixtures.
+# Only version reviewed demo database fixtures.
 /backend/fixtures/**
 !/backend/fixtures/
 !/backend/fixtures/README.md
 !/backend/fixtures/*.fixture.json
+/dist-*/
+/test-results*/
+/playwright-report/
 build/
 .cache/
 .vite/

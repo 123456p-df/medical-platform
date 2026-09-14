@@ -39,7 +39,7 @@ function formatDate(date: string) {
         <span>{{ $t(formatDate(examination.date)) }}</span>
         <StatusBadge :status="examination.status" />
       </span>
-      <span class="timeline-action">{{ examination.status === 'Pending Review' ? '开始审核' : '查看影像' }}<ChevronRight :size="15" /></span>
+      <span class="timeline-action">{{ $t(examination.status === 'Pending Review' ? 'ui.timeline.startReview' : 'ui.timeline.viewImaging') }}<ChevronRight :size="15" /></span>
     </button>
   </div>
 </template>

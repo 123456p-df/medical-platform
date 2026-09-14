@@ -22,6 +22,7 @@ interface FindingDTO {
   lobe: string | null
   status: Finding['status']
   model_name: string
+  revision: number
 }
 
 function mapFinding(item: FindingDTO): Finding {
@@ -47,6 +48,7 @@ function mapFinding(item: FindingDTO): Finding {
     boxVoxel: item.box_voxel,
     description: item.description,
     status: item.status,
+    revision: item.revision,
   }
 }
 
@@ -57,10 +59,33 @@ export const findingApi = {
   async getFindingsByPatient(id: string): Promise<Finding[]> {
     return (await api<FindingDTO[]>('/patients/' + id + '/findings')).map(mapFinding)
   },
-  async updateFindingStatus(id: string, status: Finding['status']): Promise<Finding> {
+  async updateFindingStatus(id: string, status: Finding['status'], expectedRevision?: number): Promise<Finding> {
     const result = await api<FindingDTO>('/findings/' + id, {
       method: 'PATCH',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }),
+    })
+    return mapFinding(result)
+  },
+  async updateFindingGeometry(id: string, geometry: {
+    diameterMm: number
+    centerWorldMm: [number, number, number]
+    boxWorldMm: [number, number, number, number, number, number]
+    centerVoxel: [number, number, number]
+    boxVoxel: [number, number, number, number, number, number]
+    reason: string
+    expectedRevision?: number
+  }): Promise<Finding> {
+    const result = await api<FindingDTO>('/findings/' + id, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        diameter_mm: geometry.diameterMm,
+        center_world_mm: geometry.centerWorldMm,
+        box_world_mm: geometry.boxWorldMm,
+        center_voxel: geometry.centerVoxel,
+        box_voxel: geometry.boxVoxel,
+        modification_reason: geometry.reason,
+        ...(geometry.expectedRevision ? { expected_revision: geometry.expectedRevision } : {}),
+      }),
     })
     return mapFinding(result)
   },

@@ -19,9 +19,6 @@ _FALLBACK = {
     31: "trachea",
     32: "lung",
     115: "heart",
-    135: "left lung",
-    136: "right lung",
-    146: "vertebrae",
 }
 
 _GROUP_LABELS = {
@@ -33,11 +30,6 @@ _GROUP_LABELS = {
     "muscle": "肌肉",
     "artery": "动脉",
     "vein": "静脉",
-    "cortex": "皮层",
-    "white_matter": "白质",
-    "deep_nuclei": "深部核团",
-    "ventricle": "脑室",
-    "cerebellum": "小脑",
 }
 
 _EXACT_ZH = {
@@ -114,16 +106,6 @@ def _norm(name: str) -> str:
 
 def _group(name: str) -> str:
     lower = _norm(name)
-    if "ventricle" in lower or "ventricular" in lower or "lat-vent" in lower:
-        return "ventricle"
-    if "cerebellum" in lower or "vermal" in lower:
-        return "cerebellum"
-    if "white-matter" in lower or "white matter" in lower:
-        return "white_matter"
-    if any(token in lower for token in ("putamen", "caudate", "thalamus", "hippocampus", "amygdala", "pallidum", "accumbens")):
-        return "deep_nuclei"
-    if any(token in lower for token in ("gyrus", "cortex", "cuneus", "insula", "operculum", "pole")):
-        return "cortex"
     if "rib" in lower:
         return "rib"
     if "vertebra" in lower or re.search(r"\b[ctl]\d+\b", lower) or re.search(r"\bs1\b", lower):
@@ -225,13 +207,13 @@ class LabelCatalog:
             ):
                 try:
                     data = json.loads(candidate.read_text(encoding="utf-8"))
-                    everything = data.get("network_data_format", {}).get("everything_labels", {})
-                    merged = {}
-                    for key in ("CT_BODY", "MRI_BODY", "MRI_BRAIN"):
-                        values = everything.get(key) or {}
-                        merged.update({int(label): str(name) for label, name in values.items()})
-                    if merged:
-                        labels.update(merged)
+                    values = (
+                        data.get("network_data_format", {})
+                        .get("everything_labels", {})
+                        .get("CT_BODY", {})
+                    )
+                    if values:
+                        labels.update({int(key): str(value) for key, value in values.items()})
                         break
                 except (OSError, ValueError, TypeError):
                     continue

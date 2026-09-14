@@ -4,8 +4,13 @@ import { organCatalog } from '@/api/models'
 import { api } from '@/api/client'
 import DigitalHumanViewer from './DigitalHumanViewer.vue'
 import OrganModelViewer from './OrganModelViewer.vue'
+import { localPreview } from '@/utils/runtime'
+import { usePatientStore } from '@/stores/patients'
+import { t } from '@/i18n'
+import StatePanel from '@/components/ui/StatePanel.vue'
 
 const props = defineProps<{ patientId: string }>()
+const patients = usePatientStore()
 const organ = ref('lung')
 const error = ref('')
 const detail = ref<{
@@ -22,13 +27,27 @@ watch(
     onCleanup(() => { stale = true })
     error.value = ''
     detail.value = null
+    if (localPreview) {
+      if (patients.selectedPatientId !== props.patientId) await patients.loadPatientContext(props.patientId)
+      if (stale) return
+      const records = patients.reviewedReports
+        .filter(report => {
+          if (report.patientId !== props.patientId) return false
+          const examinationOrgan = patients.examinations.find(item => item.id === report.examinationId)?.organId
+          const organIds = report.organIds?.length ? report.organIds : [report.organId || examinationOrgan || 'other']
+          return organIds.includes(organ.value)
+        })
+        .map(report => ({ record_id: Number(report.id.replace(/\D/g, '')) || 0, date: report.date, diagnosis: report.diagnosis, description: report.description, doctor_name: report.doctor }))
+      detail.value = { name: organCatalog.find(item => item.id === organ.value)?.label || organ.value, records, records_total: records.length, model: { model_id: '', source: 'preview', available: false } }
+      return
+    }
     try {
       const data = await api<NonNullable<typeof detail.value>>(
         '/patients/' + props.patientId + '/organs/' + organ.value
       )
       if (!stale) detail.value = data
     } catch (reason) {
-      if (!stale) error.value = reason instanceof Error ? reason.message : '加载失败'
+      if (!stale) error.value = reason instanceof Error ? reason.message : t('ui.model.loadFailed')
     }
   },
   { immediate: true }
@@ -40,8 +59,8 @@ watch(
     <aside class="card">
       <div class="card-header">
         <div>
-          <h3>器官导航</h3>
-          <p class="muted">选择器官以查看真实解剖模型与病历</p>
+          <h3>{{ $t('ui.model.navigation') }}</h3>
+          <p class="muted">{{ $t('ui.model.navigationHelp') }}</p>
         </div>
       </div>
       <DigitalHumanViewer :selected-organ-id="organ" compact @select="organ = $event" />
@@ -60,17 +79,15 @@ watch(
     <section class="stack">
       <div class="card">
         <div class="card-header">
-          <h3>{{ detail?.name || organ }} · 解剖三维模型</h3>
+          <h3>{{ detail?.name || organ }} · {{ $t('ui.model.anatomicalModel') }}</h3>
         </div>
-        <div v-if="organ === 'other'" class="empty-state">
-          其他分类用于未建模器官、全身性或尚未归类的问题。相关病历显示在下方。
-        </div>
+        <StatePanel v-if="organ === 'other'" kind="empty" compact :message="$t('ui.model.otherHelp')" />
         <OrganModelViewer v-else :organ-id="organ" :model-info="detail?.model || null" />
       </div>
       <section class="card">
         <div class="card-header">
-          <h3>器官就诊与影像记录</h3>
-          <span class="muted">{{ detail?.records_total || 0 }} 条记录</span>
+          <h3>{{ $t('ui.model.recordsTitle') }}</h3>
+          <span class="muted">{{ $t('ui.model.recordCount', { count: detail?.records_total || 0 }) }}</span>
         </div>
         <div class="card-body">
           <p v-if="error" role="alert">{{ error }}</p>
@@ -79,11 +96,9 @@ watch(
             <h4>{{ r.diagnosis }}</h4>
             <p>{{ r.description }}</p>
           </article>
-          <div v-if="detail && !detail.records.length" class="empty-state">
-            该器官暂无历史记录。
-          </div>
+          <StatePanel v-if="detail && !detail.records.length" kind="empty" compact :message="$t('ui.model.noRecords')" />
           <p v-if="detail && detail.records_total > detail.records.length" class="muted">
-            显示最新的 {{ detail.records.length }} 条记录。
+            {{ $t('ui.model.latestRecords', { count: detail.records.length }) }}
           </p>
         </div>
       </section>

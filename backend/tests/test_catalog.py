@@ -20,6 +20,33 @@ def test_patient_collection_never_lists_unauthorized_patients(app_env, people):
     assert client.get("/api/v1/patients", headers=people["doctor_a"]).json()["data"]["items"] == []
 
 
+def test_patient_collection_search_sort_and_server_pagination(app_env, people, nifti_file):
+    app, client, _, _ = app_env
+    with app.state.session_factory() as db:
+        set_access(db, "doctor_a", people["patient_b_pid"], "active")
+    image_id = upload(client, people, nifti_file)
+    route = "/api/v1/patients"
+    headers = people["doctor_a"]
+    page = client.get(route, headers=headers, params={"page_size": 1, "sort": "name", "direction": "desc"}).json()["data"]
+    assert page["total"] == 2 and len(page["items"]) == 1
+    found = client.get(route, headers=headers, params={"search": "患者乙"}).json()["data"]
+    assert found["total"] == 1 and found["items"][0]["patient_id"] == people["patient_b_pid"]
+    filtered = client.get(route, headers=headers, params={"modality": "CT", "organ_id": "lung"}).json()["data"]
+    assert filtered["total"] == 1 and filtered["items"][0]["patient_id"] == people["patient_a_pid"]
+    pending = client.get(route, headers=headers, params={"review_status": "pending"}).json()["data"]
+    assert pending["total"] == 1 and pending["items"][0]["latest_image"]["status"] == "uploaded"
+    unassessed = client.get(route, headers=headers, params={"review_status": "unassessed"}).json()["data"]
+    assert unassessed["total"] == 1 and unassessed["items"][0]["patient_id"] == people["patient_b_pid"]
+    assert client.patch(
+        f"/api/v1/medical-images/{image_id}/review",
+        headers=headers,
+        json={"completed": True},
+    ).status_code == 200
+    reviewed = client.get(route, headers=headers, params={"review_status": "reviewed"}).json()["data"]
+    assert reviewed["total"] == 1 and reviewed["items"][0]["latest_image"]["status"] == "reviewed"
+    assert client.get(route, headers=headers, params={"review_status": "invalid"}).status_code == 422
+
+
 @pytest.mark.parametrize("resource", ["medical-images", "medical-records"])
 def test_portal_collections_enforce_access_and_pagination(app_env, people, nifti_file, resource):
     _, client, _, _ = app_env
