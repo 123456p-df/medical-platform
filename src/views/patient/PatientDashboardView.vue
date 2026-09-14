@@ -32,7 +32,6 @@ function openExam(examId: string) {
 }
 
 onMounted(async () => {
-  if (!store.patients.length) await store.loadPatients()
   await store.loadPatientContext(patientId.value)
 })
 </script>

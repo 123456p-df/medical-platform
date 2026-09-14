@@ -21,6 +21,8 @@ test('doctor opens a patient, preserves a report draft, signs it, and the patien
 
   await page.getByRole('link', { name: 'Medical Imaging' }).first().click()
   await expect(page).toHaveURL(/\/imaging/)
+  await expect(page.locator('.clinical-children .tree-item.is-active')).toHaveCount(1)
+  await expect(page.getByRole('link', { name: 'Medical Imaging' }).first()).toHaveClass(/is-active/)
   await expect(page.locator('canvas').first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Clinical report' }).first().click()
@@ -41,6 +43,7 @@ test('doctor opens a patient, preserves a report draft, signs it, and the patien
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.getByRole('button', { name: /Patient Portal/ }).click()
   await expect(page).toHaveURL(/\/patient\/dashboard/)
+  await expect(page.locator('.sidebar nav .nav-item.is-active')).toHaveCount(1)
   await page.getByRole('link', { name: 'My Reports' }).first().click()
   await expect(page.getByText('E2E draft diagnosis').first()).toBeVisible()
 })

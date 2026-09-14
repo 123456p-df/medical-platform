@@ -8,7 +8,6 @@ import {
   ClipboardList,
   FileText,
   HeartPulse,
-  Home,
   ArchiveRestore,
   LayoutDashboard,
   LogOut,
@@ -52,7 +51,6 @@ const clinicalItems = computed(() => currentPatientId.value ? [
 ] : [])
 
 const patientNav = computed(() => [
-  { label: 'Home', to: '/patient/dashboard', icon: Home },
   { label: 'My Health', to: '/patient/dashboard', icon: HeartPulse },
   { label: 'My Examinations', to: '/patient/examinations', icon: Stethoscope },
   { label: 'My Reports', to: '/patient/reports', icon: FileText },
@@ -111,10 +109,10 @@ async function logout() {
           <ChevronRight v-else class="tree-chevron" :size="15" />
         </button>
         <div v-if="managementExpanded" class="tree-children">
-          <RouterLink to="/doctor/dashboard" class="tree-item" active-class="is-active" @click="emit('close')">
+          <RouterLink to="/doctor/dashboard" class="tree-item" exact-active-class="is-active" @click="emit('close')">
             <LayoutDashboard :size="16" /><span>{{ $t('ui.sidebar.patientWorkspace') }}</span>
           </RouterLink>
-          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/archived" class="tree-item" active-class="is-active" @click="emit('close')">
+          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/archived" class="tree-item" exact-active-class="is-active" @click="emit('close')">
             <ArchiveRestore :size="16" /><span>{{ $t('ui.sidebar.archivedPatients') }}</span>
           </RouterLink>
         </div>
@@ -153,7 +151,7 @@ async function logout() {
               v-else
               :to="{ name: item.name, params: { id: currentPatientId } }"
               class="tree-item"
-              active-class="is-active"
+              exact-active-class="is-active"
               @click="emit('close')"
             >
               <component :is="item.icon" :size="16" />
@@ -165,7 +163,7 @@ async function logout() {
     </nav>
 
     <nav v-else class="nav" :aria-label="$t('ui.sidebar.patientNav')">
-      <RouterLink v-for="item in patientNav" :key="item.label" :to="item.to" class="nav-item" active-class="is-active" @click="emit('close')">
+      <RouterLink v-for="item in patientNav" :key="item.label" :to="item.to" class="nav-item" exact-active-class="is-active" @click="emit('close')">
         <component :is="item.icon" :size="18" />
         <span>{{ $t(item.label) }}</span>
       </RouterLink>
