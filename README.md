@@ -52,6 +52,12 @@ pnpm dev
 
 这会使用浏览器内的合成演示数据，不连接真实后端。要验证真实登录、患者、影像和报告流程，请使用上面的 `pnpm start`。
 
+## 数据库结构与演示数据
+
+数据库结构通过 `backend/migrations/` 中的 Alembic 迁移进行版本管理。经过人工审查的虚构演示数据位于 `backend/fixtures/demo_database.fixture.json`，后端演示种子程序会读取它；密码、身份加密值和哈希只在运行时生成，不写入 fixture。
+
+Docker 的 PostgreSQL 数据卷、真实患者资料、影像、数据库 dump 和 `.env` 始终保留在 Git 之外。不要为了共享数据库而提交原始数据目录；需要补充演示数据时，只能修改 `backend/fixtures/` 下明确命名为 `*.fixture.json` 的脱敏文件并先进行人工审查。
+
 构建与预览前端：
 
 ```bash

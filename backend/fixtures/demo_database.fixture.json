@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "data_classification": "synthetic-demo-only",
+  "users": [
+    {
+      "username": "admin",
+      "role": "doctor"
+    },
+    {
+      "username": "demo_doctor",
+      "role": "doctor"
+    },
+    {
+      "username": "demo_patient",
+      "role": "patient"
+    },
+    {
+      "username": "demo_patient_2",
+      "role": "patient"
+    },
+    {
+      "username": "demo_patient_3",
+      "role": "patient"
+    }
+  ],
+  "patients": [
+    {
+      "fixture_id": "patient-001",
+      "username": "demo_patient",
+      "display_name": "演示患者甲",
+      "birth_date": "1980-01-01",
+      "gender": "male",
+      "height_cm": 170,
+      "weight_kg": 65,
+      "blood_type": "A",
+      "doctor_access": [
+        "demo_doctor",
+        "admin"
+      ]
+    },
+    {
+      "fixture_id": "patient-002",
+      "username": "demo_patient_2",
+      "display_name": "演示患者乙",
+      "birth_date": "1990-04-12",
+      "gender": "female",
+      "height_cm": 171,
+      "weight_kg": 66,
+      "blood_type": "O",
+      "doctor_access": [
+        "demo_doctor",
+        "admin"
+      ]
+    },
+    {
+      "fixture_id": "patient-003",
+      "username": "demo_patient_3",
+      "display_name": "演示患者丙",
+      "birth_date": "1972-09-03",
+      "gender": "male",
+      "height_cm": 172,
+      "weight_kg": 67,
+      "blood_type": "B",
+      "doctor_access": [
+        "demo_doctor",
+        "admin"
+      ]
+    }
+  ],
+  "record_template": {
+    "organ_id": "lung",
+    "diagnosis": "演示病历 · 肺部 CT 资料记录",
+    "description": "完全虚构且仅用于前后端联调的数据，不代表真实患者、临床发现或诊断。",
+    "day_offsets": [
+      14,
+      0
+    ]
+  }
+}
