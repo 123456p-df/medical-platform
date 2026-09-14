@@ -6,6 +6,7 @@ import PatientTimeline from '@/components/patient/PatientTimeline.vue'
 import MedicalRecordCard from '@/components/medical/MedicalRecordCard.vue'
 import AIResultCard from '@/components/medical/AIResultCard.vue'
 import ReportCard from '@/components/medical/ReportCard.vue'
+import StatePanel from '@/components/ui/StatePanel.vue'
 import type { Examination, Finding } from '@/types'
 
 const route = useRoute()
@@ -42,8 +43,8 @@ async function updateFinding(finding: Finding, status: Finding['status']) {
       <div class="card">
         <div class="card-header">
           <div>
-            <h3>Examination Timeline</h3>
-            <p class="muted">Historical studies for {{ store.selectedPatient?.name }}</p>
+            <h3>{{ $t('Examination Timeline') }}</h3>
+            <p class="muted">{{ $t('Historical studies for') }} {{ store.selectedPatient?.name }}</p>
           </div>
         </div>
         <div class="card-body">
@@ -54,15 +55,15 @@ async function updateFinding(finding: Finding, status: Finding['status']) {
       <div class="card">
         <div class="card-header">
           <div>
-            <h3>AI Findings</h3>
-            <p class="muted">External AI output shown for clinical review.</p>
+            <h3>{{ $t('AI Findings') }}</h3>
+            <p class="muted">{{ $t('External AI output shown for clinical review.') }}</p>
           </div>
           <button
             type="button"
             class="btn btn-sm btn-secondary"
             @click="router.push({ name: 'doctor-patient-ai', params: { id: patientId } })"
           >
-            Review all
+            {{ $t('Review all') }}
           </button>
         </div>
         <div class="card-body stack">
@@ -74,7 +75,7 @@ async function updateFinding(finding: Finding, status: Finding['status']) {
               @update-status="updateFinding(finding, $event)"
             />
           </div>
-          <div v-else class="empty-state">No AI findings for the latest examination.</div>
+          <StatePanel v-else kind="empty" compact :message="$t('No AI findings for the latest examination.')" />
         </div>
       </div>
     </section>
@@ -82,7 +83,7 @@ async function updateFinding(finding: Finding, status: Finding['status']) {
     <aside class="side-column">
       <div v-if="store.selectedPatient">
         <div class="section-heading">
-          <h3>Patient Information</h3>
+          <h3>{{ $t('Patient Information') }}</h3>
         </div>
         <MedicalRecordCard :patient="store.selectedPatient" />
       </div>
@@ -90,13 +91,13 @@ async function updateFinding(finding: Finding, status: Finding['status']) {
       <div class="card report-block">
         <div class="card-header">
           <div>
-            <h3>Doctor Report</h3>
-            <p class="muted">Latest clinical summary.</p>
+            <h3>{{ $t('Doctor Report') }}</h3>
+            <p class="muted">{{ $t('Latest clinical summary.') }}</p>
           </div>
         </div>
         <div class="card-body">
           <ReportCard v-if="latestReport" :report="latestReport" />
-          <div v-else class="empty-state">No report has been drafted.</div>
+          <StatePanel v-else kind="empty" compact :message="$t('No report has been drafted.')" />
         </div>
       </div>
     </aside>

@@ -19,25 +19,25 @@ const sidebarCollapsed = ref(localStorage.getItem('pulmolink-sidebar-collapsed')
 const shellClass = computed(() => `portal-${auth.portal ?? 'doctor'}`)
 const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
 const tabTitles: Record<string, string> = {
-  'doctor-dashboard': '患者工作台',
-  'doctor-patient-overview': '患者概览',
-  'doctor-patient-imaging': '医学影像',
-  'doctor-patient-ai': 'AI 辅助诊断',
-  'doctor-patient-report': '临床报告',
-  'doctor-patient-3d': '3D 影像',
-  'patient-dashboard': '我的健康',
-  'patient-examinations': '我的检查',
-  'patient-examination-detail': '检查详情',
-  'patient-reports': '我的报告',
-  'patient-body': '我的身体',
-  'patient-ai': 'AI 助手',
+  'doctor-dashboard': 'ui.sidebar.patientWorkspace',
+  'doctor-patient-overview': 'ui.sidebar.patientOverview',
+  'doctor-patient-imaging': 'Medical Imaging',
+  'doctor-patient-ai': 'ui.sidebar.aiDiagnosis',
+  'doctor-patient-report': 'ui.sidebar.clinicalReport',
+  'doctor-patient-3d': 'ui.sidebar.organ3d',
+  'patient-dashboard': 'My Health',
+  'patient-examinations': 'My Examinations',
+  'patient-examination-detail': 'Examination Detail',
+  'patient-reports': 'My Reports',
+  'patient-body': 'My Body',
+  'patient-ai': 'AI Assistant',
 }
 const currentPatientName = computed(() => {
   const id = typeof route.params.id === 'string' ? route.params.id : ''
   return patients.patients.find(patient => patient.id === id)?.name || id
 })
 const currentTabTitle = computed(() => {
-  if (route.path.endsWith('/profile')) return '个人资料'
+  if (route.path.endsWith('/profile')) return 'ui.topbar.profile'
   const base = tabTitles[String(route.name)] || 'PulmoLink'
   return currentPatientName.value && String(route.name).startsWith('doctor-patient-')
     ? `${currentPatientName.value} · ${base}`
@@ -65,6 +65,7 @@ watch(
 
 <template>
   <div :class="['app-shell', shellClass, { 'sidebar-collapsed': sidebarCollapsed }]">
+    <a class="skip-link" href="#main-content">{{ $t('ui.a11y.skip') }}</a>
     <AIAssistant />
     <AppSidebar
       :open="sidebarOpen"
@@ -75,8 +76,8 @@ watch(
     <div class="app-main">
       <AppTopbar @open-sidebar="sidebarOpen = true" />
       <WorkspaceTabs />
-      <main class="app-content">
-        <div v-if="preview" class="preview-banner">本地测试环境 · 包含合成演示档案与明确标注的公开 CT / MRI 测试样本</div>
+      <main id="main-content" tabindex="-1" class="app-content">
+        <div v-if="preview" class="preview-banner">{{ $t('ui.shell.preview') }}</div>
         <div v-if="patients.error" class="data-error" role="alert">{{ patients.error }}</div>
         <RouterView v-slot="{ Component }">
           <component :is="Component" />
@@ -87,7 +88,7 @@ watch(
       v-if="sidebarOpen"
       class="sidebar-backdrop"
       type="button"
-      aria-label="Close navigation"
+      :aria-label="$t('Close navigation')"
       @click="sidebarOpen = false"
     />
   </div>

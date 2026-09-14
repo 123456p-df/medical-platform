@@ -5,6 +5,7 @@ import type { Patient } from '@/types'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import PatientDeleteButton from '@/components/patient/PatientDeleteButton.vue'
+import PatientInvitationButton from '@/components/patient/PatientInvitationButton.vue'
 
 defineProps<{
   patients: Patient[]
@@ -23,6 +24,11 @@ function formatDate(date: string) {
     month: 'short',
     day: '2-digit',
   }).format(new Date(`${date}T00:00:00`))
+}
+
+function openFromRow(event: KeyboardEvent, patient: Patient) {
+  if (event.target !== event.currentTarget) return
+  emit('open', patient)
 }
 </script>
 
@@ -50,7 +56,7 @@ function formatDate(date: string) {
           :class="{ 'is-selected': patient.id === selectedId }"
           tabindex="0"
           @click="emit('open', patient)"
-          @keydown.enter="emit('open', patient)"
+          @keydown.enter="openFromRow($event, patient)"
         >
           <td>
             <div class="patient-cell">
@@ -82,9 +88,16 @@ function formatDate(date: string) {
               <PatientDeleteButton
                 :id="patient.id"
                 :name="patient.name"
+                :id-number="patient.idNumber"
                 compact
                 stay
                 @removed="emit('removed', $event)"
+              />
+              <PatientInvitationButton
+                :id="patient.id"
+                :name="patient.name"
+                :id-number="patient.idNumber"
+                compact
               />
             </div>
           </td>
@@ -179,7 +192,7 @@ function formatDate(date: string) {
 }
 
 .action-col {
-  width: 82px;
+  width: 122px;
   color: var(--text-muted);
 }
 

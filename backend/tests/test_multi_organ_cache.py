@@ -29,7 +29,14 @@ def test_volume_stream_is_canonical_scoped_and_revocable(app_env, people, nifti_
     assert data.dtype == np.dtype("<f4")
     assert data.flags.c_contiguous or data.flags.f_contiguous
     pid = people["patient_a_pid"]
-    assert client.delete(f"/api/v1/patients/{pid}", headers=people["doctor_a"]).status_code == 200
+    assert (
+        client.post(
+            f"/api/v1/admin/patients/{pid}/archive",
+            json={"reason": "测试归档后的缓存访问撤销"},
+            headers=people["admin"],
+        ).status_code
+        == 200
+    )
     assert client.get(url, headers=people["doctor_a"]).status_code == 404
     assert client.get(url, headers=people["patient_a"]).status_code == 404
 
@@ -44,6 +51,7 @@ def test_multi_organ_record_is_single_source_with_scoped_ai(app_env, people):
         "diagnosis": "多器官测试记录",
         "description": "用于验证跨器官关联",
         "record_date": "2026-09-08",
+        "reviewed": True,
     }
     response = client.post(f"/api/v1/patients/{pid}/medical-records", json=payload, headers=headers)
     assert response.status_code == 201, response.text

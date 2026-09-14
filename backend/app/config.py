@@ -22,12 +22,10 @@ class Settings(BaseSettings):
     max_volume_voxels: int = Field(default=64_000_000, ge=8)
     max_uncompressed_bytes: int = Field(default=768 * 1024 * 1024, ge=1024)
     segmentation_callable: str | None = None
-    segmentation_image_types: list[str] = ["CT", "MRI"]
+    segmentation_image_types: list[str] = ["CT"]
     nv_segment_ct_dir: Path | None = None
     nv_segment_device: str = "cuda:0"
     segmentation_model_fingerprint: str = "nv-segment-ctmr-vista3d-1mm"
-    synthstrip_command: str | None = None
-    dcm2niix_command: str | None = "dcm2niix"
     segmentation_min_component_voxels: int = Field(default=30, ge=1, le=100000)
     segmentation_target_faces: int = Field(default=40000, ge=1000, le=200000)
     segmentation_label_map_retention_days: int = Field(default=7, ge=0, le=365)

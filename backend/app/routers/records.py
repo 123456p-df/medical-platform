@@ -8,7 +8,14 @@ from app.deps import DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import APIError, Envelope, success
 from app.models import Doctor, MedicalImage, MedicalRecord, RecordAddendum, User, utcnow
 from app.organs import require_organ
-from app.schemas import AddendumCreate, AddendumOut, RecordCreate, RecordOut, RecordPage, RecordPatch
+from app.schemas import (
+    AddendumCreate,
+    AddendumOut,
+    RecordCreate,
+    RecordOut,
+    RecordPage,
+    RecordPatch,
+)
 
 router = APIRouter(tags=["Medical Record"])
 
@@ -34,6 +41,20 @@ def record_out(db, record):
         "doctor_name": name,
         "created_at": record.created_at,
         "updated_at": record.updated_at,
+        "addenda": [addendum_out(db, item) for item in record.addenda],
+    }
+
+
+def addendum_out(db, addendum):
+    author_name = db.scalar(select(User.username).where(User.id == addendum.author_user_id))
+    return {
+        "addendum_id": addendum.id,
+        "record_id": addendum.record_id,
+        "author_user_id": addendum.author_user_id,
+        "author_name": author_name or "Unknown",
+        "reason": addendum.reason,
+        "content": addendum.content,
+        "created_at": addendum.created_at,
     }
 
 
@@ -153,16 +174,23 @@ def add_addendum(record_id: int, body: AddendumCreate, db: DB, user: CurrentUser
         after={"reason": body.reason, "content": body.content},
     )
     db.commit()
-    return success(
-        {
-            "addendum_id": addendum.id,
-            "record_id": addendum.record_id,
-            "author_user_id": addendum.author_user_id,
-            "reason": addendum.reason,
-            "content": addendum.content,
-            "created_at": addendum.created_at,
-        }
+    return success(addendum_out(db, addendum))
+
+
+@router.get(
+    "/medical-records/{record_id}/addenda",
+    response_model=Envelope[list[AddendumOut]],
+)
+def list_addenda(record_id: int, db: DB, user: CurrentUser):
+    record = accessible_record(db, user, record_id)
+    if record.signed_at is None:
+        return success([])
+    items = db.scalars(
+        select(RecordAddendum)
+        .where(RecordAddendum.record_id == record.id)
+        .order_by(RecordAddendum.created_at, RecordAddendum.id)
     )
+    return success([addendum_out(db, item) for item in items])
 
 
 @router.post(

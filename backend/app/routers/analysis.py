@@ -45,6 +45,7 @@ def finding_out(finding, task):
         "model_name": task.model_name,
         "created_at": finding.created_at,
         "updated_at": finding.updated_at,
+        "revision": finding.revision,
     }
 
 
@@ -212,12 +213,27 @@ def update_finding(finding_id: str, body: FindingPatch, db: DB, user: CurrentUse
         raise APIError(404, 40409, "Finding not found")
     accessible_image(db, user, finding.image_id, write=True)
     task = db.get(AnalysisTask, finding.task_id)
-    before = {"status": finding.status, "label": finding.label}
+    if body.expected_revision is not None and body.expected_revision != finding.revision:
+        raise APIError(409, 40908, "Finding was changed by another reviewer; reload before saving")
+    before = {
+        "status": finding.status,
+        "label": finding.label,
+        "diameter_mm": finding.diameter_mm,
+        "center_world_mm": finding.center_world_mm,
+        "box_world_mm": finding.box_world_mm,
+        "center_voxel": finding.center_voxel,
+        "box_voxel": finding.box_voxel,
+        "revision": finding.revision,
+    }
     values = body.model_dump(exclude_unset=True)
-    for field in ("label", "description", "status"):
+    for field in (
+        "label", "description", "status", "diameter_mm", "center_world_mm",
+        "box_world_mm", "center_voxel", "box_voxel",
+    ):
         if field in values:
             setattr(finding, field, values[field])
-    if "status" not in values and ({"label", "description"} & values.keys()):
+    changed_fields = {"label", "description", "diameter_mm", "center_world_mm", "box_world_mm", "center_voxel", "box_voxel"}
+    if "status" not in values and (changed_fields & values.keys()):
         finding.status = "modified"
     if finding.status == "pending":
         finding.reviewed_by = None
@@ -226,6 +242,7 @@ def update_finding(finding_id: str, body: FindingPatch, db: DB, user: CurrentUse
         finding.reviewed_by = user.id
         finding.reviewed_at = utcnow()
     finding.updated_at = utcnow()
+    finding.revision += 1
     audit(
         db,
         user.id,
@@ -234,7 +251,17 @@ def update_finding(finding_id: str, body: FindingPatch, db: DB, user: CurrentUse
         "finding",
         finding.id,
         before=before,
-        after={"status": finding.status, "label": finding.label},
+        after={
+            "status": finding.status,
+            "label": finding.label,
+            "diameter_mm": finding.diameter_mm,
+            "center_world_mm": finding.center_world_mm,
+            "box_world_mm": finding.box_world_mm,
+            "center_voxel": finding.center_voxel,
+            "box_voxel": finding.box_voxel,
+            "modification_reason": values.get("modification_reason"),
+            "revision": finding.revision,
+        },
     )
     db.commit()
     return success(finding_out(finding, task))

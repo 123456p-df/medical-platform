@@ -14,8 +14,8 @@
   --border-strong: #c8d8da;
   --text: #22323a;
   --text-soft: #526a72;
-  --text-muted: #789096;
-  --accent: #2f8f92;
+  --text-muted: #5f737c;
+  --accent: #24797c;
   --accent-strong: #217477;
   --accent-soft: #e2f2f2;
   --teal: #2f8f92;
@@ -27,6 +27,31 @@
   --shadow-sm: 0 1px 2px rgb(25 50 55 / 6%);
   --shadow-md: 0 8px 24px rgb(25 50 55 / 8%);
   --radius: 8px;
+  --radius-lg: 12px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --font-xs: 11px;
+  --font-sm: 13px;
+  --font-md: 15px;
+  --control-sm: 32px;
+  --control-md: 38px;
+  --control-touch: 44px;
+  --danger-soft: #fbeded;
+  --danger-border: #efcfd1;
+  --danger-text: #98474d;
+  --warning-soft: #fbf3e7;
+  --warning-border: #edd5af;
+  --warning-text: #8a5c1f;
+  --success-soft: #e9f5ef;
+  --success-border: #c6e2d4;
+  --success-text: #2d7358;
+  --layer-header: 20;
+  --layer-overlay: 60;
+  --layer-dialog: 100;
   --sidebar-width: 248px;
   --sidebar-collapsed-width: 72px;
   --topbar-height: 64px;
@@ -89,6 +114,24 @@ textarea:focus-visible {
   border: 0;
 }
 
+.skip-link {
+  position: fixed;
+  z-index: 200;
+  top: 10px;
+  left: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--accent-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-160%);
+  transition: transform 140ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
 .page {
   animation: fade-in 220ms ease-out;
 }
@@ -97,7 +140,7 @@ textarea:focus-visible {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--space-6);
   margin-bottom: 22px;
 }
 
@@ -118,7 +161,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
   margin-bottom: 14px;
 }
 
@@ -181,7 +224,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 38px;
+  min-height: var(--control-md);
   padding: 0 14px;
   border: 1px solid transparent;
   border-radius: var(--radius);
@@ -222,7 +265,7 @@ textarea:focus-visible {
 }
 
 .btn-sm {
-  min-height: 32px;
+  min-height: var(--control-sm);
   padding: 0 10px;
   font-size: 13px;
 }

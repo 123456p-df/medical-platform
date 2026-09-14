@@ -32,13 +32,13 @@ const filtered = computed(() => {
 <template>
   <section class="organ-list">
     <header>
-      <strong>本检查出现的器官</strong>
+      <strong>{{ $t('ui.model.visibleOrgans') }}</strong>
       <span>{{ groups.length }}</span>
     </header>
     <div class="list-tools">
-      <input v-model="query" type="search" placeholder="搜索器官" />
-      <button type="button" @click="emit('setAll', true)">全选</button>
-      <button type="button" @click="emit('setAll', false)">全不选</button>
+      <input v-model="query" type="search" :placeholder="$t('ui.model.searchOrgans')" />
+      <button type="button" @click="emit('setAll', true)">{{ $t('ui.model.selectAll') }}</button>
+      <button type="button" @click="emit('setAll', false)">{{ $t('ui.model.selectNone') }}</button>
     </div>
     <ul>
       <li v-for="item in filtered" :key="item.id">
@@ -53,7 +53,7 @@ const filtered = computed(() => {
           <span v-if="item.count > 1" class="count">{{ item.count }}</span>
         </label>
       </li>
-      <li v-if="!filtered.length" class="empty">当前检查没有可显示的器官</li>
+      <li v-if="!filtered.length" class="empty">{{ $t('ui.model.noVisibleOrgans') }}</li>
     </ul>
   </section>
 </template>

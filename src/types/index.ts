@@ -12,10 +12,23 @@ export type ReviewStatus =
   | 'Completed'
   | 'Available'
   | 'Not assessed'
+  | 'Unknown'
+
+export interface ImageAcquisition {
+  affine?: number[][]
+  original_affine?: number[][]
+  spacing_mm?: number[]
+  orientation?: string
+  original_orientation?: string
+  plane?: string
+  framesPerFile?: number[]
+  [key: string]: unknown
+}
 
 export interface Patient {
   id: string
   name: string
+  idNumber?: string
   age: number | null
   gender: 'Male' | 'Female' | 'Unknown'
   phone: string
@@ -26,19 +39,18 @@ export interface Patient {
   risk: RiskLevel
   status: ReviewStatus
   lastExamDate: string
+  lastUploadedAt?: string
   modality: ExaminationType | '—'
   organ: string
   aiStatus: ReviewStatus
   avatarColor: string
 }
 
-export type MriSequence = 'T1' | 'T2' | 'FLAIR' | 'DWI' | 'other' | 'unknown'
-
 export interface Examination {
   shape?: number[]
   spacing?: number[]
   organId?: string
-  acquisition?: { affine?: number[][]; [key: string]: any }
+  acquisition?: ImageAcquisition
   source?: 'remote' | 'preview' | 'local-upload'
   id: string
   patientId: string
@@ -49,10 +61,6 @@ export interface Examination {
   status: ReviewStatus
   description: string
   sliceCount: number
-  sequence?: MriSequence
-  contrast?: boolean | null
-  segmentationMode?: 'CT_BODY' | 'MRI_BODY' | 'MRI_BRAIN' | null
-  segmentationWarning?: string | null
 }
 
 export interface Finding {
@@ -77,6 +85,7 @@ export interface Finding {
   boxVoxel?: [number, number, number, number, number, number]
   description: string
   status: 'pending' | 'confirmed' | 'modified' | 'dismissed'
+  revision?: number
 }
 
 export interface Report {
@@ -91,6 +100,20 @@ export interface Report {
   doctor: string
   date: string
   reviewed: boolean
+  signedAt?: string | null
+  createdAt?: string
+  updatedAt?: string
+  addenda?: ReportAddendum[]
+}
+
+export interface ReportAddendum {
+  id: string
+  reportId: string
+  authorUserId: string
+  authorName?: string
+  reason: string
+  content: string
+  createdAt: string
 }
 
 export interface MedicalImage {
@@ -123,6 +146,16 @@ export interface UserSession {
   accessToken: string
   id: string
   name: string
+  username?: string
   role: PortalRole
+  accountRole?: 'admin' | 'doctor' | 'patient'
+  profileCompleted?: boolean
   title?: string
+}
+
+export interface ArchivedPatient {
+  patientId: string
+  name: string
+  reason: string
+  archivedAt: string
 }

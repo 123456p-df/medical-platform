@@ -3,9 +3,9 @@ import { computed, ref, watch } from 'vue'
 import { Columns2, Grid2X2, Link2, Minus, Plus, Square, Unlink2 } from 'lucide-vue-next'
 import type { Examination, Finding } from '@/types'
 import type { SliceAxis } from '@/utils/volumePixels'
-import { defaultPresetFor } from '@/utils/volumePixels'
 import SliceViewport from './SliceViewport.vue'
-import { isLocalUpload } from '@/api/localUploads'
+import { isLocalUpload } from '@/api/localStudyRepository'
+import { hasWorldGeometry, positionAtWorld, worldAtPosition } from '@/utils/worldCoordinates'
 
 type LayoutCount = 1 | 2 | 4
 
@@ -25,16 +25,14 @@ const emit = defineEmits<{
 const layout = ref<LayoutCount>(1)
 const syncEnabled = ref(true)
 const sharedPosition = ref(0.5)
+const sharedWorld = ref<[number, number, number] | null>(null)
 const axis = ref<SliceAxis>('axial')
+const preset = ref('lung')
 const zoom = ref(1)
 const selectedIds = ref<string[]>([])
 
-const modality = computed(() => props.examinations.find(item => item.id === props.initialId && !isLocalUpload(item))?.type
-  || props.examinations.find(item => (item.type === 'CT' || item.type === 'MRI') && !isLocalUpload(item))?.type
-  || 'CT')
-const available = computed(() => props.examinations.filter(item => item.type === modality.value && !isLocalUpload(item)))
-const localCount = computed(() => props.examinations.filter(item => item.type === modality.value && isLocalUpload(item)).length)
-const preset = ref(defaultPresetFor(modality.value, available.value[0]?.sequence))
+const available = computed(() => props.examinations.filter(item => item.type === 'CT' && !isLocalUpload(item)))
+const localCtCount = computed(() => props.examinations.filter(item => item.type === 'CT' && isLocalUpload(item)).length)
 const signature = computed(() => available.value.map(item => item.id).join('|'))
 const paneStudies = computed(() => Array.from({ length: layout.value }, (_, index) =>
   available.value.find(item => item.id === selectedIds.value[index]) || null))
@@ -51,9 +49,6 @@ function reconcileSelections() {
 }
 
 watch([signature, () => props.initialId, layout], reconcileSelections, { immediate: true })
-watch(modality, value => {
-  preset.value = defaultPresetFor(value, available.value.find(item => item.id === props.initialId)?.sequence)
-}, { immediate: true })
 
 function setLayout(value: LayoutCount) {
   layout.value = value
@@ -70,8 +65,17 @@ function setStudy(index: number, id: string) {
 
 function updatePosition(id: string, position: number) {
   sharedPosition.value = position
+  const study = available.value.find(item => item.id === id)
+  if (study) sharedWorld.value = worldAtPosition(study, axis.value, position, sharedWorld.value)
   emit('selectStudy', id)
 }
+
+function synchronizedPosition(study: Examination) {
+  return sharedWorld.value ? positionAtWorld(study, axis.value, sharedWorld.value) ?? sharedPosition.value : sharedPosition.value
+}
+
+const usesWorldSync = computed(() => paneStudies.value.filter(Boolean).every(study => study && hasWorldGeometry(study)))
+watch(axis, () => { sharedWorld.value = null })
 
 function findingsFor(id: string) {
   return props.findings.filter(item => item.examinationId === id)
@@ -81,38 +85,24 @@ function findingsFor(id: string) {
 <template>
   <section class="comparison-viewer">
     <header class="comparison-toolbar">
-      <div class="toolbar-group layout-controls" aria-label="对比布局">
-        <span>布局</span>
-        <button type="button" :class="{ active: layout === 1 }" aria-label="单屏" @click="setLayout(1)"><Square :size="15" /> 1</button>
-        <button type="button" :class="{ active: layout === 2 }" aria-label="二分屏" @click="setLayout(2)"><Columns2 :size="15" /> 2</button>
-        <button type="button" :class="{ active: layout === 4 }" aria-label="四分屏" @click="setLayout(4)"><Grid2X2 :size="15" /> 4</button>
+      <div class="toolbar-group layout-controls" :aria-label="$t('ui.comparison.layout')">
+        <span>{{ $t('ui.comparison.layout') }}</span>
+        <button type="button" :class="{ active: layout === 1 }" :aria-label="$t('ui.comparison.single')" @click="setLayout(1)"><Square :size="15" /> 1</button>
+        <button type="button" :class="{ active: layout === 2 }" :aria-label="$t('ui.comparison.dual')" @click="setLayout(2)"><Columns2 :size="15" /> 2</button>
+        <button type="button" :class="{ active: layout === 4 }" :aria-label="$t('ui.comparison.quad')" @click="setLayout(4)"><Grid2X2 :size="15" /> 4</button>
       </div>
       <div class="toolbar-group">
-        <label>方向
-          <select v-model="axis"><option value="axial">轴向</option><option value="coronal">冠状</option><option value="sagittal">矢状</option></select>
+        <label>{{ $t('ui.comparison.orientation') }}
+          <select v-model="axis"><option value="axial">{{ $t('ui.viewer3d.axis.axial') }}</option><option value="coronal">{{ $t('ui.viewer3d.axis.coronal') }}</option><option value="sagittal">{{ $t('ui.viewer3d.axis.sagittal') }}</option></select>
         </label>
-        <label>窗位
-          <select v-model="preset">
-            <template v-if="modality === 'MRI'">
-              <option value="auto">自动</option>
-              <option value="mri-t1">T1</option>
-              <option value="mri-t2">T2</option>
-              <option value="mri-flair">FLAIR</option>
-              <option value="mri-dwi">DWI</option>
-            </template>
-            <template v-else>
-              <option value="lung">肺窗</option>
-              <option value="soft">软组织</option>
-              <option value="bone">骨窗</option>
-              <option value="auto">自动</option>
-            </template>
-          </select>
+        <label>{{ $t('ui.comparison.window') }}
+          <select v-model="preset"><option value="lung">{{ $t('ui.viewer3d.preset.lung') }}</option><option value="soft">{{ $t('Soft tissue') }}</option><option value="bone">{{ $t('Bone') }}</option><option value="auto">{{ $t('Auto-detect') }}</option></select>
         </label>
       </div>
       <div class="toolbar-group">
-        <button type="button" aria-label="缩小" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - .25)"><Minus :size="15" /></button>
+        <button type="button" :aria-label="$t('Zoom out')" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - .25)"><Minus :size="15" /></button>
         <span>{{ Math.round(zoom * 100) }}%</span>
-        <button type="button" aria-label="放大" :disabled="zoom >= 2" @click="zoom = Math.min(2, zoom + .25)"><Plus :size="15" /></button>
+        <button type="button" :aria-label="$t('Zoom in')" :disabled="zoom >= 2" @click="zoom = Math.min(2, zoom + .25)"><Plus :size="15" /></button>
         <button
           type="button"
           class="sync-button"
@@ -120,15 +110,15 @@ function findingsFor(id: string) {
           :aria-pressed="syncEnabled"
           :disabled="layout === 1"
           @click="syncEnabled = !syncEnabled"
-        ><Link2 v-if="syncEnabled" :size="15" /><Unlink2 v-else :size="15" />{{ syncEnabled ? '同步滚动' : '独立滚动' }}</button>
+        ><Link2 v-if="syncEnabled" :size="15" /><Unlink2 v-else :size="15" />{{ $t(syncEnabled ? 'ui.comparison.syncScroll' : 'ui.comparison.independentScroll') }}</button>
       </div>
     </header>
 
     <div class="comparison-note">
-      <span>{{ available.length }} 个 {{ modality }} 检查可比较</span>
-      <span v-if="localCount">{{ localCount }} 个本地 {{ modality }} 可在影像列表中单独浏览。</span>
-      <span v-if="layout > 1 && syncEnabled">按各检查的相对切片位置同步，适配不同切片数量。</span>
-      <span v-else-if="layout > 1">每个窗口可单独滚轮、方向键或拖动滑块。</span>
+      <span>{{ $t('ui.comparison.availableCount', { count: available.length }) }}</span>
+      <span v-if="localCtCount">{{ $t('ui.comparison.localCount', { count: localCtCount }) }}</span>
+      <span v-if="layout > 1 && syncEnabled">{{ usesWorldSync ? $t('ui.comparison.worldSync') : $t('ui.comparison.positionFallback') }}</span>
+      <span v-else-if="layout > 1">{{ $t('ui.comparison.independentHelp') }}</span>
     </div>
 
     <div v-if="available.length" class="comparison-grid" :class="`layout-${layout}`">
@@ -141,7 +131,7 @@ function findingsFor(id: string) {
       >
         <template v-if="study">
           <div class="study-heading">
-            <label :for="'study-slot-' + index">窗口 {{ index + 1 }}</label>
+            <label :for="'study-slot-' + index">{{ $t('ui.comparison.windowNumber', { index: index + 1 }) }}</label>
             <select :id="'study-slot-' + index" :value="study.id" @change="setStudy(index, ($event.target as HTMLSelectElement).value)">
               <option v-for="candidate in available" :key="candidate.id" :value="candidate.id">
                 {{ candidate.date }} · {{ candidate.organ }} · {{ candidate.sliceCount }} slices
@@ -154,7 +144,7 @@ function findingsFor(id: string) {
             :preset="preset"
             :zoom="zoom"
             :renderer="null"
-            :position="layout > 1 && syncEnabled ? sharedPosition : undefined"
+            :position="layout > 1 && syncEnabled ? synchronizedPosition(study) : undefined"
             :compact="layout > 1"
             :findings="findingsFor(study.id)"
             @position-change="updatePosition(study.id, $event)"
@@ -162,11 +152,11 @@ function findingsFor(id: string) {
         </template>
         <div v-else class="empty-pane">
           <Grid2X2 :size="24" />
-          <span>请再上传一个 {{ modality }} 检查</span>
+          <span>{{ $t('ui.comparison.addAnother') }}</span>
         </div>
       </article>
     </div>
-    <div v-else class="empty-comparison">当前患者还没有 {{ modality }} 检查，请先上传。</div>
+    <div v-else class="empty-comparison">{{ $t('ui.comparison.noCt') }}</div>
   </section>
 </template>
 

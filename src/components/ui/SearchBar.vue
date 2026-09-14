@@ -26,6 +26,7 @@ function update(value: string) {
     <input
       :value="props.modelValue"
       type="search"
+      :aria-label="$t(placeholder)"
       :placeholder="$t(placeholder)"
       @input="update(($event.target as HTMLInputElement).value)"
     />

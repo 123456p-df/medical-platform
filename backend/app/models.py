@@ -1,6 +1,16 @@
 from datetime import UTC, date, datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, LargeBinary, String, Text, text
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    LargeBinary,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -37,6 +47,7 @@ class Patient(CreatedMixin, Base):
     height: Mapped[float | None]
     weight: Mapped[float | None]
     blood_type: Mapped[str | None] = mapped_column(String(16))
+    profile_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -71,6 +82,49 @@ class DoctorPatientAccess(CreatedMixin, Base):
     status: Mapped[str] = mapped_column(String(16), default="active")
 
 
+class PatientLinkInvitation(CreatedMixin, Base):
+    __tablename__ = "patient_link_invitations"
+    __table_args__ = (
+        Index("ix_patient_link_invitations_patient", "patient_id", "created_at"),
+        Index(
+            "uq_active_patient_link_invitation",
+            "patient_id",
+            unique=True,
+            postgresql_where=text("used_at IS NULL AND revoked_at IS NULL"),
+            sqlite_where=text("used_at IS NULL AND revoked_at IS NULL"),
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PatientArchive(CreatedMixin, Base):
+    __tablename__ = "patient_archives"
+    __table_args__ = (
+        Index(
+            "uq_active_patient_archive",
+            "patient_id",
+            unique=True,
+            postgresql_where=text("restored_at IS NULL"),
+            sqlite_where=text("restored_at IS NULL"),
+        ),
+        Index("ix_patient_archives_archived_at", "archived_at"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
+    reason: Mapped[str] = mapped_column(String(500))
+    archived_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    archived_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    restored_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class BreakGlassGrant(CreatedMixin, Base):
     __tablename__ = "break_glass_grants"
     __table_args__ = (
@@ -98,13 +152,16 @@ class MedicalRecord(CreatedMixin, Base):
     diagnosis: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text)
     recommendation: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
-    reviewed: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    reviewed: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_date: Mapped[date]
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     organ_links: Mapped[list["RecordOrgan"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin"
+    )
+    addenda: Mapped[list["RecordAddendum"]] = relationship(
+        back_populates="record", cascade="all, delete-orphan", lazy="selectin"
     )
 
     @property
@@ -142,25 +199,13 @@ class RecordAddendum(CreatedMixin, Base):
     author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     reason: Mapped[str] = mapped_column(String(200))
     content: Mapped[str] = mapped_column(Text)
+    record: Mapped["MedicalRecord"] = relationship(back_populates="addenda")
 
 
 class MedicalImage(CreatedMixin, Base):
     __tablename__ = "medical_images"
     __table_args__ = (
         CheckConstraint("image_type IN ('CT', 'MRI')", name="ck_image_type"),
-        CheckConstraint("source_format IN ('nifti', 'dicom')", name="ck_image_source_format"),
-        CheckConstraint(
-            "sequence IN ('T1', 'T2', 'FLAIR', 'DWI', 'other', 'unknown')",
-            name="ck_image_sequence",
-        ),
-        CheckConstraint(
-            "segmentation_mode IS NULL OR segmentation_mode IN ('CT_BODY', 'MRI_BODY', 'MRI_BRAIN')",
-            name="ck_image_segmentation_mode",
-        ),
-        CheckConstraint(
-            "sequence_confidence IN ('auto', 'manual')",
-            name="ck_image_sequence_confidence",
-        ),
         Index("ix_images_patient_organ", "patient_id", "organ_id"),
     )
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -172,15 +217,57 @@ class MedicalImage(CreatedMixin, Base):
     spacing: Mapped[list] = mapped_column(JSON)
     size_bytes: Mapped[int]
     study_date: Mapped[date | None]
-    source_format: Mapped[str] = mapped_column(String(16), default="nifti", server_default=text("'nifti'"))
-    series_uid: Mapped[str | None] = mapped_column(String(64))
-    sequence: Mapped[str] = mapped_column(String(16), default="unknown", server_default=text("'unknown'"))
-    contrast: Mapped[bool | None]
-    segmentation_mode: Mapped[str | None] = mapped_column(String(16))
-    sequence_confidence: Mapped[str] = mapped_column(
-        String(16), default="auto", server_default=text("'auto'")
-    )
     acquisition: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
+
+
+class DicomStudy(CreatedMixin, Base):
+    __tablename__ = "dicom_studies"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('receiving', 'archived', 'converting', 'ready', 'failed')",
+            name="ck_dicom_study_status",
+        ),
+        Index("ix_dicom_study_patient_date", "patient_id", "study_date"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
+    orthanc_study_id: Mapped[str] = mapped_column(String(128), unique=True)
+    study_instance_uid: Mapped[str | None] = mapped_column(String(128), unique=True)
+    dicom_patient_id: Mapped[str | None] = mapped_column(String(128))
+    modality: Mapped[str | None] = mapped_column(String(16))
+    study_date: Mapped[date | None]
+    description: Mapped[str | None] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(16), default="receiving")
+    instance_count: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DicomSeries(CreatedMixin, Base):
+    __tablename__ = "dicom_series"
+    __table_args__ = (Index("ix_dicom_series_study", "study_id"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    study_id: Mapped[str] = mapped_column(ForeignKey("dicom_studies.id"))
+    orthanc_series_id: Mapped[str] = mapped_column(String(128), unique=True)
+    series_instance_uid: Mapped[str | None] = mapped_column(String(128), unique=True)
+    modality: Mapped[str | None] = mapped_column(String(16))
+    description: Mapped[str | None] = mapped_column(String(300))
+    rows: Mapped[int | None]
+    columns: Mapped[int | None]
+    frame_count: Mapped[int] = mapped_column(default=0)
+    instance_count: Mapped[int] = mapped_column(default=0)
+    medical_image_id: Mapped[str | None] = mapped_column(ForeignKey("medical_images.id"))
+
+
+class DicomInstance(CreatedMixin, Base):
+    __tablename__ = "dicom_instances"
+    __table_args__ = (Index("ix_dicom_instance_series", "series_id"),)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    series_id: Mapped[str] = mapped_column(ForeignKey("dicom_series.id"))
+    orthanc_instance_id: Mapped[str] = mapped_column(String(128), unique=True)
+    sop_instance_uid: Mapped[str | None] = mapped_column(String(128), unique=True)
+    instance_number: Mapped[int | None]
+    number_of_frames: Mapped[int] = mapped_column(default=1)
+    transfer_syntax_uid: Mapped[str | None] = mapped_column(String(128))
 
 
 class OrganModel(CreatedMixin, Base):
@@ -371,6 +458,7 @@ class Finding(CreatedMixin, Base):
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revision: Mapped[int] = mapped_column(default=1, server_default=text("1"))
 
 
 class AIConversation(CreatedMixin, Base):

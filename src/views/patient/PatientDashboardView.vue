@@ -4,10 +4,12 @@ import { Activity, CalendarDays, ChevronRight, FileText, HeartPulse } from 'luci
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
+import { locale } from '@/i18n'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import ExaminationCard from '@/components/medical/ExaminationCard.vue'
 import ReportCard from '@/components/medical/ReportCard.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
+import StatePanel from '@/components/ui/StatePanel.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -18,7 +20,7 @@ const latestReviewedReport = computed(() => store.reviewedReports[0])
 
 function formatDate(date?: string) {
   if (!date) return ''
-  return new Intl.DateTimeFormat('en', {
+  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en', {
     month: 'long',
     day: '2-digit',
     year: 'numeric',
@@ -46,8 +48,8 @@ onMounted(async () => {
       <article class="health-overview card">
         <div class="card-header">
           <div>
-            <h3>My Health Overview</h3>
-            <p class="muted">Your most recent uploaded medical image.</p>
+            <h3>{{ $t('My Health Overview') }}</h3>
+            <p class="muted">{{ $t('ui.patient.health.latestImage') }}</p>
           </div>
         </div>
         <div class="card-body">
@@ -62,10 +64,10 @@ onMounted(async () => {
           </div>
           <div class="health-actions">
             <button type="button" class="btn btn-primary" @click="router.push({ name: 'patient-reports' })">
-              <FileText :size="16" /> View Reports
+              <FileText :size="16" /> {{ $t('ui.patient.health.viewReports') }}
             </button>
             <button type="button" class="btn btn-secondary" @click="router.push({ name: 'patient-body' })">
-              <Activity :size="16" /> My Body
+              <Activity :size="16" /> {{ $t('ui.patient.health.myBody') }}
             </button>
           </div>
         </div>
@@ -76,11 +78,11 @@ onMounted(async () => {
       <div class="card">
         <div class="card-header">
           <div>
-            <h3>Recent Examinations</h3>
-            <p class="muted">Your imaging history in one place.</p>
+            <h3>{{ $t('Recent Examinations') }}</h3>
+            <p class="muted">{{ $t('Your imaging history in one place.') }}</p>
           </div>
           <button type="button" class="btn btn-sm btn-secondary" @click="router.push({ name: 'patient-examinations' })">
-            View all <ChevronRight :size="14" />
+            {{ $t('View all') }} <ChevronRight :size="14" />
           </button>
         </div>
         <div class="card-body stack">
@@ -90,21 +92,21 @@ onMounted(async () => {
             :examination="exam"
             @select="openExam(exam.id)"
           />
-          <div v-if="!store.examinations.length" class="empty-state">No examinations are available.</div>
+          <StatePanel v-if="!store.examinations.length" kind="empty" compact :message="$t('No examinations are available.')" />
         </div>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div>
-            <h3>Doctor's Report</h3>
-            <p class="muted">Your latest medical record from an authorized doctor.</p>
+            <h3>{{ $t("Doctor's Report") }}</h3>
+            <p class="muted">{{ $t('ui.patient.health.latestRecord') }}</p>
           </div>
           <CalendarDays :size="18" class="header-icon" />
         </div>
         <div class="card-body">
-          <ReportCard v-if="latestReviewedReport" :report="latestReviewedReport" patient-facing />
-          <div v-else class="empty-state">Your medical records will appear here.</div>
+          <ReportCard v-if="latestReviewedReport" :report="latestReviewedReport" patient-facing :patient-name="auth.session?.name" />
+          <StatePanel v-else kind="empty" compact :message="$t('ui.patient.health.recordsPending')" />
         </div>
       </div>
     </section>

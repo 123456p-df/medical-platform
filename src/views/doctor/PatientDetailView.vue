@@ -6,6 +6,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { usePatientStore } from '@/stores/patients'
 import RiskBadge from '@/components/ui/RiskBadge.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
+import StatePanel from '@/components/ui/StatePanel.vue'
+import { displayBloodType } from '@/utils/clinicalValues'
+import { t } from '@/i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,8 +21,8 @@ const tabs = [
   { label: 'Overview', name: 'doctor-patient-overview' },
   { label: 'Imaging', name: 'doctor-patient-imaging' },
   { label: 'Report', name: 'doctor-patient-report' },
-  { label: 'AI 辅助诊断', name: 'doctor-patient-ai' },
-  { label: '3D 器官模型', name: 'doctor-patient-3d', external: true },
+  { label: 'ui.patientDetail.ai', name: 'doctor-patient-ai' },
+  { label: 'ui.patientDetail.organ3d', name: 'doctor-patient-3d', external: true },
 ]
 
 async function loadPatient() {
@@ -34,7 +37,7 @@ watch(patientId, loadPatient)
 </script>
 
 <template>
-  <div class="page patient-detail">
+  <div class="page patient-detail" :class="{ 'is-imaging': route.name === 'doctor-patient-imaging' }">
     <button type="button" class="back-link" @click="router.push({ name: 'doctor-patients' })">
       <ArrowLeft :size="16" /> {{ $t('Back to Workspace') }}
     </button>
@@ -50,13 +53,13 @@ watch(patientId, loadPatient)
             <RiskBadge :level="selectedPatient.risk" />
           </div>
           <p>
-            {{ selectedPatient.id }} · {{ selectedPatient.age === null ? '年龄未登记' : selectedPatient.age + ' 岁' }} · {{ $t(selectedPatient.gender) }} ·
-            {{ selectedPatient.bloodType }}
+            {{ selectedPatient.id }} · {{ selectedPatient.age === null ? t('ui.patientDetail.ageUnknown') : t('ui.patientDetail.age', { age: selectedPatient.age }) }} · {{ $t(selectedPatient.gender) }} ·
+            {{ displayBloodType(selectedPatient) }}
           </p>
         </div>
       </div>
       <div class="patient-status">
-        <PatientDeleteButton :id="patientId" :name="selectedPatient.name" /><span class="status-label">Current status</span>
+        <PatientDeleteButton :id="patientId" :name="selectedPatient.name" /><span class="status-label">{{ $t('Current status') }}</span>
         <StatusBadge :status="selectedPatient.status" />
         <span class="latest-label">Latest: {{ selectedPatient.modality }} {{ selectedPatient.organ }}</span>
       </div>
@@ -70,7 +73,7 @@ watch(patientId, loadPatient)
           target="_blank"
           class="detail-tab"
         >
-          {{ tab.label }}
+          {{ $t(tab.label) }}
         </a>
         <RouterLink
           v-else
@@ -78,17 +81,13 @@ watch(patientId, loadPatient)
           class="detail-tab"
           exact-active-class="is-active"
         >
-          {{ tab.label }}
+          {{ $t(tab.label) }}
         </RouterLink>
       </template>
     </nav>
 
-    <div v-if="store.loading && !store.examinations.length" class="loading">
-      Loading patient record...
-    </div>
-    <div v-else-if="store.error" class="empty-state">
-      {{ store.error }}
-    </div>
+    <StatePanel v-if="store.loading && !store.examinations.length" kind="loading" :message="$t('Loading patient record...')" />
+    <StatePanel v-else-if="store.error" kind="error" :message="store.error" />
     <RouterView v-else :key="patientId" />
   </div>
 </template>
@@ -207,6 +206,40 @@ watch(patientId, loadPatient)
   content: '';
 }
 
+.patient-detail.is-imaging .back-link {
+  margin-bottom: 7px;
+}
+
+.patient-detail.is-imaging .patient-hero {
+  gap: 12px;
+  padding: 9px 12px;
+}
+
+.patient-detail.is-imaging .patient-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.patient-detail.is-imaging .name-row h1 {
+  font-size: 16px;
+}
+
+.patient-detail.is-imaging .patient-status {
+  align-items: center;
+  flex-direction: row;
+}
+
+.patient-detail.is-imaging .detail-tabs {
+  margin: 7px 0 9px;
+}
+
+.patient-detail.is-imaging .detail-tab {
+  padding-block: 7px 9px;
+  font-size: 11px;
+}
+
 @media (max-width: 760px) {
   .patient-hero {
     align-items: flex-start;
@@ -215,6 +248,17 @@ watch(patientId, loadPatient)
 
   .patient-status {
     align-items: flex-start;
+  }
+
+  .patient-detail.is-imaging .patient-hero {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .patient-detail.is-imaging .patient-status {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }
 </style>

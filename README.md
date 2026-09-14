@@ -1,125 +1,90 @@
-# VMRB 医疗平台（macOS / Linux）
+# VMRB 医疗平台前端（macOS）
 
-这是一个使用 Vue 3、FastAPI 和 PostgreSQL 构建的医学影像工作台，医生端、管理员端和患者端共用后端的身份、患者、影像与报告数据。
+## 直接运行
 
-## 启动完整本地服务
+首次运行需要 Node.js 20+ 和 pnpm。在此目录执行：
 
-首次运行需要 Node.js 20+、pnpm，以及已经启动的 Docker Desktop；Linux 可以使用 Docker Engine 与 Docker Compose。在项目目录执行：
-
-```bash
-pnpm install --frozen-lockfile
+```sh
+pnpm install
 pnpm start
 ```
 
-`pnpm start` 不会调用 PowerShell。它会补齐本地缺失的空白密钥，通过 Docker Compose 启动 PostgreSQL、FastAPI 和 Nginx，确认后端健康后再启动 Vite：
+然后打开 <http://127.0.0.1:4173>。也可以双击 `start.command` 启动；脚本会自动检查依赖并打开浏览器。macOS 若提示权限，可在终端执行一次：
 
-- 前端：<http://127.0.0.1:4173>
-- Docker 后端：<http://127.0.0.1:8080>
-
-启动过程不会重置数据库或写入演示账号。首次使用可在登录页注册；已有数据库与上传资料会继续保留。也可以在 macOS 中双击 `start.command`。若系统提示权限不足，在终端执行一次：
-
-```bash
+```sh
 chmod +x start.command
 ```
 
-只启动后端服务可运行：
+## 构建并预览
 
-```bash
-bash scripts/start-services.sh
-```
-
-停止 Docker 预览服务可运行：
-
-```bash
-bash scripts/stop-services.sh
-```
-
-停止操作会保留 Docker 数据卷。若后端已经单独运行，或由其他机器提供，可指定地址并跳过本机 Docker 启动：
-
-```bash
-VMRB_BACKEND_URL=http://server.example:8080 pnpm start
-```
-
-Windows 不再依赖已删除的 `.ps1` 启动脚本；未指定后端时，`pnpm start` 会保留原有的前端演示模式。要连接真实服务，请先启动后端并设置 `VMRB_BACKEND_URL`。
-
-> macOS 可以运行网页、数据库和普通 FastAPI 功能，但 NV-Segment-CTMR 原模型依赖 NVIDIA CUDA，不能直接使用 Apple GPU 推理。真实分割模型应部署在带 NVIDIA GPU 的 Linux 机器上。
-
-## 仅运行前端演示
-
-```bash
-pnpm dev
-```
-
-这会使用浏览器内的合成演示数据，不连接真实后端。要验证真实登录、患者、影像和报告流程，请使用上面的 `pnpm start`。
-
-## 数据库结构与演示数据
-
-数据库结构通过 `backend/migrations/` 中的 Alembic 迁移进行版本管理。经过人工审查的虚构演示数据位于 `backend/fixtures/demo_database.fixture.json`，后端演示种子程序会读取它；密码、身份加密值和哈希只在运行时生成，不写入 fixture。
-
-Docker 的 PostgreSQL 数据卷、真实患者资料、影像、数据库 dump 和 `.env` 始终保留在 Git 之外。不要为了共享数据库而提交原始数据目录；需要补充演示数据时，只能修改 `backend/fixtures/` 下明确命名为 `*.fixture.json` 的脱敏文件并先进行人工审查。
-
-构建与预览前端：
-
-```bash
+```sh
 pnpm build
 pnpm serve
 ```
 
-## 公开影像样本
+当前构建预算以路由懒加载为前提：入口脚本不超过 350 KB，Cornerstone 独立块不超过 3.6 MB，GLTF 加载块不超过 650 KB。构建后运行 `pnpm test:bundle-budget` 可复核；首次 DICOM 解码仍需下载对应 Worker/WASM，生产发布前应在目标网络记录冷启动和热启动首帧时间。
 
-下载经过 SHA-256 校验的 3D Slicer 公开 CT/MRI 样本：
+## 三种运行模式
 
-Windows：
+| 模式 | 启动方式 | 数据与上传能力 |
+|---|---|---|
+| 合成演示 | 双击 `start.command` | 自动进入医生工作台；使用明确标注的演示档案；本地导入支持 DICOM、PNG/JPEG/WebP/BMP，仅保存在当前浏览器。 |
+| 本地真实 API | 先启动 FastAPI，再执行 `pnpm start` | 登录后使用 PostgreSQL 数据；NIfTI 上传进入患者档案；配置 Orthanc 后可使用受认证 DICOM 归档接口。 |
+| Compose 生产栈 | `docker compose -f compose.yaml up -d --build` | Nginx 监听 `http://127.0.0.1:8080`，后端和 PostgreSQL 位于内部网络；按需叠加基础设施或 GPU 配置。 |
 
-```powershell
-backend\.venv\Scripts\python.exe scripts\real-imaging-samples.py
+Vite 开发服务器位于 `http://127.0.0.1:4173`，会把 `/api` 和 `/health` 转发到 `VMRB_BACKEND_URL`，默认值是 `http://127.0.0.1:8080`。若直接在主机启动 FastAPI 的 8000 端口，请同时执行：
+
+```sh
+VMRB_BACKEND_URL=http://127.0.0.1:8000 pnpm start
 ```
 
-macOS / Linux：
+真实 API 首次启动前，在 `backend/` 中生成配置、填写数据库密钥并升级到最新迁移：
 
-```bash
-backend/.venv/bin/python scripts/real-imaging-samples.py
+```sh
+cd backend
+python -m app.cli init-config
+uv run alembic upgrade head
+uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-下载地址、固定校验值和 NRRD→NIfTI 转换逻辑均记录在 `scripts/real-imaging-samples.py`。这些影像仅用于软件验证，不能用于医疗诊断。
+启动后用 `curl -fsS http://127.0.0.1:8000/health` 验证数据库连接。更新前先备份数据库与存储目录；回滚时使用与目标应用版本匹配的数据库备份和镜像，不直接覆盖患者文件。
 
 ## 肺结节辅助检测
 
-网站提供肺部 CT 肺结节候选检测任务、结果查询和医生审核接口。模型服务的请求/响应格式、环境变量和联调步骤见 [`docs/lung-nodule-model-api.md`](docs/lung-nodule-model-api.md)。肺结节检测仍然只支持 CT。
+网站现已提供肺部 CT 肺结节候选检测任务、结果查询和医生审核接口。模型服务的请求/响应格式、环境变量和联调步骤见 [`docs/lung-nodule-model-api.md`](docs/lung-nodule-model-api.md)。3D Viewer 不属于本次模型接入范围。
 
-## MRI 与 DICOM
+## 多期 CT 同屏比较
 
-MRI 与 CT 共用上传、MPR、同屏比较和器官分割。身体 MRI 走 `MRI_BODY`；脑 T1 走 `MRI_BRAIN`（需要 SynthStrip 去颅）。序列可从文件名或 DICOM 标签识别，也可以手动选择。生产浏览使用转换后的 NIfTI，细节见 [`docs/mri-support.md`](docs/mri-support.md)。
+医生的患者影像页和患者端“My Examinations”均支持多个时期的 CT 同屏比较。可切换单屏、二分屏、四分屏，并选择同步滚动或各窗口独立滚动。同步滚动使用各序列的相对切片位置，因此不同切片数量也可以联动。
 
-上传框支持 `.nii`、`.nii.gz`，以及包含一个 DICOM 序列的 `.zip` 或 `.dcm` 文件。每份文件可单独填写检查日期；患者只能上传到自己的档案。
+上传框支持一次选择多份 `.nii` / `.nii.gz`，每份文件可单独填写检查日期。患者只能上传到自己的档案；真实上传和比较需要使用后端模式并执行最新数据库迁移：
 
-## 多期同模态比较
-
-医生的患者影像页和患者端 “My Examinations” 支持多个时期的 CT–CT 或 MRI–MRI 同屏比较。可以切换单屏、二分屏、四分屏，并选择同步滚动或各窗口独立滚动。同步滚动使用各序列的相对切片位置，因此不同切片数量也可以联动。
+```sh
+cd backend
+uv run alembic upgrade head
+```
 
 ## 报告同步与工作区标签
 
-医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。真实后端使用 `0008_report_delivery` 数据库迁移保存关联检查、建议、签署状态和签署时间。
+医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。本地演示模式使用按账号隔离的浏览器持久化存储。
 
-医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断和报告；3D/MPR 查看器在独立窗口打开，工作区标签可以快速切换或单独关闭。
+医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断、报告和 3D 影像；这些页面会作为工作区标签保留，可快速切换或单独关闭。
 
-## 可选基础设施
+## Staged production hardening
 
-默认栈继续通过 8080 端口提供服务，GPU 分割任务在 API 进程内运行。可选的 Redis、Celery worker、MinIO 和 Orthanc 需要先配置相应密钥与模型目录，再运行：
+The default stack exposes Nginx on port 8080 and runs the API on its internal port 8000.
+API documentation is disabled in that environment. Optional Redis, MinIO, and Orthanc
+services use the files that are present in this directory:
 
-```bash
-docker compose -f compose.yaml -f compose.override.yaml -f compose.infra.yaml --profile infra up -d
-```
+    docker compose -f compose.yaml -f compose.infra.yaml --profile infra up -d --build
 
-使用 DICOM 网关前，在 `backend/.env` 中设置 `ORTHANC_URL`、`ORTHANC_USERNAME` 和 `ORTHANC_PASSWORD`。只有重新构建 Celery worker 镜像且 Redis 已就绪后，才应启用 `TASK_QUEUE_ENABLED`。
+GPU segmentation uses:
 
-## 开发与验证
+    docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 
-```bash
-pnpm typecheck
-pnpm build
-pnpm test:volume
-pnpm test:comparison
-cd backend
-uv run pytest -q
-```
+Set `ORTHANC_URL`, `ORTHANC_USERNAME`, and `ORTHANC_PASSWORD` in `backend/.env` before
+using authenticated DICOM endpoints. `TASK_QUEUE_ENABLED` remains false until a worker
+implementation is deployed and verified. The DICOM boundary stores patient, Study, Series,
+Instance and frame metadata. `POST /api/v1/dicom/series/{series_id}/convert` turns an
+enabled Orthanc NIfTI series into a viewable `MedicalImage` and backfills the series link;
+see `docs/dicom-conversion.md` for the real-service verification boundary.

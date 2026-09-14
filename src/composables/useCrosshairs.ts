@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, type Ref } from 'vue'
 import type { Shape3D, SliceAxis } from '@/utils/volumePixels'
 import { canvasToVoxel, voxelToCanvas } from '@/utils/volumePixels'
 
@@ -9,15 +9,31 @@ export interface CrosshairsState {
   visible: boolean
 }
 
-// Global or shared crosshairs instance for synchronized orthogonal MPR views
-const crosshairsState = ref<CrosshairsState>({
-  vx: 0,
-  vy: 0,
-  vz: 0,
-  visible: true,
-})
+interface ScopedState { state: Ref<CrosshairsState>; consumers: number }
+const scopedStates = new Map<string, ScopedState>()
 
-export function useCrosshairs() {
+function stateFor(scope: string) {
+  let entry = scopedStates.get(scope)
+  if (!entry) {
+    entry = { state: ref({ vx: 0, vy: 0, vz: 0, visible: true }), consumers: 0 }
+    scopedStates.set(scope, entry)
+  }
+  entry.consumers++
+  return entry.state
+}
+
+export function useCrosshairs(scope = 'default') {
+  const crosshairsState = stateFor(scope)
+  let released = false
+
+  function releaseCrosshairs() {
+    if (released) return
+    released = true
+    const entry = scopedStates.get(scope)
+    if (!entry) return
+    entry.consumers--
+    if (entry.consumers <= 0) scopedStates.delete(scope)
+  }
   const visible = computed({
     get: () => crosshairsState.value.visible,
     set: (v: boolean) => {
@@ -74,5 +90,6 @@ export function useCrosshairs() {
     setVoxel,
     updateFromCanvas,
     getCanvasProjection,
+    releaseCrosshairs,
   }
 }
