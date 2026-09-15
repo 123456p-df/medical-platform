@@ -1,4 +1,4 @@
-"""Replace the explicitly approved demo database with three real CT fixtures."""
+"""Replace the explicitly approved demo database with two synthetic demo patients."""
 
 import os
 import sys
@@ -7,20 +7,18 @@ from pathlib import Path
 from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = ROOT / "backend"
 if not (BACKEND_ROOT / "app").is_dir() and (ROOT / "app").is_dir():
     BACKEND_ROOT = ROOT
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.config import Settings  # noqa: E402
-from app.db import make_engine, make_session_factory  # noqa: E402
-from app.demo import DEMO_PATIENTS, seed  # noqa: E402
-from app.models import OrganModel, User  # noqa: E402
+from app.config import Settings
+from app.db import make_engine, make_session_factory
+from app.demo import DEMO_PATIENTS, seed
+from app.models import OrganModel, User
 
-
-ALLOWED_USERNAMES = {"demo_doctor", "demo_patient", "demo_patient_2", "demo_patient_3"}
+ALLOWED_USERNAMES = {"admin", "demo_doctor", "demo_patient", "test_patient"}
 
 
 def assert_demo_only(db):
@@ -103,8 +101,7 @@ def main():
     clear_image_storage(settings)
     seed(settings)
     prune_orphan_default_assets(settings)
-    scans = ", ".join(scan_name for _, _, scan_name, _, _, _ in DEMO_PATIENTS)
-    print(f"Demo database reset: 3 patients seeded with {scans}.")
+    print(f"Demo database reset: {len(DEMO_PATIENTS)} patients seeded.")
 
 
 if __name__ == "__main__":

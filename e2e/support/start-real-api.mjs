@@ -1,23 +1,33 @@
 import { spawnSync, spawn } from 'node:child_process'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const port = 8001
-const databaseUrl = `sqlite:////tmp/vmrb-e2e-real-${Date.now()}.db`
+const root = fileURLToPath(new URL('../../', import.meta.url))
+const tempRoot = mkdtempSync(join(tmpdir(), 'vmrb-e2e-real-'))
+const databasePath = join(tempRoot, 'test.db').replaceAll('\\', '/')
+const databaseUrl = `sqlite:///${databasePath}`
 const env = {
   ...process.env,
   DATABASE_URL: databaseUrl,
+  STORAGE_ROOT: join(tempRoot, 'storage'),
   JWT_SECRET: 'j'.repeat(48),
   ID_HASH_KEY: 'h'.repeat(48),
   ID_ENCRYPTION_KEY: '0'.repeat(43) + '=',
 }
 
 const seed = spawnSync('uv', ['run', '--project', 'backend', 'python', 'e2e/support/seed_real_api.py'], {
-  cwd: process.cwd(),
+  cwd: root,
   env,
   encoding: 'utf8',
 })
 if (seed.status !== 0) {
-  process.stderr.write(seed.stderr || seed.stdout)
-  process.exit(seed.status || 1)
+  const details = seed.stderr || seed.stdout || seed.error?.message || 'Unable to seed real API test data'
+  process.stderr.write(String(details).trimEnd() + '\n')
+  rmSync(tempRoot, { recursive: true, force: true })
+  process.exit(seed.status ?? 1)
 }
 
 const server = spawn(
@@ -34,7 +44,7 @@ const server = spawn(
     '--port',
     String(port),
   ],
-  { cwd: process.cwd(), env, stdio: 'inherit' },
+  { cwd: root, env, stdio: 'inherit', windowsHide: true },
 )
 
 async function waitForHealth() {
@@ -51,11 +61,18 @@ async function waitForHealth() {
 }
 
 function stop() {
-  if (!server.killed) server.kill('SIGTERM')
+  if (!server.killed) server.kill()
 }
 
 process.on('SIGTERM', stop)
 process.on('SIGINT', stop)
-server.on('exit', code => process.exit(code ?? 0))
-await waitForHealth()
-await new Promise(resolve => server.once('exit', resolve))
+try {
+  await waitForHealth()
+  const code = await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.once('exit', resolve)
+  })
+  process.exitCode = code ?? 0
+} finally {
+  rmSync(tempRoot, { recursive: true, force: true })
+}

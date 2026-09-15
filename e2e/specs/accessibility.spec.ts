@@ -33,9 +33,9 @@ test('200% zoom keeps key actions reachable and keyboard opens a patient', async
   await page.getByRole('button', { name: /Doctor Portal/ }).click()
   await page.waitForURL(/\/doctor\/dashboard/)
   await page.getByRole('searchbox').focus()
-  await page.keyboard.type('Zhang')
+  await page.keyboard.type('patient')
   await page.waitForTimeout(400)
-  await page.getByRole('row', { name: /Zhang San/ }).focus()
+  await page.getByRole('row', { name: /demo_patient/ }).focus()
   await page.keyboard.press('Enter')
   await expect(page).toHaveURL(/\/doctor\/patients\/P20260021/)
 

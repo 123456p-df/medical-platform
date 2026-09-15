@@ -1,4 +1,4 @@
-"""Explicit demo fixtures for the local database using three real CT samples."""
+"""Explicit demo fixtures for the local database using two sample CT scans."""
 
 import os
 import shutil
@@ -11,27 +11,29 @@ from sqlalchemy import select
 from app.cli import install_default, provision_patient, set_access
 from app.config import Settings
 from app.db import make_engine, make_session_factory
+from app.demo_fixture import fixture_user_profile, is_fixture_user, load_demo_fixture
 from app.models import Doctor, MedicalImage, MedicalRecord, OrganModel, Patient, User, utcnow
 from app.organs import ORGANS
 from app.security import hash_password
 from app.services.imaging import load_volume, prepare_slice_cache, slice_cache_path
 from app.services.storage import relative_path, stored_path
 
-
-DEMO_PATIENTS = (
-    ("demo_patient", "张三（演示）", "0.nii", date(1980, 1, 1), "male", "A"),
-    ("demo_patient_2", "李薇（演示）", "1.nii", date(1990, 4, 12), "female", "O"),
-    ("demo_patient_3", "陈宇（演示）", "10.nii", date(1972, 9, 3), "male", "B"),
-)
+DEMO_FIXTURE = load_demo_fixture()
+DEMO_PATIENTS = DEMO_FIXTURE.patients
+DEMO_SCAN_FILENAMES = {
+    "patient-001": "0.nii",
+    "patient-002": "1.nii",
+}
+DEMO_PASSWORD = "123456"
 
 
 def demo_scan_path(filename: str) -> Path:
-    root = Path(
-        os.environ.get(
-            "VMRB_DEMO_SCAN_DIR",
-            "/home/zhichun/Documents/NV-Segment-CTMR/test_data/user_scans",
+    configured_root = os.environ.get("VMRB_DEMO_SCAN_DIR")
+    if not configured_root:
+        raise FileNotFoundError(
+            "VMRB_DEMO_SCAN_DIR is not set; point it to the local sample scan directory"
         )
-    ).expanduser()
+    root = Path(configured_root).expanduser()
     for candidate in (root / filename, root / f"{filename}.gz"):
         if candidate.is_file():
             return candidate
@@ -69,23 +71,40 @@ def install_demo_image(db, settings, patient_id: int, image_id: str, source: Pat
 
 
 def seed(settings):
-    scan_paths = [demo_scan_path(scan_name) for _, _, scan_name, _, _, _ in DEMO_PATIENTS]
+    scan_paths = [demo_scan_path(DEMO_SCAN_FILENAMES[item.fixture_id]) for item in DEMO_PATIENTS]
     engine = make_engine(settings.database_url)
     try:
         with make_session_factory(engine)() as db:
-            for username, role, password in (
-                ("admin", "doctor", "Admin123!"),
-                ("demo_doctor", "doctor", "DemoDoctor123!"),
-                ("demo_patient", "patient", "DemoPatient123!"),
-                ("demo_patient_2", "patient", "DemoPatient123!"),
-                ("demo_patient_3", "patient", "DemoPatient123!"),
-            ):
-                if db.scalar(select(User).where(User.username == username)):
+            for fixture_user in DEMO_FIXTURE.users:
+                existing_user = db.scalar(
+                    select(User).where(User.username == fixture_user.username)
+                )
+                if existing_user:
+                    if not is_fixture_user(
+                        username=existing_user.username,
+                        role=existing_user.role,
+                        profile=existing_user.profile,
+                    ):
+                        raise RuntimeError(
+                            f"Refusing to reuse non-demo account {existing_user.username!r}"
+                        )
+                    existing_user.password_hash = hash_password(DEMO_PASSWORD)
+                    existing_user.profile = fixture_user_profile()
+                    db.commit()
                     continue
-                user = User(username=username, role=role, password_hash=hash_password(password))
+                user = User(
+                    username=fixture_user.username,
+                    role=fixture_user.role,
+                    password_hash=hash_password(DEMO_PASSWORD),
+                    profile=fixture_user_profile(),
+                )
                 db.add(user)
                 db.flush()
-                db.add(Doctor(user_id=user.id) if role == "doctor" else Patient(user_id=user.id))
+                db.add(
+                    Patient(user_id=user.id)
+                    if fixture_user.role == "patient"
+                    else Doctor(user_id=user.id)
+                )
                 db.commit()
 
             doctor = db.scalar(
@@ -93,38 +112,39 @@ def seed(settings):
                 .join(User, User.id == Doctor.user_id)
                 .where(User.username == "demo_doctor")
             )
-            for index, ((username, name, _, born, gender, blood_type), source) in enumerate(
-                zip(DEMO_PATIENTS, scan_paths)
+            for index, (fixture_patient, source) in enumerate(
+                zip(DEMO_PATIENTS, scan_paths, strict=True)
             ):
                 patient_id = provision_patient(
                     db,
                     settings,
-                    username=username,
-                    name=name,
-                    id_number=f"DEMO-ID-{index + 1:06d}",
-                    birth_date=born,
-                    gender=gender,
-                    height=170 + index,
-                    weight=65 + index,
-                    blood_type=blood_type,
+                    username=fixture_patient.username,
+                    name=fixture_patient.display_name,
+                    id_number=(
+                        f"DEMO-ID-{int(fixture_patient.fixture_id.removeprefix('patient-')):06d}"
+                    ),
+                    birth_date=fixture_patient.birth_date,
+                    gender=fixture_patient.gender,
+                    height=fixture_patient.height_cm,
+                    weight=fixture_patient.weight_kg,
+                    blood_type=fixture_patient.blood_type,
                 )
                 patient = db.get(Patient, patient_id)
                 patient.deleted_at = None
-                set_access(db, "demo_doctor", patient_id, "active")
-                set_access(db, "admin", patient_id, "active")
+                for doctor_username in fixture_patient.doctor_access:
+                    set_access(db, doctor_username, patient_id, "active")
                 image_id = f"img_demo_{index + 1:04d}"
                 is_new = install_demo_image(db, settings, patient_id, image_id, source, index)
                 if is_new:
-                    for days in (14, 0):
+                    template = DEMO_FIXTURE.record_template
+                    for days in template.day_offsets:
                         db.add(
                             MedicalRecord(
                                 patient_id=patient_id,
                                 doctor_id=doctor.id,
-                                organ_id="lung",
-                                diagnosis="演示病历 · 肺部 CT 资料记录",
-                                description=(
-                                    "仅用于前后端联调的去标识化 CT 样例，不代表临床发现或诊断。"
-                                ),
+                                organ_id=template.organ_id,
+                                diagnosis=template.diagnosis,
+                                description=template.description,
                                 record_date=date.today() - timedelta(days=days + index),
                             )
                         )

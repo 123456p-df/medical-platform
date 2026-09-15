@@ -206,6 +206,19 @@ class MedicalImage(CreatedMixin, Base):
     __tablename__ = "medical_images"
     __table_args__ = (
         CheckConstraint("image_type IN ('CT', 'MRI')", name="ck_image_type"),
+        CheckConstraint("source_format IN ('nifti', 'dicom')", name="ck_image_source_format"),
+        CheckConstraint(
+            "sequence IN ('T1', 'T2', 'FLAIR', 'DWI', 'other', 'unknown')",
+            name="ck_image_sequence",
+        ),
+        CheckConstraint(
+            "segmentation_mode IS NULL OR segmentation_mode IN ('CT_BODY', 'MRI_BODY', 'MRI_BRAIN')",
+            name="ck_image_segmentation_mode",
+        ),
+        CheckConstraint(
+            "sequence_confidence IN ('auto', 'manual')",
+            name="ck_image_sequence_confidence",
+        ),
         Index("ix_images_patient_organ", "patient_id", "organ_id"),
     )
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -217,6 +230,18 @@ class MedicalImage(CreatedMixin, Base):
     spacing: Mapped[list] = mapped_column(JSON)
     size_bytes: Mapped[int]
     study_date: Mapped[date | None]
+    source_format: Mapped[str] = mapped_column(
+        String(16), default="nifti", server_default=text("'nifti'")
+    )
+    series_uid: Mapped[str | None] = mapped_column(String(64))
+    sequence: Mapped[str] = mapped_column(
+        String(16), default="unknown", server_default=text("'unknown'")
+    )
+    contrast: Mapped[bool | None]
+    segmentation_mode: Mapped[str | None] = mapped_column(String(16))
+    sequence_confidence: Mapped[str] = mapped_column(
+        String(16), default="auto", server_default=text("'auto'")
+    )
     acquisition: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
 
 

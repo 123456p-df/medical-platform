@@ -29,8 +29,9 @@ jobs:
       - run: pnpm test:profile
       - run: pnpm test:a11y
       - run: pnpm test:contract
+      - run: pnpm test:backend
+      - run: pnpm build
       - run: pnpm test:bundle-budget
-      - run: pnpm build --outDir dist-v5-ci-final
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - run: pnpm test:e2e:real
@@ -42,3 +43,45 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 14
+
+  platform-compatibility:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --locked --project backend
+      - run: pnpm typecheck
+      - run: pnpm test:a11y
+      - run: pnpm test:migrations
+      - run: pnpm test:contract
+      - run: uv run --project backend pytest backend/tests/test_demo_fixture.py backend/tests/test_mri_support.py -q
+      - run: pnpm build
+      - run: pnpm test:bundle-budget
+      - name: Validate Windows launcher syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($script in @('scripts/start-preview.ps1', 'scripts/stop-preview.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+          }
+      - name: Validate macOS launcher syntax
+        if: runner.os == 'macOS'
+        run: bash -n start.command

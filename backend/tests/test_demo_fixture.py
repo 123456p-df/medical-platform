@@ -61,7 +61,19 @@ def test_checked_in_demo_fixture_is_loaded_from_the_documented_location():
     assert demo_fixture.FIXTURE_PATH == FIXTURE_PATH
     assert checked_in["schema_version"] == 1
     assert checked_in["data_classification"] == "synthetic-demo-only"
-    assert loaded.patients
+    assert len(loaded.patients) == 2
+    assert {user.username for user in loaded.users} == {
+        "admin",
+        "demo_doctor",
+        "demo_patient",
+        "test_patient",
+    }
+    assert {user.username: user.role for user in loaded.users} == {
+        "admin": "admin",
+        "demo_doctor": "doctor",
+        "demo_patient": "patient",
+        "test_patient": "patient",
+    }
     assert {patient.username for patient in loaded.patients} == {
         user.username for user in loaded.users if user.role == "patient"
     }
@@ -72,8 +84,8 @@ def test_checked_in_demo_fixture_contains_only_explicitly_synthetic_records():
     fixture = demo_fixture.load_demo_fixture()
 
     for patient in fixture.patients:
-        assert patient.username.casefold().startswith("demo_")
-        assert patient.display_name.startswith("演示患者")
+        assert patient.username in {"demo_patient", "test_patient"}
+        assert patient.display_name == patient.username
         assert patient.fixture_id.startswith("patient-")
     assert "演示" in fixture.record_template.diagnosis
     assert "虚构" in fixture.record_template.description
@@ -119,14 +131,14 @@ def test_demo_module_consumes_the_validated_fixture():
 
 
 def test_database_reset_marker_cannot_be_inferred_from_a_username():
-    assert not demo_fixture.is_fixture_user(username="admin", role="doctor", profile={})
+    assert not demo_fixture.is_fixture_user(username="admin", role="admin", profile={})
     assert not demo_fixture.is_fixture_user(
         username="admin",
-        role="doctor",
+        role="admin",
         profile={demo_fixture.PROFILE_MARKER_KEY: "a-different-database"},
     )
     assert demo_fixture.is_fixture_user(
         username="admin",
-        role="doctor",
+        role="admin",
         profile=demo_fixture.fixture_user_profile(),
     )

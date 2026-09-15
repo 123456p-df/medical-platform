@@ -3,6 +3,7 @@ Build high-definition real anatomical atlas from registered CT segmentations.
 Replaces synthetic mathematical ellipsoids with authentic human CT geometry.
 """
 import json
+import os
 import time
 from pathlib import Path
 
@@ -11,7 +12,9 @@ import trimesh
 from trimesh.visual.material import PBRMaterial
 
 ROOT = Path(__file__).resolve().parents[1]
-ORGANS_DIR = Path("/home/zhichun/Downloads/organs_glb")
+ORGANS_DIR = Path(
+    os.environ.get("VMRB_ORGANS_DIR", ROOT / "input/organs_glb")
+).expanduser()
 PUBLIC_MODELS = ROOT / "public/models"
 PUBLIC_MODELS.mkdir(parents=True, exist_ok=True)
 

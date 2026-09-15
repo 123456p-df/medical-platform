@@ -33,14 +33,16 @@ import trimesh
 from monai.data.utils import decollate_batch
 from monai.apps.vista3d.transforms import VistaPostTransformd
 
-# Add paths
-SYS_PATHS = [
-    "/home/zhichun/Documents/NV-Segment-CTMR",
-    "/home/zhichun/Documents/medical-platform/backend",
-]
+# Add paths used by this optional local model exercise without assuming a user or OS.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MODEL_ROOT = Path(
+    os.environ.get("VMRB_MODEL_DATA_ROOT", PROJECT_ROOT.parent / "NV-Segment-CTMR")
+).expanduser()
+SYS_PATHS = [MODEL_ROOT, PROJECT_ROOT / "backend"]
 for p in SYS_PATHS:
-    if p not in sys.path:
-        sys.path.insert(0, p)
+    value = str(p)
+    if value not in sys.path:
+        sys.path.insert(0, value)
 
 from hugging_face_pipeline import HuggingFacePipelineHelper
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
@@ -289,8 +291,15 @@ def main():
     parser.add_argument("--max-organs", type=int, default=100, help="Maximum number of organs to reconstruct")
     args = parser.parse_args()
 
-    scans_dir = Path("/home/zhichun/Documents/NV-Segment-CTMR/test_data/user_scans")
-    output_root = Path("/home/zhichun/Documents/medical-platform/backend/tests/pure_1stage_reconstructions")
+    scans_dir = Path(
+        os.environ.get("VMRB_DEMO_SCAN_DIR", MODEL_ROOT / "test_data/user_scans")
+    ).expanduser()
+    output_root = Path(
+        os.environ.get(
+            "VMRB_RECONSTRUCTION_OUTPUT",
+            PROJECT_ROOT / "backend/tests/pure_1stage_reconstructions",
+        )
+    ).expanduser()
     output_root.mkdir(parents=True, exist_ok=True)
 
     _pipeline = None
@@ -300,7 +309,7 @@ def main():
             print("[*] Initializing VISTA-3D Foundation Model (1.0mm isotropic, overlap=0.5)...")
             helper = HuggingFacePipelineHelper("vista3d")
             _pipeline = helper.init_pipeline(
-                "/home/zhichun/Documents/NV-Segment-CTMR/vista3d_pretrained_model",
+                str(MODEL_ROOT / "vista3d_pretrained_model"),
                 resample_spacing=(1.0, 1.0, 1.0),
                 roi_size=(288, 288, 192),
                 overlap=0.5,
@@ -308,7 +317,9 @@ def main():
             )
         return _pipeline
 
-    meta_path = Path("/home/zhichun/Documents/NV-Segment-CTMR/metadata.json")
+    meta_path = Path(
+        os.environ.get("VMRB_MODEL_METADATA", MODEL_ROOT / "metadata.json")
+    ).expanduser()
     meta = json.load(open(str(meta_path)))
     ct_labels = meta["network_data_format"]["everything_labels"]["CT_BODY"]
 

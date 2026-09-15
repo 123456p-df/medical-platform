@@ -67,7 +67,7 @@ def set_access(db, doctor_username, patient_id, status):
     doctor = db.scalar(
         select(Doctor)
         .join(User, User.id == Doctor.user_id)
-        .where(User.username == doctor_username, User.role == "doctor")
+        .where(User.username == doctor_username, User.role.in_(("admin", "doctor")))
     )
     if not doctor or not db.get(Patient, patient_id):
         raise ValueError("Doctor or patient not found")

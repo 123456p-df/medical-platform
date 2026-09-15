@@ -8,21 +8,28 @@ import type {
   Report,
 } from '@/types'
 
+// Keep preview fixtures behind the same typed construction boundary used by API mappers.
+// This makes schema drift fail at compile time instead of leaking partial objects into stores.
+const createPatient = (value: Patient): Patient => value
+const createExamination = (value: Examination): Examination => value
+const createFinding = (value: Finding): Finding => value
+const createReport = (value: Report): Report => value
+
 export const mockDoctor: Doctor = {
   id: 'D-1008',
-  name: 'Dr. Zhang Wei',
+  name: 'demo_doctor',
   title: 'Radiologist',
   department: 'Thoracic Imaging',
 }
 
-export const mockPatients: Patient[] = [
+export const mockPatients: Patient[] = ([
   {
     id: 'P20260021',
-    name: 'Zhang San',
+    name: 'demo_patient',
     age: 58,
     gender: 'Male',
     phone: '+86 138 0000 2101',
-    email: 'zhang.san@example.com',
+    email: 'demo_patient@example.com',
     bloodType: 'A+',
     allergies: ['Penicillin'],
     risk: 'High',
@@ -35,11 +42,11 @@ export const mockPatients: Patient[] = [
   },
   {
     id: 'P20260037',
-    name: 'Li Wei',
+    name: 'test_patient',
     age: 46,
     gender: 'Female',
     phone: '+86 139 0000 3702',
-    email: 'li.wei@example.com',
+    email: 'test_patient@example.com',
     bloodType: 'O+',
     allergies: [],
     risk: 'Medium',
@@ -50,60 +57,9 @@ export const mockPatients: Patient[] = [
     aiStatus: 'Reviewed',
     avatarColor: '#5c6f9c',
   },
-  {
-    id: 'P20260044',
-    name: 'Wang Fang',
-    age: 62,
-    gender: 'Male',
-    phone: '+86 137 0000 4403',
-    email: 'wang.fang@example.com',
-    bloodType: 'B+',
-    allergies: ['Iodine contrast'],
-    risk: 'High',
-    status: 'Abnormal',
-    lastExamDate: '2026-09-02',
-    modality: 'MRI',
-    organ: 'Brain',
-    aiStatus: 'Abnormal',
-    avatarColor: '#8b5f78',
-  },
-  {
-    id: 'P20260058',
-    name: 'Chen Yu',
-    age: 35,
-    gender: 'Female',
-    phone: '+86 136 0000 5804',
-    email: 'chen.yu@example.com',
-    bloodType: 'AB+',
-    allergies: [],
-    risk: 'Low',
-    status: 'Completed',
-    lastExamDate: '2026-08-20',
-    modality: 'X-Ray',
-    organ: 'Chest',
-    aiStatus: 'Completed',
-    avatarColor: '#4b7f6b',
-  },
-  {
-    id: 'P20260069',
-    name: 'Liu Min',
-    age: 71,
-    gender: 'Male',
-    phone: '+86 135 0000 6905',
-    email: 'liu.min@example.com',
-    bloodType: 'O-',
-    allergies: ['Sulfa drugs'],
-    risk: 'High',
-    status: 'Reviewed',
-    lastExamDate: '2026-08-31',
-    modality: 'CT',
-    organ: 'Lung',
-    aiStatus: 'Reviewed',
-    avatarColor: '#756b9a',
-  },
-]
+] satisfies Patient[]).map(createPatient)
 
-export const mockExaminations: Examination[] = [
+export const mockExaminations: Examination[] = ([
   {
     id: 'E20260901',
     patientId: 'P20260021',
@@ -181,42 +137,9 @@ export const mockExaminations: Examination[] = [
     description: 'Low-dose chest CT follow-up.',
     sliceCount: 12,
   },
-  {
-    id: 'E20260902',
-    patientId: 'P20260044',
-    type: 'MRI',
-    organ: 'Brain',
-    bodyPart: 'Head',
-    date: '2026-09-02',
-    status: 'Abnormal',
-    description: 'Brain MRI with contrast.',
-    sliceCount: 10,
-  },
-  {
-    id: 'E20260820',
-    patientId: 'P20260058',
-    type: 'X-Ray',
-    organ: 'Chest',
-    bodyPart: 'Chest',
-    date: '2026-08-20',
-    status: 'Completed',
-    description: 'Two-view chest radiograph.',
-    sliceCount: 1,
-  },
-  {
-    id: 'E20260831',
-    patientId: 'P20260069',
-    type: 'CT',
-    organ: 'Lung',
-    bodyPart: 'Chest',
-    date: '2026-08-31',
-    status: 'Reviewed',
-    description: 'Low-dose chest CT, 1.25 mm axial reconstruction.',
-    sliceCount: 12,
-  },
-]
+] satisfies Examination[]).map(createExamination)
 
-export const mockFindings: Finding[] = [
+export const mockFindings: Finding[] = ([
   {
     id: 'F-1001',
     examinationId: 'E20260901',
@@ -275,35 +198,9 @@ export const mockFindings: Finding[] = [
     description: 'Stable 7 mm nodule in the left upper lobe.',
     status: 'confirmed',
   },
-  {
-    id: 'F-1005',
-    examinationId: 'E20260902',
-    patientId: 'P20260044',
-    organ: 'Brain',
-    side: 'right',
-    location: 'temporal_lobe',
-    label: 'Suspected Infarct',
-    severity: 'High',
-    confidence: 0.82,
-    description: 'Restricted diffusion in the right temporal lobe, suggestive of acute infarct.',
-    status: 'pending',
-  },
-  {
-    id: 'F-1006',
-    examinationId: 'E20260831',
-    patientId: 'P20260069',
-    organ: 'Lung',
-    side: 'right',
-    location: 'middle_lobe',
-    label: 'Pulmonary Nodule',
-    severity: 'Medium',
-    confidence: 0.91,
-    description: '11 mm nodule in the right middle lobe with irregular margins.',
-    status: 'confirmed',
-  },
-]
+] satisfies Finding[]).map(createFinding)
 
-export const mockReports: Report[] = [
+export const mockReports: Report[] = ([
   {
     id: 'R-1001',
     patientId: 'P20260021',
@@ -312,7 +209,7 @@ export const mockReports: Report[] = [
     description:
       'A 9 mm solid nodule is present in the apical segment of the right upper lobe. No pleural effusion or mediastinal lymphadenopathy is identified.',
     recommendation: 'Recommend follow-up chest CT in 6 months and multidisciplinary review.',
-    doctor: 'Dr. Zhang Wei',
+    doctor: 'demo_doctor',
     date: '2026-09-01',
     reviewed: false,
   },
@@ -323,7 +220,7 @@ export const mockReports: Report[] = [
     diagnosis: 'Mild age-related brain atrophy.',
     description: 'No acute intracranial hemorrhage, mass effect, or midline shift.',
     recommendation: 'No urgent follow-up required.',
-    doctor: 'Dr. Zhang Wei',
+    doctor: 'demo_doctor',
     date: '2026-07-11',
     reviewed: true,
   },
@@ -334,7 +231,7 @@ export const mockReports: Report[] = [
     diagnosis: 'Clear lungs with no active cardiopulmonary disease.',
     description: 'Heart size is normal. No focal consolidation or pneumothorax.',
     recommendation: 'Routine annual screening is sufficient.',
-    doctor: 'Dr. Zhang Wei',
+    doctor: 'demo_doctor',
     date: '2026-04-03',
     reviewed: true,
   },
@@ -345,33 +242,11 @@ export const mockReports: Report[] = [
     diagnosis: 'Stable left upper lobe nodule.',
     description: 'The 7 mm nodule is unchanged compared with the prior examination.',
     recommendation: 'Continue routine surveillance.',
-    doctor: 'Dr. Zhang Wei',
+    doctor: 'demo_doctor',
     date: '2026-08-29',
     reviewed: true,
   },
-  {
-    id: 'R-1005',
-    patientId: 'P20260058',
-    examinationId: 'E20260820',
-    diagnosis: 'Normal cardiomediastinal silhouette.',
-    description: 'No acute pulmonary disease is seen.',
-    recommendation: 'No follow-up required.',
-    doctor: 'Dr. Zhang Wei',
-    date: '2026-08-21',
-    reviewed: true,
-  },
-  {
-    id: 'R-1006',
-    patientId: 'P20260069',
-    examinationId: 'E20260831',
-    diagnosis: 'Right middle lobe nodule requiring biopsy consideration.',
-    description: 'An irregular 11 mm nodule is present in the right middle lobe.',
-    recommendation: 'Consider PET-CT and respiratory specialist referral.',
-    doctor: 'Dr. Zhang Wei',
-    date: '2026-09-01',
-    reviewed: true,
-  },
-]
+] satisfies Report[]).map(createReport)
 
 export const mockImages: MedicalImage[] = [
   {

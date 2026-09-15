@@ -1,19 +1,27 @@
 import os
 import sys
 import shutil
+import tempfile
 from pathlib import Path
 import numpy as np
 import trimesh
 from trimesh.visual.material import PBRMaterial
 
-ROOT = Path("/home/zhichun/Documents/medical-platform")
+ROOT = Path(os.environ.get("VMRB_PROJECT_ROOT", Path(__file__).resolve().parents[1])).resolve()
 PUBLIC_MODELS = ROOT / "public/models"
 DIST_MODELS = ROOT / "dist/models"
 DEFAULTS_DIR = ROOT / "backend/data/defaults"
 DEFAULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-UPSTREAM_NAV = Path("/tmp/upstream_nav.glb")
-HIGHRES_SPLEEN = ROOT / "backend/tests/output_fmrc/highres_surface.glb"
+UPSTREAM_NAV = Path(
+    os.environ.get("VMRB_UPSTREAM_NAV", Path(tempfile.gettempdir()) / "upstream_nav.glb")
+).expanduser()
+HIGHRES_SPLEEN = Path(
+    os.environ.get(
+        "VMRB_HIGHRES_SPLEEN",
+        ROOT / "backend/tests/output_fmrc/highres_surface.glb",
+    )
+).expanduser()
 
 print("=" * 70)
 print("  构建独立器官高精度 0.75mm/亚体素三维模型 (Standalone Organ Models)")

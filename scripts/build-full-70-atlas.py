@@ -8,6 +8,7 @@ Fixed:
 """
 
 import json
+import os
 import time
 from pathlib import Path
 import numpy as np
@@ -18,12 +19,22 @@ from trimesh.visual.material import PBRMaterial
 from skimage.measure import marching_cubes
 import fast_simplification
 
-ROOT = Path("/home/zhichun/Documents/medical-platform")
+ROOT = Path(os.environ.get("VMRB_PROJECT_ROOT", Path(__file__).resolve().parents[1])).resolve()
 PUBLIC_MODELS = ROOT / "public/models"
 PUBLIC_MODELS.mkdir(parents=True, exist_ok=True)
 
-MASK_PATH = Path("/home/zhichun/Documents/NV-Segment-CTMR/output_ct_body/spleen_10/spleen_10_seg.nii.gz")
-METADATA_PATH = Path("/home/zhichun/Documents/NV-Segment-CTMR/metadata.json")
+MODEL_DATA_ROOT = Path(
+    os.environ.get("VMRB_MODEL_DATA_ROOT", ROOT.parent / "NV-Segment-CTMR")
+).expanduser()
+MASK_PATH = Path(
+    os.environ.get(
+        "VMRB_ATLAS_MASK",
+        MODEL_DATA_ROOT / "output_ct_body/spleen_10/spleen_10_seg.nii.gz",
+    )
+).expanduser()
+METADATA_PATH = Path(
+    os.environ.get("VMRB_MODEL_METADATA", MODEL_DATA_ROOT / "metadata.json")
+).expanduser()
 
 print("=" * 65)
 print("   70+ 全解剖结构 0.75mm 实心封闭 (Watertight) 高清图谱重构")

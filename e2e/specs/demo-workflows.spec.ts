@@ -13,10 +13,11 @@ test('doctor opens a patient, preserves a report draft, signs it, and the patien
   await expect(page).toHaveURL(/\/doctor\/dashboard/)
 
   const search = page.getByRole('searchbox')
-  await search.fill('Zhang')
-  await expect(page.getByText('Zhang San', { exact: true }).first()).toBeVisible()
+  await search.fill('patient')
+  await expect(page.getByText('demo_patient', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('test_patient', { exact: true }).first()).toBeVisible()
   await page.waitForTimeout(400)
-  await page.getByRole('button', { name: 'Open patient record: Zhang San' }).first().click()
+  await page.getByRole('button', { name: 'Open patient record: demo_patient' }).first().click()
   await expect(page).toHaveURL(/\/doctor\/patients\/P20260021/)
 
   await page.getByRole('link', { name: 'Medical Imaging' }).first().click()
@@ -43,6 +44,21 @@ test('doctor opens a patient, preserves a report draft, signs it, and the patien
   await expect(page).toHaveURL(/\/patient\/dashboard/)
   await page.getByRole('link', { name: 'My Reports' }).first().click()
   await expect(page.getByText('E2E draft diagnosis').first()).toBeVisible()
+})
+
+test('3D viewer previews in the same tab and Escape returns to the patient', async ({ page, context }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /Doctor Portal/ }).click()
+  await page.getByRole('button', { name: 'Open patient record: demo_patient' }).first().click()
+
+  await page.getByRole('link', { name: '3D organ model' }).first().click()
+  await expect(page).toHaveURL(/\/doctor\/patients\/P20260021\/3d/)
+  await page.getByRole('button', { name: /Preview 3D viewer in this tab/ }).click()
+
+  await expect(page).toHaveURL(/\/viewer\/study\/P20260021/)
+  expect(context.pages()).toHaveLength(1)
+  await page.keyboard.press('Escape')
+  await expect(page).toHaveURL(/\/doctor\/patients\/P20260021\/3d/)
 })
 
 test('new patient registration completes onboarding with an isolated profile', async ({ page }) => {
@@ -104,17 +120,17 @@ test('admin archives a patient with a reason and restores it from the archive ma
   await page.getByRole('button', { name: /Administrator/ }).click()
   await expect(page).toHaveURL(/\/doctor\/dashboard/)
 
-  await page.locator('button[aria-label="Archive patient Zhang San"]').first().click()
+  await page.locator('button[aria-label="Archive patient demo_patient"]').first().click()
   await page.locator('dialog[open] [data-testid="archive-reason"]').fill('E2E archive verification')
   await page.getByRole('button', { name: 'Confirm global archive' }).click()
-  await expect(page.getByText('Zhang San', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('demo_patient', { exact: true })).toHaveCount(0)
 
   await page.getByRole('link', { name: 'Archived patients' }).click()
   await expect(page).toHaveURL(/\/doctor\/archived/)
-  await expect(page.getByText('Zhang San', { exact: true })).toBeVisible()
+  await expect(page.getByText('demo_patient', { exact: true })).toBeVisible()
   await expect(page.getByText('E2E archive verification')).toBeVisible()
   await page.getByRole('button', { name: 'Restore' }).click()
-  await expect(page.getByText('Zhang San', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('demo_patient', { exact: true })).toHaveCount(0)
 })
 
 test('profile avatar and attachment upload persist for the demo doctor account', async ({ page }) => {

@@ -38,9 +38,9 @@ async function submit(previewAccount?: PreviewAccount) {
   if (previewAccount) {
     mode.value = 'login'
     const credentials = {
-      admin: ['admin', 'Admin123!'],
-      doctor: ['demo_doctor', 'DemoDoctor123!'],
-      patient: ['demo_patient', 'DemoPatient123!'],
+      admin: ['admin', '123456'],
+      doctor: ['demo_doctor', '123456'],
+      patient: ['demo_patient', '123456'],
     } as const
     ;[username.value, password.value] = credentials[previewAccount]
   }
@@ -49,7 +49,8 @@ async function submit(previewAccount?: PreviewAccount) {
   Object.assign(fieldErrors, { username: '', password: '', confirmPassword: '' })
   try {
     if (!/^[\w.-]{3,64}$/.test(username.value.trim())) fieldErrors.username = t('ui.login.error.username')
-    if (password.value.length < 8 || password.value.length > 128) fieldErrors.password = t('ui.login.error.password')
+    const minimumPasswordLength = mode.value === 'signup' ? 8 : 6
+    if (password.value.length < minimumPasswordLength || password.value.length > 128) fieldErrors.password = t('ui.login.error.password')
     if (mode.value === 'signup' && password.value !== confirmPassword.value) {
       fieldErrors.confirmPassword = t('ui.login.error.confirm')
     }
@@ -118,7 +119,7 @@ async function submit(previewAccount?: PreviewAccount) {
         <small v-if="fieldErrors.username" id="username-error" class="field-error">{{ fieldErrors.username }}</small>
         <p v-if="mode === 'signup'" class="signup-role"><strong>{{ $t('ui.login.patientAccount') }}</strong><span>{{ $t('ui.login.doctorProvisioning') }}</span></p>
         <label class="label" for="password">{{ $t('ui.login.password') }}</label>
-        <input id="password" v-model="password" class="input" type="password" :autocomplete="mode === 'signup' ? 'new-password' : 'current-password'" :aria-invalid="Boolean(fieldErrors.password)" aria-describedby="password-error" minlength="8" required />
+        <input id="password" v-model="password" class="input" type="password" :autocomplete="mode === 'signup' ? 'new-password' : 'current-password'" :aria-invalid="Boolean(fieldErrors.password)" aria-describedby="password-error" :minlength="mode === 'signup' ? 8 : 6" required />
         <small v-if="fieldErrors.password" id="password-error" class="field-error">{{ fieldErrors.password }}</small>
         <template v-if="mode === 'signup'">
           <label class="label" for="confirm-password">{{ $t('ui.login.confirmPassword') }}</label>

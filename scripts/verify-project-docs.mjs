@@ -9,6 +9,7 @@ const vite = read('vite.config.ts')
 assert.match(vite, /127\.0\.0\.1:8080/)
 assert.match(readme, /VMRB_BACKEND_URL=http:\/\/127\.0\.0\.1:8000/)
 assert.match(readme, /0017_patient_onboarding_and_archives/)
+assert.match(readme, /0018_merge_mri_and_v5/)
 assert.doesNotMatch(readme, /compose\.override\.yaml/)
 for (const file of ['compose.yaml', 'compose.infra.yaml', 'compose.gpu.yaml', 'backend/.env.example']) exists(file)
 const featureMatrix = read('docs/feature-matrix.md')
@@ -17,7 +18,7 @@ for (const mode of ['Synthetic demo', 'Local browser import', 'Real API']) {
 }
 
 const migrations = fs.readdirSync('backend/migrations/versions').filter(file => file.endsWith('.py')).sort()
-assert.equal(migrations.at(-1), '0017_patient_onboarding_and_archives.py')
+assert.equal(migrations.at(-1), '0018_merge_mri_and_v5.py')
 
 console.log(JSON.stringify({ passed: true, checks: [
   'documented development and backend ports match Vite proxy configuration',

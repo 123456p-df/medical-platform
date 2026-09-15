@@ -37,6 +37,9 @@ const remoteCapabilities = await sourceModule('src/utils/capabilities.ts', [
 const remoteCt = remoteCapabilities.capabilityForStudy({ source: 'remote', type: 'CT', organId: 'lung' }, 'doctor')
 assert.equal(remoteCt.lungAnalysis.enabled, true)
 assert.equal(remoteCt.segmentation.enabled, true)
+const remoteMri = remoteCapabilities.capabilityForStudy({ source: 'remote', type: 'MRI', organId: 'brain' }, 'doctor')
+assert.equal(remoteMri.segmentation.enabled, true)
+assert.equal(remoteMri.reconstruction3d.enabled, true)
 const localCt = remoteCapabilities.capabilityForStudy({ source: 'local-upload', type: 'CT', organId: 'lung' }, 'doctor')
 assert.equal(localCt.reconstruction3d.enabled, false)
 
@@ -74,7 +77,7 @@ console.log(JSON.stringify({
   checks: [
     'calendar dates reject impossible dates and stay on the local calendar day',
     'blood type and unknown review states preserve clinical meaning',
-    'study capabilities block model actions in preview and local-upload modes',
+    'study capabilities support remote CT/MRI and block model actions in preview and local-upload modes',
     'logout, session persistence, registration roles, and report draft recovery use one contract',
     'IndexedDB metadata and image blobs use separate indexed stores',
     'review state updates are unified and examination reports require exact linkage',

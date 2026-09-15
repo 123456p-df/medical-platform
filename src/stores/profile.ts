@@ -11,7 +11,7 @@ export interface Profile {
 type ProfileDraft = Pick<Profile, 'display_name' | 'title' | 'department' | 'phone' | 'email' | 'bio'>
 type SessionIdentity = { id?: string; username?: string; name?: string; role?: 'doctor' | 'patient' }
 
-const PREVIEW_PROFILE_PREFIX = 'pulmolink-preview-profile-v2:'
+const PREVIEW_PROFILE_PREFIX = 'pulmolink-preview-profile-v3:'
 
 function currentIdentity(): SessionIdentity {
   try { return JSON.parse(readSession() || '{}') as SessionIdentity }

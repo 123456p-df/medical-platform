@@ -48,7 +48,7 @@ const clinicalItems = computed(() => currentPatientId.value ? [
   { label: 'Medical Imaging', name: 'doctor-patient-imaging', icon: ScanLine },
   { label: 'ui.sidebar.aiDiagnosis', name: 'doctor-patient-ai', icon: Sparkles },
   { label: 'ui.sidebar.clinicalReport', name: 'doctor-patient-report', icon: FileText },
-  { label: 'ui.sidebar.organ3d', name: 'doctor-patient-3d', icon: Box, external: true },
+  { label: 'ui.sidebar.organ3d', name: 'doctor-patient-3d', icon: Box },
 ] : [])
 
 const patientNav = computed(() => [
@@ -139,18 +139,7 @@ async function logout() {
         </button>
         <div v-if="clinicalExpanded && currentPatientId" class="tree-children clinical-children">
           <template v-for="item in clinicalItems" :key="item.name">
-            <a
-              v-if="item.external"
-              :href="router.resolve({ name: 'study-viewer', params: { patientId: currentPatientId } }).href"
-              target="_blank"
-              class="tree-item"
-              @click="emit('close')"
-            >
-              <component :is="item.icon" :size="16" />
-              <span>{{ $t(item.label) }}</span>
-            </a>
             <RouterLink
-              v-else
               :to="{ name: item.name, params: { id: currentPatientId } }"
               class="tree-item"
               active-class="is-active"

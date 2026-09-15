@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { api, readSession, writeSession } from '@/api/client'
+import { api, readSession, SESSION_KEY, writeSession } from '@/api/client'
 import { usePatientStore } from './patients'
 import { useProfileStore } from './profile'
 import { useWorkflowStore } from './workflow'
@@ -17,20 +17,24 @@ type PreviewAccount = {
   session: UserSession
 }
 
-const PREVIEW_ACCOUNTS_KEY = 'pulmolink-preview-accounts-v1'
+const PREVIEW_ACCOUNTS_KEY = 'pulmolink-preview-accounts-v2'
 
 const previewAccounts: Record<string, PreviewAccount> = {
   admin: {
-    password: 'Admin123!',
-    session: { id: 'admin', username: 'admin', name: 'Administrator', role: 'doctor', accountRole: 'admin', profileCompleted: true, accessToken: 'local-preview' },
+    password: '123456',
+    session: { id: 'admin', username: 'admin', name: 'admin', role: 'doctor', accountRole: 'admin', profileCompleted: true, accessToken: 'local-preview' },
   },
   demo_doctor: {
-    password: 'DemoDoctor123!',
-    session: { id: 'demo_doctor', username: 'demo_doctor', name: 'Dr. Zhang Wei', role: 'doctor', accountRole: 'doctor', profileCompleted: true, accessToken: 'local-preview' },
+    password: '123456',
+    session: { id: 'demo_doctor', username: 'demo_doctor', name: 'demo_doctor', role: 'doctor', accountRole: 'doctor', profileCompleted: true, accessToken: 'local-preview' },
   },
   demo_patient: {
-    password: 'DemoPatient123!',
-    session: { id: 'P20260021', username: 'demo_patient', name: 'Zhang San', role: 'patient', accountRole: 'patient', profileCompleted: true, accessToken: 'local-preview' },
+    password: '123456',
+    session: { id: 'P20260021', username: 'demo_patient', name: 'demo_patient', role: 'patient', accountRole: 'patient', profileCompleted: true, accessToken: 'local-preview' },
+  },
+  test_patient: {
+    password: '123456',
+    session: { id: 'P20260037', username: 'test_patient', name: 'test_patient', role: 'patient', accountRole: 'patient', profileCompleted: true, accessToken: 'local-preview' },
   },
 }
 
@@ -170,7 +174,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!session.value) return
     if (patientId) session.value.id = patientId
     session.value.profileCompleted = true
-    writeSession(JSON.stringify(session.value), Boolean(localStorage.getItem('vmrb-session-v1')))
+    writeSession(JSON.stringify(session.value), Boolean(localStorage.getItem(SESSION_KEY)))
   }
   window.addEventListener('vmrb-session-expired', () => { clearSessionState(true); window.location.assign('/login') })
   sessionChannel?.addEventListener('message', event => {

@@ -10,7 +10,6 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL: 'http://127.0.0.1:4190',
-    channel: process.env.CI ? undefined : 'chrome',
     headless: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -26,15 +25,14 @@ export default defineConfig({
       name: 'mobile-chromium',
       use: {
         ...devices['Pixel 7'],
-        channel: process.env.CI ? undefined : 'chrome',
       },
       testMatch: /mobile\.spec\.ts/,
     },
   ],
   webServer: {
-    command: 'pnpm exec vite --host 127.0.0.1 --port 4190 --strictPort',
+    command: 'node e2e/support/start-frontend.mjs',
     url: 'http://127.0.0.1:4190/login',
     reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    timeout: 120_000,
   },
 })

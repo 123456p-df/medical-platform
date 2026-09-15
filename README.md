@@ -1,19 +1,63 @@
-# VMRB 医疗平台前端（macOS）
+# VMRB 医疗平台（Windows / macOS / Linux）
 
 ## 直接运行
 
-首次运行需要 Node.js 20+ 和 pnpm。在此目录执行：
+首次运行需要 Node.js 20+ 和 pnpm。在项目根目录执行；以下命令在 PowerShell、
+Windows Terminal、macOS 和 Linux 终端中一致：
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm start
 ```
 
-然后打开 <http://127.0.0.1:4173>。也可以双击 `start.command` 启动；脚本会自动检查依赖并打开浏览器。macOS 若提示权限，可在终端执行一次：
+然后打开 <http://127.0.0.1:4173>。这是不依赖数据库的浏览器内合成演示模式。
+
+macOS 也可以双击 `start.command`；脚本会自动检查依赖并打开浏览器。若系统提示权限，可在终端执行一次：
 
 ```sh
 chmod +x start.command
 ```
+
+Windows 如需启动本机 PostgreSQL + FastAPI + 前端，可使用：
+
+```powershell
+.\scripts\start-preview.ps1
+```
+
+脚本会从 `PATH` 或常见安装目录查找 PostgreSQL，不绑定特定版本。非标准安装可先设置
+`VMRB_POSTGRES_BIN`。如需载入两份演示影像，再把 `VMRB_DEMO_SCAN_DIR` 指向包含
+`0.nii`、`1.nii` 的目录；未设置时会启动空数据库并允许注册新账号。
+
+演示环境只预置以下四个账号，密码统一为 `123456`：
+
+| 账号 | 角色 |
+|---|---|
+| `admin` | 管理员 |
+| `demo_doctor` | 医生 |
+| `demo_patient` | 演示患者 |
+| `test_patient` | 测试患者 |
+
+演示患者也仅为 `demo_patient` 和 `test_patient`。可审查的数据库结构、迁移和合成种子数据随代码入库；
+账号清单在 `backend/fixtures/demo_database.fixture.json`。真实数据库文件、`.env`、密钥和患者数据不应上传。
+需要清理旧演示账号时，在确认已指向演示数据库后运行：
+
+```powershell
+$env:VMRB_DEMO_RESET = '1'
+backend\.venv\Scripts\python.exe scripts\reset-demo-data.py
+```
+
+## NV-Segment-CTMR 三维模型
+
+本机 Windows 启动脚本会自动识别 `D:\NV-Segment-CTMR`，验证
+`hugging_face_pipeline.py` 和 `vista3d_pretrained_model/model.pt`，并在首次启动时安装
+`backend/requirements-nv.txt` 中的推理依赖。其他路径可传入：
+
+```powershell
+.\scripts\start-preview.ps1 -NvSegmentDir 'D:\NV-Segment-CTMR'
+```
+
+macOS/Linux 或手动启动后端时设置 `NV_SEGMENT_CT_DIR`即可使用同一适配器。推理产生标签体积和 GLB，
+前端在当前标签页的 3D 查看器中直接预览，按 `Esc` 返回患者页。模型权重保留在本机，不会上传到 GitHub。
 
 ## 构建并预览
 
@@ -28,21 +72,31 @@ pnpm serve
 
 | 模式 | 启动方式 | 数据与上传能力 |
 |---|---|---|
-| 合成演示 | 双击 `start.command` | 自动进入医生工作台；使用明确标注的演示档案；本地导入支持 DICOM、PNG/JPEG/WebP/BMP，仅保存在当前浏览器。 |
+| 合成演示 | `pnpm start`，或 macOS 双击 `start.command` | 自动进入医生工作台；使用明确标注的演示档案；本地导入支持 DICOM、PNG/JPEG/WebP/BMP，仅保存在当前浏览器。 |
 | 本地真实 API | 先启动 FastAPI，再执行 `pnpm start` | 登录后使用 PostgreSQL 数据；NIfTI 上传进入患者档案；配置 Orthanc 后可使用受认证 DICOM 归档接口。 |
 | Compose 生产栈 | `docker compose -f compose.yaml up -d --build` | Nginx 监听 `http://127.0.0.1:8080`，后端和 PostgreSQL 位于内部网络；按需叠加基础设施或 GPU 配置。 |
 
 Vite 开发服务器位于 `http://127.0.0.1:4173`，会把 `/api` 和 `/health` 转发到 `VMRB_BACKEND_URL`，默认值是 `http://127.0.0.1:8080`。若直接在主机启动 FastAPI 的 8000 端口，请同时执行：
 
+macOS / Linux：
+
 ```sh
-VMRB_BACKEND_URL=http://127.0.0.1:8000 pnpm start
+VMRB_BACKEND_URL=http://127.0.0.1:8000 VITE_LOCAL_PREVIEW=false pnpm start
+```
+
+Windows PowerShell：
+
+```powershell
+$env:VMRB_BACKEND_URL = 'http://127.0.0.1:8000'
+$env:VITE_LOCAL_PREVIEW = 'false'
+pnpm start
 ```
 
 真实 API 首次启动前，在 `backend/` 中生成配置、填写数据库密钥并升级到最新迁移：
 
 ```sh
 cd backend
-python -m app.cli init-config
+uv run python -m app.cli init-config
 uv run alembic upgrade head
 uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
@@ -51,7 +105,7 @@ uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 
 ## 肺结节辅助检测
 
-网站现已提供肺部 CT 肺结节候选检测任务、结果查询和医生审核接口。模型服务的请求/响应格式、环境变量和联调步骤见 [`docs/lung-nodule-model-api.md`](docs/lung-nodule-model-api.md)。3D Viewer 不属于本次模型接入范围。
+网站现已提供肺部 CT 肺结节候选检测任务、结果查询和医生审核接口。模型服务的请求/响应格式、环境变量和联调步骤见 [`docs/lung-nodule-model-api.md`](docs/lung-nodule-model-api.md)。肺结节候选检测与 NV-Segment-CTMR 器官分割是两个独立模型流程。
 
 ## 多期 CT 同屏比较
 
@@ -66,7 +120,7 @@ uv run alembic upgrade head
 
 ## 报告同步与工作区标签
 
-医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。本地演示模式使用按账号隔离的浏览器持久化存储。
+医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。`0018_merge_mri_and_v5` 安全汇合 MRI 与 V5 两条既有迁移分支。本地演示模式使用按账号隔离的浏览器持久化存储。
 
 医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断、报告和 3D 影像；这些页面会作为工作区标签保留，可快速切换或单独关闭。
 

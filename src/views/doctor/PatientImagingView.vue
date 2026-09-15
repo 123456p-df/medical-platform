@@ -203,7 +203,6 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
             v-if="capabilities.reconstruction3d.enabled"
             class="btn btn-sm btn-secondary"
             :to="{ path: '/viewer/study/' + patientId, query: { image: active.id } }"
-            target="_blank"
           >
             <Box :size="15" /> {{ $t('ui.imaging.threeD') }}
           </RouterLink>

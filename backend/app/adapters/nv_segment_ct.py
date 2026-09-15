@@ -1,9 +1,9 @@
 """
 NV-Segment-CTMR Adapter with Pure 1-Stage Native 1.0mm Isotropic Architecture
 =============================================================================
-Pure 1-Stage Global Anatomy Inference (modality="CT_BODY")
+Pure 1-Stage Global Anatomy Inference (CT and MRI modalities)
 - Native 1.0mm Isotropic Spacing (1.0, 1.0, 1.0) mm
-- Native 0.5 Sliding Window Overlap (roi_size=(192, 192, 128), gaussian blending)
+- Configurable Sliding Window (default roi_size=(192, 192, 128), overlap=0.3)
 - CPU-buffered accumulator (Zero CUDA OOM)
 - Narrow-band Signed Distance Field (SDF) continuous zero-crossing (level=0.0)
 - Watertight 2-manifold Lewiner Marching Cubes in unit space
@@ -20,6 +20,7 @@ from pathlib import Path
 import nibabel as nib
 import numpy as np
 import scipy.ndimage as ndi
+
 try:
     import torch
 except ImportError:
@@ -31,33 +32,53 @@ except ImportError:
     trimesh = None
 
 try:
-    from monai.data.utils import decollate_batch
     from monai.apps.vista3d.transforms import VistaPostTransformd
+    from monai.data.utils import decollate_batch
 except ImportError:
     decollate_batch = None
     VistaPostTransformd = None
 from app.config import Settings
-from app.services.imaging import get_organ_color, refine_boundary_native_grid
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
+from app.services.imaging import refine_boundary_native_grid
 from app.services.label_catalog import LabelCatalog
 
 logger = logging.getLogger(__name__)
 
 # Prompt IDs and grouped anatomical parts from the upstream model metadata.
-LABELS = {
-    "liver": [1],
-    "kidney": [5, 14],
-    "spleen": [3],
-    "pancreas": [4],
-    "stomach": [12],
-    "lung": [28, 29, 30, 31, 32],
-    "brain": [22],
-    "heart": [115],
+LABELS_BY_TYPE = {
+    "CT": {
+        "liver": [1],
+        "kidney": [5, 14],
+        "spleen": [3],
+        "pancreas": [4],
+        "stomach": [12],
+        "lung": [28, 29, 30, 31, 32],
+        "brain": [22],
+        "heart": [115],
+    },
+    "MRI": {
+        "liver": [1],
+        "kidney": [5, 14],
+        "spleen": [3],
+        "pancreas": [4],
+        "stomach": [12],
+        "lung": [135, 136],
+        "brain": [22],
+        "heart": [115],
+    },
 }
+LABELS = LABELS_BY_TYPE["CT"]
+
+
+def labels_for(organ_id: str, image_type: str = "CT") -> list[int]:
+    table = LABELS_BY_TYPE.get(image_type, LABELS_BY_TYPE["CT"])
+    if organ_id not in table:
+        raise KeyError(organ_id)
+    return table[organ_id]
 
 
 class NVSegmentCT:
-    image_types = {"CT"}
+    image_types = {"CT", "MRI"}
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -68,29 +89,48 @@ class NVSegmentCT:
         folder = self.settings.nv_segment_ct_dir
         return bool(
             folder
+            and torch is not None
+            and decollate_batch is not None
+            and VistaPostTransformd is not None
             and (folder / "hugging_face_pipeline.py").is_file()
-            and (folder / "vista3d_pretrained_model").is_dir()
+            and (folder / "vista3d_pretrained_model" / "model.pt").is_file()
         )
 
     def _ensure_pipelines(self):
         if self.pipeline is None:
+            if not self.available():
+                raise RuntimeError(
+                    "NV-Segment-CTMR model files or runtime dependencies are unavailable"
+                )
             folder = self.settings.nv_segment_ct_dir.resolve()
             if str(folder) not in sys.path:
                 sys.path.insert(0, str(folder))
             helper_cls = importlib.import_module("hugging_face_pipeline").HuggingFacePipelineHelper
             device = torch.device(self.settings.nv_segment_device)
 
-            logger.info("Initializing NV-Segment-CTMR Pure 1-Stage Pipeline (1.0mm isotropic, overlap=0.5)...")
+            logger.info(
+                "Initializing NV-Segment-CTMR pipeline (1.0mm isotropic, roi=%s, overlap=%s)",
+                self.settings.nv_segment_roi_size,
+                self.settings.nv_segment_overlap,
+            )
             self.pipeline = helper_cls("vista3d").init_pipeline(
                 str(folder / "vista3d_pretrained_model"),
                 resample_spacing=(1.0, 1.0, 1.0),
-                roi_size=(288, 288, 192),
-                overlap=0.5,
+                roi_size=self.settings.nv_segment_roi_size,
+                overlap=self.settings.nv_segment_overlap,
                 device=device,
             )
 
-    def run_batch(self, *, image_path: Path, output_dir: Path, progress):
-        """Run one CT_BODY inference and persist one shared label map."""
+    def run_batch(
+        self,
+        *,
+        image_path: Path,
+        output_dir: Path,
+        progress,
+        modality="CT_BODY",
+        **_kwargs,
+    ):
+        """Run one modality-aware all-label inference and persist one shared label map."""
         self._ensure_pipelines()
         if not hasattr(self.pipeline, "preprocess"):
             raise RuntimeError("All-label batch mode requires the modern NVIDIA pipeline")
@@ -99,7 +139,7 @@ class NVSegmentCT:
         raw_dir = output_dir / "raw"
         raw_dir.mkdir(exist_ok=True)
         native_img = nib.load(str(image_path))
-        prep = self.pipeline.preprocess({"image": str(image_path), "modality": "CT_BODY"})
+        prep = self.pipeline.preprocess({"image": str(image_path), "modality": modality})
         affine_1mm = prep["image"].affine[0].cpu().numpy()
         progress(25)
         outputs = self.pipeline._forward(prep)
@@ -118,7 +158,7 @@ class NVSegmentCT:
         min_voxels = self.settings.segmentation_min_component_voxels
         recognized = [
             int(label)
-            for label, count in zip(labels.tolist(), counts.tolist())
+            for label, count in zip(labels.tolist(), counts.tolist(), strict=False)
             if int(label) > 0 and int(count) >= min_voxels
         ]
         label_map_path = output_dir / "label_map_1mm.nii.gz"
@@ -138,7 +178,10 @@ class NVSegmentCT:
             native_affine = native_result.affine
             native_header = native_result.header.copy()
         else:
-            zoom = [target / source for target, source in zip(native_img.shape, label_map.shape)]
+            zoom = [
+                target / source
+                for target, source in zip(native_img.shape, label_map.shape, strict=False)
+            ]
             native_values = ndi.zoom(label_map, zoom, order=0)
             native_values = native_values[tuple(slice(0, size) for size in native_img.shape)]
             native_affine = native_img.affine
@@ -149,11 +192,20 @@ class NVSegmentCT:
         progress(100)
         return {"label_map_1mm": label_map_path, "label_map_native": native_path, "labels": recognized}
 
-    def __call__(self, *, image_path: Path, organ_id: str, output_dir: Path, progress):
+    def __call__(
+        self,
+        *,
+        image_path: Path,
+        organ_id: str,
+        output_dir: Path,
+        progress,
+        image_type="CT",
+        **_kwargs,
+    ):
         self._ensure_pipelines()
         raw_dir = output_dir / "raw"
         raw_dir.mkdir(exist_ok=True, parents=True)
-        labels = LABELS[organ_id]
+        labels = labels_for(organ_id, image_type)
 
         if not hasattr(self.pipeline, "preprocess"):
             progress(20)
@@ -189,8 +241,13 @@ class NVSegmentCT:
         affine_1mm = prep["image"].affine[0].cpu().numpy()
         progress(35)
 
-        # 2. Global Sliding-Window Forward Pass (overlap=0.5)
-        logger.info(f"[Pure 1-Stage] Running 1.0mm global sliding-window inference on RTX 5090...")
+        # 2. Global sliding-window forward pass using configured device and memory budget.
+        logger.info(
+            "[Pure 1-Stage] Running 1.0mm inference on %s (roi=%s, overlap=%s)...",
+            self.settings.nv_segment_device,
+            self.settings.nv_segment_roi_size,
+            self.settings.nv_segment_overlap,
+        )
         outputs = self.pipeline._forward(prep)
         progress(70)
 
@@ -241,7 +298,7 @@ class NVSegmentCT:
         progress(85)
 
         # 5. Invert to Native Grid for 2D DICOM viewer
-        logger.info(f"[Pure 1-Stage] Inverting prediction to native grid for 2D slice viewer...")
+        logger.info("[Pure 1-Stage] Inverting prediction to native grid for 2D slice viewer...")
         post_dir = raw_dir / "post"
         post_dir.mkdir(exist_ok=True)
         self.pipeline.postprocess(outputs, output_dir=str(post_dir), separate_folder=False)
@@ -253,7 +310,10 @@ class NVSegmentCT:
         else:
             inverted_mask = ndi.zoom(
                 mask_1mm.astype(float),
-                [s_nat / s_1mm for s_nat, s_1mm in zip(native_shape, mask_1mm.shape)],
+                [
+                    s_nat / s_1mm
+                    for s_nat, s_1mm in zip(native_shape, mask_1mm.shape, strict=False)
+                ],
                 order=1,
             ) > 0.5
 

@@ -1,6 +1,6 @@
 import { t } from '@/i18n'
 
-export const SESSION_KEY = 'vmrb-session-v1'
+export const SESSION_KEY = 'vmrb-session-v2'
 export class ApiError extends Error {
   constructor(
     public status: number,

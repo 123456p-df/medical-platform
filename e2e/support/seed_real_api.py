@@ -9,13 +9,13 @@ Base.metadata.create_all(engine)
 
 with make_session_factory(engine)() as db:
     doctor = User(
-        username="e2e_doctor",
-        password_hash=hash_password("Password123!"),
+        username="demo_doctor",
+        password_hash=hash_password("123456"),
         role="doctor",
     )
     patient_user = User(
-        username="e2e_patient",
-        password_hash=hash_password("Password123!"),
+        username="demo_patient",
+        password_hash=hash_password("123456"),
         role="patient",
     )
     db.add_all([doctor, patient_user])
@@ -23,7 +23,7 @@ with make_session_factory(engine)() as db:
     db.add(Doctor(user_id=doctor.id))
     patient = Patient(
         user_id=patient_user.id,
-        name="Real API Patient",
+        name="demo_patient",
         id_number_hash=identity_hash("E2E-REAL-IDENTITY", settings),
         id_number_encrypted=encrypt_identity("E2E-REAL-IDENTITY", settings),
         profile_completed_at=utcnow(),

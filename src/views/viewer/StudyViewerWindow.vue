@@ -78,9 +78,9 @@ const sideBySide = ref(true)
 let resizeStartX = 0, resizeStartWidth = 0, pollTimer: ReturnType<typeof setTimeout> | undefined
 let initialized = false
 
-const ctStudies = computed(() => studies.value.filter((item) => item.type === 'CT'))
-const primary = computed(() => ctStudies.value.find((item) => item.id === imageId.value) || ctStudies.value[0])
-const secondary = computed(() => ctStudies.value.find((item) => item.id === compareId.value) || null)
+const reconstructableStudies = computed(() => studies.value.filter((item) => ['CT', 'MRI'].includes(item.type)))
+const primary = computed(() => reconstructableStudies.value.find((item) => item.id === imageId.value) || reconstructableStudies.value[0])
+const secondary = computed(() => reconstructableStudies.value.find((item) => item.id === compareId.value) || null)
 
 const mprViewports = computed<MprViewportConfig[]>(() => {
   if (!primary.value) return []
@@ -361,7 +361,7 @@ function updateQuery() {
 }
 
 async function loadStudies() {
-  studies.value = (await examinationApi.getExaminationsByPatient(patientId.value)).filter((item) => item.type === 'CT')
+  studies.value = (await examinationApi.getExaminationsByPatient(patientId.value)).filter((item) => ['CT', 'MRI'].includes(item.type))
   if (!imageId.value || !studies.value.some((item) => item.id === imageId.value)) {
     imageId.value = studies.value[0]?.id || ''
   }
@@ -458,7 +458,7 @@ function selectStudy(id: string) {
   imageId.value = id
   if (compareId.value === id) compareId.value = ''
   selectedGroups.value = []
-  const study = ctStudies.value.find((item) => item.id === id)
+  const study = reconstructableStudies.value.find((item) => item.id === id)
   if (study) {
     currentAxis.value = detectPrimaryAxis(study)
   }
@@ -539,6 +539,16 @@ watch(groups, (list) => {
   if (list.length && !selectedGroups.value.length) restoreSelection()
 })
 
+function exitViewer() {
+  void router.push({ name: 'doctor-patient-3d', params: { id: patientId.value } })
+}
+
+function onViewerKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented) return
+  event.preventDefault()
+  exitViewer()
+}
+
 const volumeVersions = { primary: 0, compare: 0 }
 
 async function loadVolume(study: Examination | null, target: typeof volumeRenderer, slot: 'primary' | 'compare') {
@@ -566,6 +576,7 @@ watch(
 )
 
 onMounted(async () => {
+  window.addEventListener('keydown', onViewerKeydown)
   document.title = t('ui.viewer3d.title')
   document.documentElement.style.overflow = 'hidden'
   document.documentElement.style.height = '100%'
@@ -605,6 +616,7 @@ onMounted(async () => {
   }
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onViewerKeydown)
   volumeVersions.primary++
   volumeVersions.compare++
   document.documentElement.style.overflow = ''
@@ -631,7 +643,7 @@ onBeforeUnmount(() => {
         <strong>{{ $t('ui.viewer3d.title') }}</strong>
         <label>{{ $t('ui.viewer3d.examination') }}
           <select :value="primary?.id" @change="selectStudy(($event.target as HTMLSelectElement).value)">
-            <option v-for="study in ctStudies" :key="study.id" :value="study.id">
+            <option v-for="study in reconstructableStudies" :key="study.id" :value="study.id">
               {{ study.date }} · {{ study.sliceCount }} slices
             </option>
           </select>
@@ -649,6 +661,11 @@ onBeforeUnmount(() => {
             </option>
           </select>
         </label>
+      </div>
+      <div class="toolbar-block">
+        <button type="button" :title="$t('ui.viewer3d.exitHelp')" @click="exitViewer">
+          {{ $t('ui.viewer3d.exit') }} <kbd>{{ $t('ui.viewer3d.escapeKey') }}</kbd>
+        </button>
       </div>
       <div class="toolbar-block">
         <span>{{ $t('ui.viewer3d.viewMode') }}</span>

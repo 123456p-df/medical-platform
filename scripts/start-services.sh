@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEMO_SCAN_DIR_HOST="${VMRB_DEMO_SCAN_DIR_HOST:-/home/zhichun/Documents/NV-Segment-CTMR/test_data/user_scans}"
+DEMO_SCAN_DIR_HOST="${VMRB_DEMO_SCAN_DIR_HOST:-}"
 
 cd "$PROJECT_ROOT"
 docker compose up -d db
@@ -22,6 +22,10 @@ if (( db_ready == 0 )); then
 fi
 
 if [[ "${VMRB_RESET_DEMO:-0}" == "1" ]]; then
+    if [[ -z "$DEMO_SCAN_DIR_HOST" || ! -d "$DEMO_SCAN_DIR_HOST" ]]; then
+        echo "Set VMRB_DEMO_SCAN_DIR_HOST to an existing sample scan directory before resetting demo data."
+        exit 1
+    fi
     echo "Resetting the explicitly approved demo database in the Docker volume..."
     docker compose stop backend nginx >/dev/null 2>&1 || true
     docker compose run --rm --no-deps --user root \

@@ -11,10 +11,11 @@ class Input(BaseModel):
 
 class Credentials(Input):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[\w.-]+$")
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
 
 
 class RegisterInput(Credentials):
+    password: str = Field(min_length=8, max_length=128)
     role: Literal["patient"] = "patient"
 
 
@@ -35,6 +36,7 @@ class TokenOut(BaseModel):
 
 
 class DoctorProvisionInput(Credentials):
+    password: str = Field(min_length=8, max_length=128)
     department: str = Field(default="", max_length=100)
 
 
@@ -362,6 +364,26 @@ class ImageOut(BaseModel):
     segmentation_batch_id: str | None = None
     atlas_model_id: str | None = None
     acquisition: dict | None = None
+    source_format: Literal["nifti", "dicom"] = "nifti"
+    series_uid: str | None = None
+    sequence: Literal["T1", "T2", "FLAIR", "DWI", "other", "unknown"] = "unknown"
+    contrast: bool | None = None
+    segmentation_mode: Literal["CT_BODY", "MRI_BODY", "MRI_BRAIN"] | None = None
+    sequence_confidence: Literal["auto", "manual"] = "auto"
+    segmentation_warning: str | None = None
+
+
+class ImageAcquisitionPatch(Input):
+    sequence: Literal["T1", "T2", "FLAIR", "DWI", "other", "unknown"] | None = None
+    contrast: bool | None = None
+    segmentation_mode: Literal["CT_BODY", "MRI_BODY", "MRI_BRAIN"] | None = None
+    already_skull_stripped: bool | None = None
+
+    @model_validator(mode="after")
+    def nonempty(self):
+        if not self.model_dump(exclude_unset=True):
+            raise ValueError("Provide at least one field")
+        return self
 
 
 class ImagePage(BaseModel):
@@ -448,6 +470,7 @@ class ComparisonCandidateOut(BaseModel):
     image_type: Literal["CT", "MRI"]
     organ_id: str
     study_date: date | None
+    sequence: str | None = None
     shape: list | None = None
     spacing: list | None = None
     comparable: bool

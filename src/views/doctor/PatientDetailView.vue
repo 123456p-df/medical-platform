@@ -22,7 +22,7 @@ const tabs = [
   { label: 'Imaging', name: 'doctor-patient-imaging' },
   { label: 'Report', name: 'doctor-patient-report' },
   { label: 'ui.patientDetail.ai', name: 'doctor-patient-ai' },
-  { label: 'ui.patientDetail.organ3d', name: 'doctor-patient-3d', external: true },
+  { label: 'ui.patientDetail.organ3d', name: 'doctor-patient-3d' },
 ]
 
 async function loadPatient() {
@@ -66,24 +66,15 @@ watch(patientId, loadPatient)
     </section>
 
     <nav class="detail-tabs" aria-label="Patient record sections">
-      <template v-for="tab in tabs" :key="tab.name">
-        <a
-          v-if="tab.external"
-          :href="router.resolve({ name: 'study-viewer', params: { patientId: patientId } }).href"
-          target="_blank"
-          class="detail-tab"
-        >
-          {{ $t(tab.label) }}
-        </a>
-        <RouterLink
-          v-else
-          :to="{ name: tab.name, params: { id: patientId } }"
-          class="detail-tab"
-          exact-active-class="is-active"
-        >
-          {{ $t(tab.label) }}
-        </RouterLink>
-      </template>
+      <RouterLink
+        v-for="tab in tabs"
+        :key="tab.name"
+        :to="{ name: tab.name, params: { id: patientId } }"
+        class="detail-tab"
+        exact-active-class="is-active"
+      >
+        {{ $t(tab.label) }}
+      </RouterLink>
     </nav>
 
     <StatePanel v-if="store.loading && !store.examinations.length" kind="loading" :message="$t('Loading patient record...')" />

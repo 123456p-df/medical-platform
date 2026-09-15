@@ -1,14 +1,16 @@
 import { spawn } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from '@playwright/test'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const port = 4191
 const baseURL = `http://127.0.0.1:${port}`
-const server = spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
+const server = spawn(process.execPath, [join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
   cwd: root,
   stdio: ['ignore', 'ignore', 'pipe'],
+  windowsHide: true,
 })
 
 async function waitForServer() {
@@ -47,7 +49,7 @@ async function sample(page, label) {
 let browser
 try {
   await waitForServer()
-  browser = await chromium.launch({ channel: 'chrome', headless: true })
+  browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const page = await context.newPage()
   await page.addInitScript(() => localStorage.setItem('pulmolink-language', 'en'))

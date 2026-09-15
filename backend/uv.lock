@@ -1242,6 +1242,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pydicom"
+version = "3.0.2"
+source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/7a/de/52aaf905f1f0ae7aba85996e2592ea2c1fe49157f3cfbcd1871965bdb51d/pydicom-3.0.2.tar.gz", hash = "sha256:5942bfc2d72c6fa4b3b5b62c527f54b7f2355f21d6f5d296df6bb30188df6a4f" }
+wheels = [
+    { url = "https://mirrors.aliyun.com/pypi/packages/46/e0/60466c6d712dad2cf807df315e39863e91609ffd1064ecb835994460bbda/pydicom-3.0.2-py3-none-any.whl", hash = "sha256:abf971a5440f84dbaf42c4b6758e30e62480902584f8b270b9a5d146e278a07b" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
@@ -1901,6 +1910,7 @@ dependencies = [
     { name = "pillow" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
+    { name = "pydicom" },
     { name = "pyjwt" },
     { name = "python-multipart" },
     { name = "scikit-image" },
@@ -1930,6 +1940,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=11,<13" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
+    { name = "pydicom", specifier = ">=2.4,<4" },
     { name = "pyjwt", specifier = ">=2.10,<3" },
     { name = "python-multipart", specifier = ">=0.0.20,<1" },
     { name = "scikit-image", specifier = ">=0.25,<1" },
