@@ -4,9 +4,12 @@ import App from './App.vue'
 import router from './router'
 import './style.css'
 import { i18n, t } from './i18n'
-import { inheritSessionFromOpener } from '@/api/client'
+import { inheritSessionFromOpener, prepareSessionForAppBoot } from '@/api/client'
 
-inheritSessionFromOpener()
+// A new frontend process invalidates sessions from earlier app launches. Page
+// reloads within this process remain authenticated, and child viewers may
+// inherit the current process-scoped session from their opener.
+if (!inheritSessionFromOpener()) prepareSessionForAppBoot()
 
 const app = createApp(App)
 

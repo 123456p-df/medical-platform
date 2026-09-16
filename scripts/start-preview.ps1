@@ -6,6 +6,27 @@ param(
   [string]$NvSegmentDir = $env:NV_SEGMENT_CT_DIR
 )
 $ErrorActionPreference = 'Stop'
+
+function Test-NativeCommand {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$FilePath,
+    [string[]]$ArgumentList = @()
+  )
+
+  # Windows PowerShell converts redirected native stderr into NativeCommandError.
+  # Dependency and service probes are expected to fail, so inspect their exit
+  # codes without allowing probe output to terminate the launcher.
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'SilentlyContinue'
+    & $FilePath @ArgumentList *> $null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $previewRoot = Join-Path $projectRoot '.cache\preview'
 $backendRoot = Join-Path $projectRoot 'backend'
@@ -32,8 +53,11 @@ if (-not $skipNvSegmentSetup -and $NvSegmentDir) {
   if (-not (Test-Path -LiteralPath $modelHelper) -or -not (Test-Path -LiteralPath $modelWeights)) {
     throw "NV-Segment-CTMR is incomplete at $resolvedNvSegmentDir; expected hugging_face_pipeline.py and vista3d_pretrained_model/model.pt."
   }
-  & $pythonExe -c "import monai, torch, transformers" *> $null
-  if ($LASTEXITCODE -ne 0) {
+  $nvRuntimeReady = Test-NativeCommand -FilePath $pythonExe -ArgumentList @(
+    '-c',
+    'import monai, torch, transformers'
+  )
+  if (-not $nvRuntimeReady) {
     if (-not $uv) { throw 'Install uv so the NV-Segment-CTMR runtime dependencies can be installed.' }
     Write-Output 'Installing NV-Segment-CTMR runtime dependencies (first launch only)...'
     & $uv.Source pip install --python $pythonExe -r (Join-Path $backendRoot 'requirements-nv.txt')
@@ -71,14 +95,25 @@ if (-not (Test-Path -LiteralPath (Join-Path $clusterRoot 'PG_VERSION'))) {
   & (Join-Path $PostgresBin 'initdb.exe') -D $clusterRoot -U vmrb --auth=scram-sha-256 "--pwfile=$passwordFile" --encoding=UTF8 --locale=C
   if ($LASTEXITCODE -ne 0) { throw 'Preview database initialization failed.' }
 }
-& (Join-Path $PostgresBin 'pg_ctl.exe') -D $clusterRoot status *> $null
-if ($LASTEXITCODE -ne 0) {
+$postgresRunning = Test-NativeCommand -FilePath (Join-Path $PostgresBin 'pg_ctl.exe') -ArgumentList @(
+  '-D',
+  $clusterRoot,
+  'status'
+)
+if (-not $postgresRunning) {
   $pgArguments = @('-D', ('"' + $clusterRoot + '"'), '-l', ('"' + (Join-Path $previewRoot 'postgres.log') + '"'), '-o', ('"-h 127.0.0.1 -p ' + $DatabasePort + '"'), '-w', 'start')
   Start-Process -FilePath (Join-Path $PostgresBin 'pg_ctl.exe') -ArgumentList $pgArguments -WindowStyle Hidden | Out-Null
   $databaseReady = $false
   for ($i = 0; $i -lt 40; $i++) {
-    & (Join-Path $PostgresBin 'pg_isready.exe') -h 127.0.0.1 -p $DatabasePort -U vmrb *> $null
-    if ($LASTEXITCODE -eq 0) { $databaseReady = $true; break }
+    $databaseReady = Test-NativeCommand -FilePath (Join-Path $PostgresBin 'pg_isready.exe') -ArgumentList @(
+      '-h',
+      '127.0.0.1',
+      '-p',
+      [string]$DatabasePort,
+      '-U',
+      'vmrb'
+    )
+    if ($databaseReady) { break }
     Start-Sleep -Milliseconds 250
   }
   if (-not $databaseReady) { throw 'Preview database did not become ready; inspect .cache/preview/postgres.log.' }
