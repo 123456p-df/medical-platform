@@ -130,6 +130,20 @@ def test_demo_module_consumes_the_validated_fixture():
     assert demo.DEMO_PATIENTS is demo.DEMO_FIXTURE.patients
 
 
+def test_demo_scan_directory_is_optional_but_validated_when_configured(
+    monkeypatch, tmp_path
+):
+    monkeypatch.delenv("VMRB_DEMO_SCAN_DIR", raising=False)
+    assert demo.demo_scan_path("0.nii") is None
+
+    monkeypatch.setenv("VMRB_DEMO_SCAN_DIR", str(tmp_path))
+    scan = tmp_path / "0.nii.gz"
+    scan.write_bytes(b"synthetic-test-placeholder")
+    assert demo.demo_scan_path("0.nii") == scan
+    with pytest.raises(FileNotFoundError):
+        demo.demo_scan_path("1.nii")
+
+
 def test_database_reset_marker_cannot_be_inferred_from_a_username():
     assert not demo_fixture.is_fixture_user(username="admin", role="admin", profile={})
     assert not demo_fixture.is_fixture_user(

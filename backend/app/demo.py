@@ -27,12 +27,10 @@ DEMO_SCAN_FILENAMES = {
 DEMO_PASSWORD = "123456"
 
 
-def demo_scan_path(filename: str) -> Path:
+def demo_scan_path(filename: str) -> Path | None:
     configured_root = os.environ.get("VMRB_DEMO_SCAN_DIR")
     if not configured_root:
-        raise FileNotFoundError(
-            "VMRB_DEMO_SCAN_DIR is not set; point it to the local sample scan directory"
-        )
+        return None
     root = Path(configured_root).expanduser()
     for candidate in (root / filename, root / f"{filename}.gz"):
         if candidate.is_file():
@@ -133,21 +131,24 @@ def seed(settings):
                 patient.deleted_at = None
                 for doctor_username in fixture_patient.doctor_access:
                     set_access(db, doctor_username, patient_id, "active")
-                image_id = f"img_demo_{index + 1:04d}"
-                is_new = install_demo_image(db, settings, patient_id, image_id, source, index)
-                if is_new:
-                    template = DEMO_FIXTURE.record_template
-                    for days in template.day_offsets:
-                        db.add(
-                            MedicalRecord(
-                                patient_id=patient_id,
-                                doctor_id=doctor.id,
-                                organ_id=template.organ_id,
-                                diagnosis=template.diagnosis,
-                                description=template.description,
-                                record_date=date.today() - timedelta(days=days + index),
+                if source is not None:
+                    image_id = f"img_demo_{index + 1:04d}"
+                    is_new = install_demo_image(
+                        db, settings, patient_id, image_id, source, index
+                    )
+                    if is_new:
+                        template = DEMO_FIXTURE.record_template
+                        for days in template.day_offsets:
+                            db.add(
+                                MedicalRecord(
+                                    patient_id=patient_id,
+                                    doctor_id=doctor.id,
+                                    organ_id=template.organ_id,
+                                    diagnosis=template.diagnosis,
+                                    description=template.description,
+                                    record_date=date.today() - timedelta(days=days + index),
+                                )
                             )
-                        )
                 db.commit()
 
             for organ in ORGANS:
@@ -198,4 +199,8 @@ if __name__ == "__main__":
     ):
         raise SystemExit("Demo seed is restricted to the explicitly enabled vmrb_preview database")
     seed(settings)
-    print("Real demo CT fixtures are ready.")
+    scan_count = sum(
+        demo_scan_path(DEMO_SCAN_FILENAMES[item.fixture_id]) is not None
+        for item in DEMO_PATIENTS
+    )
+    print(f"Demo accounts and patients are ready ({scan_count} CT fixtures configured).")

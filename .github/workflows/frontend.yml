@@ -65,6 +65,8 @@ jobs:
           python-version: "3.12"
       - run: pnpm install --frozen-lockfile
       - run: uv sync --locked --project backend
+      - run: node --check scripts/start.mjs
+      - run: node --check scripts/preview-guardian.mjs
       - run: pnpm typecheck
       - run: pnpm test:a11y
       - run: pnpm test:migrations

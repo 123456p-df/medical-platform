@@ -1,7 +1,7 @@
 param(
   [int]$FrontendPort = 4173,
   [int]$BackendPort = 8000,
-  [int]$DatabasePort = 55440,
+  [int]$DatabasePort = 15432,
   [string]$PostgresBin = $env:VMRB_POSTGRES_BIN,
   [string]$NvSegmentDir = $env:NV_SEGMENT_CT_DIR
 )
@@ -21,10 +21,11 @@ if (-not (Test-Path -LiteralPath $pythonExe)) {
     throw 'Backend dependency installation failed.'
   }
 }
-if (-not $NvSegmentDir -and (Test-Path -LiteralPath 'D:\NV-Segment-CTMR')) {
+$skipNvSegmentSetup = $env:VMRB_SKIP_NV_SEGMENT_SETUP -eq '1'
+if (-not $skipNvSegmentSetup -and -not $NvSegmentDir -and (Test-Path -LiteralPath 'D:\NV-Segment-CTMR')) {
   $NvSegmentDir = 'D:\NV-Segment-CTMR'
 }
-if ($NvSegmentDir) {
+if (-not $skipNvSegmentSetup -and $NvSegmentDir) {
   $resolvedNvSegmentDir = (Resolve-Path -LiteralPath $NvSegmentDir -ErrorAction Stop).Path
   $modelHelper = Join-Path $resolvedNvSegmentDir 'hugging_face_pipeline.py'
   $modelWeights = Join-Path $resolvedNvSegmentDir 'vista3d_pretrained_model\model.pt'
@@ -92,11 +93,9 @@ Push-Location $backendRoot
 try {
   & $pythonExe -m alembic upgrade head
   if ($LASTEXITCODE -ne 0) { throw 'Migration failed.' }
-  if ($env:VMRB_DEMO_SCAN_DIR) {
-    $env:VMRB_DEMO_SEED = '1'
-    & $pythonExe -m app.demo
-    if ($LASTEXITCODE -ne 0) { throw 'Preview data creation failed.' }
-  }
+  $env:VMRB_DEMO_SEED = '1'
+  & $pythonExe -m app.demo
+  if ($LASTEXITCODE -ne 0) { throw 'Preview data creation failed.' }
 } finally { Pop-Location }
 $backendPidPath = Join-Path $previewRoot 'backend.pid'
 $frontendPidPath = Join-Path $previewRoot 'frontend.pid'
@@ -110,7 +109,7 @@ $backendArgs = @('-m', 'uvicorn', 'app.main:create_app', '--factory', '--host', 
 $backendProcess = Start-Process -FilePath $pythonExe -ArgumentList $backendArgs -WorkingDirectory $backendRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $previewRoot 'backend.log') -RedirectStandardError (Join-Path $previewRoot 'backend-error.log')
 $backendProcess.Id | Set-Content -LiteralPath $backendPidPath
 $env:VITE_LOCAL_PREVIEW = 'false'
-$env:VITE_PREVIEW = if ($env:VMRB_DEMO_SCAN_DIR) { 'true' } else { 'false' }
+$env:VITE_PREVIEW = 'true'
 $env:VMRB_BACKEND_URL = 'http://127.0.0.1:' + $BackendPort
 $nodeExe = (Get-Command node.exe).Source
 $viteEntry = Join-Path $frontendRoot 'node_modules\vite\bin\vite.js'
@@ -126,8 +125,7 @@ for ($i = 0; $i -lt 40; $i++) {
 if (-not $previewReady) { throw 'Preview startup failed; inspect logs in .cache/preview and run stop-preview.ps1.' }
 Write-Output "Preview starting: http://127.0.0.1:$FrontendPort"
 Write-Output "Backend docs: http://127.0.0.1:$BackendPort/docs"
-if ($env:VMRB_DEMO_SCAN_DIR) {
-  Write-Output 'Demo accounts: admin, demo_doctor, demo_patient, test_patient / 123456'
-} else {
-  Write-Output 'No demo scans were configured; register a new account from the login page.'
+Write-Output 'Demo accounts: admin, demo_doctor, demo_patient, test_patient / 123456'
+if (-not $env:VMRB_DEMO_SCAN_DIR) {
+  Write-Output 'No demo scans were configured; upload a CT or set VMRB_DEMO_SCAN_DIR for seeded imaging.'
 }

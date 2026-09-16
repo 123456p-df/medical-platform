@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -29,6 +30,16 @@ for (const [revision, entry] of revisions) {
 const children = new Set([...revisions.values()].flatMap(entry => entry.parents))
 const heads = [...revisions.keys()].filter(revision => !children.has(revision))
 if (heads.length !== 1) throw new Error(`Expected one migration head, found ${heads.join(', ')}`)
+
+const longRevisions = [...revisions].filter(([revision]) => revision.length > 32)
+for (const [revision, entry] of longRevisions) {
+  const source = readFileSync(join(directory, entry.file), 'utf8')
+  assert.match(
+    source,
+    /alter_column\([\s\S]*?["']alembic_version["'][\s\S]*?String\(length=64\)/,
+    `${revision} exceeds Alembic's default version column without widening it`,
+  )
+}
 
 const visiting = new Set()
 const visited = new Set()

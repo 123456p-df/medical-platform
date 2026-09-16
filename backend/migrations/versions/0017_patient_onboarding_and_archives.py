@@ -14,6 +14,15 @@ depends_on = None
 
 
 def upgrade():
+    # Alembic creates version_num as VARCHAR(32), but this revision identifier is longer.
+    # Widen it inside the preceding revision's transaction before Alembic records this ID.
+    op.alter_column(
+        "alembic_version",
+        "version_num",
+        existing_type=sa.String(length=32),
+        type_=sa.String(length=64),
+        existing_nullable=False,
+    )
     op.add_column(
         "patients",
         sa.Column("profile_completed_at", sa.DateTime(timezone=True), nullable=True),

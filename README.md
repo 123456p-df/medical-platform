@@ -2,15 +2,24 @@
 
 ## 直接运行
 
-首次运行需要 Node.js 20+ 和 pnpm。在项目根目录执行；以下命令在 PowerShell、
-Windows Terminal、macOS 和 Linux 终端中一致：
+`pnpm start` 现在是全栈启动入口：Windows 会启动本机 PostgreSQL、FastAPI 和前端，
+macOS/Linux 会通过 Docker Compose 启动 PostgreSQL 与 FastAPI，再启动前端。首次运行需要
+Node.js 20+、pnpm 和 uv；Windows 需安装 PostgreSQL，macOS/Linux 需启动 Docker。
+在项目根目录执行：
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm start
 ```
 
-然后打开 <http://127.0.0.1:4173>。这是不依赖数据库的浏览器内合成演示模式。
+然后打开 <http://127.0.0.1:4173>。首次启动会自动生成本机 `.env` 密钥、安装后端依赖并执行数据库迁移。
+Windows 中按 `Ctrl+C` 会一并停止前端、FastAPI 和本地 PostgreSQL，数据和上传文件会保留。
+
+如果只需要不依赖数据库的浏览器合成演示，使用：
+
+```sh
+pnpm start:demo
+```
 
 macOS 也可以双击 `start.command`；脚本会自动检查依赖并打开浏览器。若系统提示权限，可在终端执行一次：
 
@@ -18,7 +27,7 @@ macOS 也可以双击 `start.command`；脚本会自动检查依赖并打开浏�
 chmod +x start.command
 ```
 
-Windows 如需启动本机 PostgreSQL + FastAPI + 前端，可使用：
+Windows 的等价底层命令为：
 
 ```powershell
 .\scripts\start-preview.ps1
@@ -58,6 +67,7 @@ backend\.venv\Scripts\python.exe scripts\reset-demo-data.py
 
 macOS/Linux 或手动启动后端时设置 `NV_SEGMENT_CT_DIR`即可使用同一适配器。推理产生标签体积和 GLB，
 前端在当前标签页的 3D 查看器中直接预览，按 `Esc` 返回患者页。模型权重保留在本机，不会上传到 GitHub。
+仅在 CPU 环境中调试其他功能时，可临时设置 `VMRB_SKIP_NV_SEGMENT_SETUP=1` 跳过模型运行时安装。
 
 ## 构建并预览
 
@@ -72,11 +82,12 @@ pnpm serve
 
 | 模式 | 启动方式 | 数据与上传能力 |
 |---|---|---|
-| 合成演示 | `pnpm start`，或 macOS 双击 `start.command` | 自动进入医生工作台；使用明确标注的演示档案；本地导入支持 DICOM、PNG/JPEG/WebP/BMP，仅保存在当前浏览器。 |
-| 本地真实 API | 先启动 FastAPI，再执行 `pnpm start` | 登录后使用 PostgreSQL 数据；NIfTI 上传进入患者档案；配置 Orthanc 后可使用受认证 DICOM 归档接口。 |
+| 合成演示 | `pnpm start:demo`，或 macOS 双击 `start.command` | 自动进入医生工作台；使用明确标注的演示档案；本地导入支持 DICOM、PNG/JPEG/WebP/BMP，仅保存在当前浏览器。 |
+| 本地真实 API | `pnpm start` | 同时启动 PostgreSQL、FastAPI 和前端；登录后使用 PostgreSQL 数据；NIfTI 上传进入患者档案。 |
 | Compose 生产栈 | `docker compose -f compose.yaml up -d --build` | Nginx 监听 `http://127.0.0.1:8080`，后端和 PostgreSQL 位于内部网络；按需叠加基础设施或 GPU 配置。 |
 
-Vite 开发服务器位于 `http://127.0.0.1:4173`，会把 `/api` 和 `/health` 转发到 `VMRB_BACKEND_URL`，默认值是 `http://127.0.0.1:8080`。若直接在主机启动 FastAPI 的 8000 端口，请同时执行：
+Vite 开发服务器位于 `http://127.0.0.1:4173`，会把 `/api` 和 `/health` 转发到 `VMRB_BACKEND_URL`。
+若要连接已经在运行的外部 FastAPI，可设置该变量后再执行 `pnpm start`：
 
 macOS / Linux：
 
@@ -120,7 +131,7 @@ uv run alembic upgrade head
 
 ## 报告同步与工作区标签
 
-医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。`0018_merge_mri_and_v5` 安全汇合 MRI 与 V5 两条既有迁移分支。本地演示模式使用按账号隔离的浏览器持久化存储。
+医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。`0018_merge_mri_and_v5` 安全汇合 MRI 与 V5 两条既有迁移分支，`0019_reconcile_access_control` 修复旧版本可能缺失的账号状态与 JWT 撤销表。本地演示模式使用按账号隔离的浏览器持久化存储。
 
 医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断、报告和 3D 影像；这些页面会作为工作区标签保留，可快速切换或单独关闭。
 
