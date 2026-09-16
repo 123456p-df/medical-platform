@@ -1,0 +1,302 @@
+\documentclass[aspectratio=169,14pt]{beamer}
+
+% Compile with XeLaTeX, LuaLaTeX, or Tectonic.
+\usepackage[UTF8,scheme=plain,fontset=fandol]{ctex}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,tabularx,array,colortbl}
+
+\usetheme{Madrid}
+\usefonttheme{professionalfonts}
+
+\definecolor{BeamerRoyal}{HTML}{3939B8}
+\definecolor{BeamerDeep}{HTML}{171B72}
+\definecolor{BeamerInk}{HTML}{20212B}
+\definecolor{SoftBlue}{HTML}{F1F2FF}
+\definecolor{SoftGray}{HTML}{F5F5F7}
+\definecolor{WarmAccent}{HTML}{D85A3A}
+
+\setbeamercolor{normal text}{fg=BeamerInk,bg=white}
+\setbeamercolor{structure}{fg=BeamerRoyal}
+\setbeamercolor{frametitle}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{title}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{subtitle}{fg=BeamerInk}
+\setbeamercolor{block title}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{block body}{fg=BeamerInk,bg=SoftBlue}
+\setbeamercolor{alerted text}{fg=WarmAccent}
+\setbeamercolor{author in head/foot}{fg=white,bg=BeamerDeep}
+\setbeamercolor{title in head/foot}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{date in head/foot}{fg=white,bg=BeamerDeep}
+
+\setbeamertemplate{items}[ball]
+\setbeamertemplate{blocks}[rounded][shadow=true]
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+\setbeamertemplate{title page}{%
+  \vspace{0.55cm}
+  \begin{beamercolorbox}[wd=.92\paperwidth,sep=.34cm,center,rounded=true,shadow=true]{title}
+    \usebeamerfont{title}\inserttitle
+  \end{beamercolorbox}
+  \vspace{0.38cm}
+  \begin{center}
+    {\usebeamerfont{subtitle}\insertsubtitle\par}
+    \vspace{0.70cm}
+    {\usebeamerfont{author}\insertauthor\par}
+    \vspace{0.18cm}
+    {\usebeamerfont{institute}\insertinstitute\par}
+    \vspace{0.52cm}
+    {\usebeamerfont{date}\insertdate\par}
+  \end{center}
+}
+
+\setbeamertemplate{frametitle}{%
+  \nointerlineskip
+  \begin{beamercolorbox}[wd=\paperwidth,ht=.72cm,dp=.18cm,leftskip=.38cm]{frametitle}
+    \usebeamerfont{frametitle}\insertframetitle
+  \end{beamercolorbox}
+}
+
+\setbeamertemplate{footline}{%
+  \leavevmode
+  \hbox{%
+    \begin{beamercolorbox}[wd=.31\paperwidth,ht=2.6ex,dp=1.05ex,center]{author in head/foot}
+      \usebeamerfont{author in head/foot}\insertshortauthor\enspace(\insertshortinstitute)
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.36\paperwidth,ht=2.6ex,dp=1.05ex,center]{title in head/foot}
+      \usebeamerfont{title in head/foot}\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.6ex,dp=1.05ex,center]{date in head/foot}
+      \usebeamerfont{date in head/foot}\insertshortdate\hspace{1.2em}
+      \insertframenumber/\inserttotalframenumber
+    \end{beamercolorbox}%
+  }
+}
+
+\setbeamersize{text margin left=.68cm,text margin right=.68cm}
+\setbeamerfont{title}{size*={29pt}{35pt},series=\bfseries}
+\setbeamerfont{subtitle}{size*={17pt}{22pt}}
+\setbeamerfont{author}{size*={16pt}{20pt},series=\bfseries}
+\setbeamerfont{institute}{size*={13pt}{17pt}}
+\setbeamerfont{date}{size*={14pt}{18pt}}
+\setbeamerfont{frametitle}{size*={22pt}{26pt}}
+\setbeamerfont{normal text}{size*={16pt}{20pt}}
+\setbeamerfont{itemize/enumerate body}{size*={15.5pt}{20pt}}
+\setbeamerfont{itemize/enumerate subbody}{size*={14pt}{18pt}}
+\setbeamerfont{block title}{size*={15pt}{19pt},series=\bfseries}
+\setbeamerfont{block body}{size*={14.5pt}{19pt}}
+\setbeamerfont{author in head/foot}{size*={7.5pt}{9pt}}
+\setbeamerfont{title in head/foot}{size*={7.5pt}{9pt}}
+\setbeamerfont{date in head/foot}{size*={7.5pt}{9pt}}
+
+\newcommand{\key}[1]{\textcolor{BeamerRoyal}{\textbf{#1}}}
+\newcommand{\unit}[1]{\,\mathrm{#1}}
+\newcommand{\takeaway}[1]{%
+  \begin{beamercolorbox}[wd=\linewidth,sep=.22cm,center,rounded=true,shadow=true]{block body}
+    \textcolor{BeamerDeep}{\textbf{#1}}
+  \end{beamercolorbox}
+}
+
+\title[Voxel Spacing]{Voxel Spacing 与 3D CNN}
+\subtitle{医学影像预处理中的统一物理尺度}
+\author[学习笔记]{NV-Segment-CT/MRI 学习笔记}
+\institute[医学影像分割]{面向入门学习者的简明讲解}
+\date[2026.09]{2026 年 9 月}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{内容概览}
+  \vspace{0.15cm}
+  \begin{enumerate}
+    \item \key{定义}：一个 voxel 在现实中对应多大距离
+    \item \key{区别}：voxel 数量和物理尺寸是两回事
+    \item \key{预处理}：resampling 与 interpolation 如何统一网格
+    \item \key{模型影响}：spacing 为什么会改变 3D CNN 看到的形状
+  \end{enumerate}
+  \vfill
+  \takeaway{主线：从“数据格子”回到“真实毫米”}
+\end{frame}
+
+\begin{frame}{Voxel Spacing 的含义}
+  \begin{columns}[T,onlytextwidth]
+    \column{.54\textwidth}
+      \begin{itemize}
+        \item spacing 记录相邻 voxel 在 $x,y,z$ 三个方向对应的\key{真实距离}
+        \item 单位通常是 $\mathrm{mm/voxel}$
+        \item 三个方向数值不同，voxel 可近似理解为长方体
+      \end{itemize}
+    \column{.41\textwidth}
+      \begin{block}{例：一份 CT}
+        \centering
+        \vspace{0.08cm}
+        $\mathbf{s}=(0.7,\ 0.7,\ 5.0)\unit{mm}$
+        \vspace{0.12cm}
+
+        \renewcommand{\arraystretch}{1.22}
+        \begin{tabular}{c@{\quad}c}
+          $x$ 方向 & $0.7\unit{mm}$\\
+          $y$ 方向 & $0.7\unit{mm}$\\
+          $z$ 方向 & $5.0\unit{mm}$
+        \end{tabular}
+      \end{block}
+  \end{columns}
+  \vspace{0.24cm}
+  \takeaway{入门记忆：spacing 决定一个 voxel 在现实中有多大}
+  \vspace{0.08cm}
+  {\fontsize{9.5}{12}\selectfont\color{black!58}
+  严格地说，spacing 描述相邻采样点的物理间距。这里把它理解成 voxel 的三边长度。}
+\end{frame}
+
+\begin{frame}{矩阵大小与物理范围}
+  \begin{columns}[T,onlytextwidth]
+    \column{.47\textwidth}
+      \begin{block}{矩阵大小 / voxel 数量}
+        \centering
+        $512\times512\times100$ voxel\\[-0.02cm]
+        {\small 一共有多少个数据格子}
+      \end{block}
+    \column{.47\textwidth}
+      \begin{block}{Voxel spacing / 物理尺度}
+        \centering
+        $0.8\times0.8\times5.0\unit{mm}$\\[-0.02cm]
+        {\small 每个格子对应多少毫米}
+      \end{block}
+  \end{columns}
+
+  \vspace{-0.08cm}
+  \[
+    \boxed{\mathbf{L}\approx\mathbf{N}\odot\mathbf{s}}
+    \qquad
+    \text{物理范围}\approx\text{voxel 数量}\times\text{spacing}
+  \]
+  \vspace{-0.28cm}
+  \[
+    L_x=512\times0.8=409.6\unit{mm}
+    \qquad
+    L_z=100\times5=500\unit{mm}
+  \]
+  \vspace{-0.12cm}
+  \takeaway{{\fontsize{14}{18}\selectfont
+    只有把矩阵大小和 spacing 放在一起，\\
+    才能知道扫描覆盖多大范围}}
+\end{frame}
+
+\begin{frame}{扫描参数带来的尺度差异}
+  \centering
+  {\small
+    \renewcommand{\arraystretch}{1.27}
+    \begin{tabular}{>{\bfseries}lcc}
+      \toprule
+        & \textcolor{BeamerRoyal}{CT A} & \textcolor{BeamerRoyal}{CT B}\\
+      \midrule
+      Spacing & $0.7\times0.7\times5.0\unit{mm}$ & $1.0\times1.0\times1.0\unit{mm}$\\
+      $z$ 方向 $10\unit{mm}$ 的结构 & $10/5=2$ voxel & $10/1=10$ voxel\\
+      模型看到的厚度 & 约 $2$ 层 & 约 $10$ 层\\
+      \bottomrule
+    \end{tabular}
+  }
+
+  \vspace{0.42cm}
+  \takeaway{{\fontsize{14}{18}\selectfont
+    同一个真实结构可能显得厚度不同。\\
+    模型会把扫描尺度误当成形状差异。}}
+\end{frame}
+
+\begin{frame}{Resampling 统一物理网格}
+  \begin{columns}[T,onlytextwidth]
+    \column{.51\textwidth}
+      \begin{block}{原始 $z$ 方向}
+        \centering
+        $100\text{ voxel}\times5\unit{mm/voxel}=500\unit{mm}$
+      \end{block}
+      \begin{block}{目标 spacing：$1\unit{mm/voxel}$}
+        \centering
+        $N_{\mathrm{new}}\approx\dfrac{500\unit{mm}}{1\unit{mm/voxel}}
+        =500\text{ voxel}$
+      \end{block}
+    \column{.44\textwidth}
+      \textbf{系统依次完成：}
+      \begin{enumerate}
+        \item 建立目标物理网格
+        \item 找到新 voxel 在原图中的位置
+        \item 用插值估计该位置的数值
+      \end{enumerate}
+  \end{columns}
+
+  \vspace{0.20cm}
+  \takeaway{身体覆盖范围仍约为 $500\unit{mm}$，只是表示它的 voxel 更密集}
+\end{frame}
+
+\begin{frame}{Interpolation 估计中间值}
+  \[
+    I(z)=(1-\alpha)I_0+\alpha I_1,
+    \qquad \alpha=\frac{z-z_0}{z_1-z_0}
+  \]
+
+  \centering
+  \renewcommand{\arraystretch}{1.42}
+  \begin{tabular}{>{\columncolor{SoftGray}}c*{6}{c}}
+    位置 $z$ & $0$ & $1$ & $2$ & $3$ & $4$ & $5\unit{mm}$\\
+    \hline
+    灰度 $I$ & \cellcolor{BeamerRoyal!18}$100$ & $120$ & $140$ & $160$ & $180$ & \cellcolor{BeamerRoyal!18}$200$\\
+  \end{tabular}
+
+  \vspace{0.34cm}
+  \begin{columns}[T,onlytextwidth]
+    \column{.47\textwidth}
+      \begin{block}{CT / MRI 灰度}
+        常用线性或三线性插值，让强度平滑变化。
+      \end{block}
+    \column{.47\textwidth}
+      \begin{block}{器官标签 mask}
+        常用最近邻插值，避免产生不存在的类别编号。
+      \end{block}
+  \end{columns}
+
+  \vfill
+  \takeaway{新增 voxel 的数值来自估计，不是扫描仪新获得的信息}
+\end{frame}
+
+\begin{frame}{Spacing 对 3D CNN 的影响}
+  \textbf{同一个 $3\times3\times3$ 卷积核，在不同 spacing 下覆盖的现实范围不同：}
+
+  \vspace{0.24cm}
+  \centering
+  \renewcommand{\arraystretch}{1.38}
+  \begin{tabular}{lcc}
+    \toprule
+      & Spacing & 卷积核约覆盖的物理范围\\
+    \midrule
+    CT A & $0.7\times0.7\times5.0\unit{mm}$ & $2.1\times2.1\times15\unit{mm}$\\
+    CT B & $1.0\times1.0\times1.0\unit{mm}$ & $3\times3\times3\unit{mm}$\\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.38cm}
+  \begin{itemize}
+    \item 未统一时，模型会在两份数据中观察不同大小的现实区域
+    \item 统一 spacing 后，相同器官更接近相同的 voxel 尺度
+    \item 模型因此更容易学习真实形状，减少扫描参数的干扰
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{信息边界与总结}
+  \begin{alertblock}{Resampling 的边界}
+    \centering
+    原始 $z$ spacing 从 $5\unit{mm}$ 表示为 $1\unit{mm}$，会得到更多切片，\textbf{不会增加真实扫描信息}。
+  \end{alertblock}
+
+  \vspace{0.22cm}
+  \begin{itemize}
+    \item 插值让坐标网格更统一，原始分辨率仍由扫描决定
+    \item 原始 $z$ spacing 很大时，分割表面仍可能出现台阶感
+    \item spacing 与矩阵大小共同决定影像覆盖的物理空间
+  \end{itemize}
+
+  \vfill
+  \takeaway{Voxel spacing 决定现实尺寸。Resampling 把不同影像放到统一的物理网格上。}
+\end{frame}
+
+\end{document}
