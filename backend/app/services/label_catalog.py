@@ -4,7 +4,6 @@ import json
 import re
 from pathlib import Path
 
-
 # Official NV-Segment-CTMR label_dict.json entries with empty datasets.
 DEPRECATED_LABEL_IDS = frozenset(
     {
@@ -147,9 +146,23 @@ def _group(name: str) -> str:
         return "cerebellum"
     if "white-matter" in lower or "white matter" in lower:
         return "white_matter"
-    if any(token in lower for token in ("putamen", "caudate", "thalamus", "hippocampus", "amygdala", "pallidum", "accumbens")):
+    if any(
+        token in lower
+        for token in (
+            "putamen",
+            "caudate",
+            "thalamus",
+            "hippocampus",
+            "amygdala",
+            "pallidum",
+            "accumbens",
+        )
+    ):
         return "deep_nuclei"
-    if any(token in lower for token in ("gyrus", "cortex", "cuneus", "insula", "operculum", "pole")):
+    if any(
+        token in lower
+        for token in ("gyrus", "cortex", "cuneus", "insula", "operculum", "pole")
+    ):
         return "cortex"
     if "rib" in lower:
         return "rib"
@@ -252,10 +265,12 @@ class LabelCatalog:
             ):
                 try:
                     data = json.loads(candidate.read_text(encoding="utf-8"))
-                    everything = data.get("network_data_format", {}).get("everything_labels", {})
+                    everything = data.get("network_data_format", {}).get(
+                        "everything_labels", {}
+                    )
                     merged = {}
-                    for key in ("CT_BODY", "MRI_BODY", "MRI_BRAIN"):
-                        values = everything.get(key) or {}
+                    for mode in ("CT_BODY", "MRI_BODY", "MRI_BRAIN"):
+                        values = everything.get(mode) or {}
                         merged.update({int(label): str(name) for label, name in values.items()})
                     if merged:
                         labels.update(merged)

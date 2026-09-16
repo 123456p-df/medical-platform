@@ -33,6 +33,11 @@ const router = createRouter({
           component: () => import('@/views/doctor/DoctorDashboardView.vue'),
         },
         {
+          path: 'archived',
+          name: 'doctor-archived',
+          component: () => import('@/views/doctor/ArchivedPatientsView.vue'),
+        },
+        {
           path: 'patients',
           name: 'doctor-patients',
           redirect: { name: 'doctor-dashboard' },
@@ -68,11 +73,7 @@ const router = createRouter({
             {
               path: '3d',
               name: 'doctor-patient-3d',
-              redirect: (to) => ({
-                name: 'study-viewer',
-                params: { patientId: to.params.id },
-                query: to.query,
-              }),
+              component: () => import('@/views/doctor/Patient3DView.vue'),
             },
             {
               path: 'viewer',
@@ -99,6 +100,11 @@ const router = createRouter({
       meta: { portal: 'patient', requiresAuth: true },
       children: [
         { path: 'profile', component: () => import('@/views/ProfileView.vue') },
+        {
+          path: 'onboarding',
+          name: 'patient-onboarding',
+          component: () => import('@/views/patient/PatientOnboardingView.vue'),
+        },
         {
           path: '',
           redirect: '/patient/dashboard',
@@ -137,7 +143,9 @@ const router = createRouter({
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/login',
+      name: 'not-found',
+      component: () => import('@/views/NotFoundView.vue'),
+      meta: { requiresAuth: true },
     },
   ],
 })
@@ -160,6 +168,14 @@ router.beforeEach((to) => {
     return auth.portal === 'doctor'
       ? { name: 'doctor-dashboard' }
       : { name: 'patient-dashboard' }
+  }
+
+  if (
+    auth.portal === 'patient'
+    && !auth.session?.profileCompleted
+    && !['/patient/onboarding', '/patient/profile'].includes(to.path)
+  ) {
+    return { name: 'patient-onboarding' }
   }
 
   return true

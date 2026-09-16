@@ -14,6 +14,7 @@ import {
 import { viewerApi } from '@/api/viewer'
 import type { Finding } from '@/types'
 import { createFinding3DObject, type Finding3DObject } from '@/utils/bounding3d'
+import { t } from '@/i18n'
 
 type OrganMetaItem = {
   label_id?: number | null
@@ -82,6 +83,7 @@ let keyLight: THREE.DirectionalLight | undefined
 let pmrem: THREE.PMREMGenerator | undefined
 let observer: ResizeObserver | undefined
 let version = 0
+let loadController: AbortController | undefined
 let pointerDown: { x: number; y: number } | null = null
 const meshes = new Map<string, THREE.Mesh[]>()
 
@@ -147,6 +149,18 @@ function hashHueColor(str: string): THREE.Color {
 function renderScene() {
   if (!scene || !camera || !renderer) return
   renderer.render(scene, camera)
+}
+
+function onContextLost(event: Event) {
+  event.preventDefault()
+  version++
+  loadController?.abort()
+  progress.value = t('ui.model.contextLost')
+}
+
+function onContextRestored() {
+  progress.value = t('ui.model.contextRestored')
+  void load()
 }
 
 function styleMesh(mesh: THREE.Mesh, name: string) {
@@ -455,13 +469,21 @@ function applyActiveFinding() {
 async function load() {
   if (!scene) return
   const revision = ++version
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   if (model) {
     scene.remove(model)
     model.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose()
         const materials = Array.isArray(child.material) ? child.material : [child.material]
-        materials.forEach((material) => material.dispose())
+        materials.forEach((material) => {
+          for (const value of Object.values(material)) {
+            if (value instanceof THREE.Texture) value.dispose()
+          }
+          material.dispose()
+        })
       }
     })
     model = undefined
@@ -471,19 +493,19 @@ async function load() {
   updateFindings()
 
   if (!props.modelId) {
-    progress.value = props.status || '等待分割完成…'
+  progress.value = props.status || t('ui.model.waitingSegmentation')
     renderScene()
     return
   }
-  progress.value = '正在加载 3D 模型…'
+  progress.value = t('ui.model.loadingModel')
   try {
     let buffer: ArrayBuffer
     if (props.modelId.startsWith('/') || props.modelId.startsWith('http')) {
-      const resp = await fetch(props.modelId)
+      const resp = await fetch(props.modelId, { signal: controller.signal })
       if (!resp.ok) throw new Error('加载模型失败: ' + resp.statusText)
       buffer = await resp.arrayBuffer()
     } else {
-      buffer = await viewerApi.loadGlb(props.modelId)
+      buffer = await viewerApi.loadGlb(props.modelId, controller.signal)
     }
     if (revision !== version) return
 
@@ -521,7 +543,8 @@ async function load() {
     progress.value = ''
     emit('loaded')
   } catch (reason) {
-    if (revision === version) progress.value = reason instanceof Error ? reason.message : '模型加载失败'
+    if (controller.signal.aborted) return
+    if (revision === version) progress.value = reason instanceof Error ? reason.message : t('ui.model.loadFailed')
     renderScene()
   }
 }
@@ -606,6 +629,8 @@ onMounted(() => {
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.toneMappingExposure = isLight ? 1.05 : 1.2
   host.value.appendChild(renderer.domElement)
+  renderer.domElement.addEventListener('webglcontextlost', onContextLost)
+  renderer.domElement.addEventListener('webglcontextrestored', onContextRestored)
   camera = new THREE.PerspectiveCamera(40, 1, 0.001, 50)
   camera.position.set(0.4, 0.35, 0.7)
   scene.add(camera)
@@ -717,13 +742,17 @@ watch(
 
 onBeforeUnmount(() => {
   version++
+  loadController?.abort()
   observer?.disconnect()
   renderer?.domElement.removeEventListener('pointerdown', onPointerDown)
   renderer?.domElement.removeEventListener('pointerup', onPointerUp)
   renderer?.domElement.removeEventListener('pointermove', onPointerMove)
   renderer?.domElement.removeEventListener('mouseleave', onMouseLeave)
+  renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
+  renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
   controls?.removeEventListener('change', renderScene)
   controls?.dispose()
+  if (scene?.environment instanceof THREE.Texture) scene.environment.dispose()
   pmrem?.dispose()
   if (scene) {
     scene.traverse((child) => {
@@ -740,7 +769,9 @@ onBeforeUnmount(() => {
   model = undefined
   plane = undefined
   findingsGroup = undefined
+  scene?.clear()
   renderer?.dispose()
+  renderer?.forceContextLoss()
   renderer?.domElement.remove()
 })
 </script>

@@ -1,4 +1,4 @@
-"""Install the reviewed synthetic database fixture with three local CT samples."""
+"""Explicit demo fixtures for the local database using two sample CT scans."""
 
 import os
 import shutil
@@ -23,24 +23,15 @@ DEMO_PATIENTS = DEMO_FIXTURE.patients
 DEMO_SCAN_FILENAMES = {
     "patient-001": "0.nii",
     "patient-002": "1.nii",
-    "patient-003": "10.nii",
 }
-DEMO_PASSWORDS = {
-    "admin": "Admin123!",
-    "demo_doctor": "DemoDoctor123!",
-    "demo_patient": "DemoPatient123!",
-    "demo_patient_2": "DemoPatient123!",
-    "demo_patient_3": "DemoPatient123!",
-}
+DEMO_PASSWORD = "123456"
 
 
-def demo_scan_path(filename: str) -> Path:
-    root = Path(
-        os.environ.get(
-            "VMRB_DEMO_SCAN_DIR",
-            "/home/zhichun/Documents/NV-Segment-CTMR/test_data/user_scans",
-        )
-    ).expanduser()
+def demo_scan_path(filename: str) -> Path | None:
+    configured_root = os.environ.get("VMRB_DEMO_SCAN_DIR")
+    if not configured_root:
+        return None
+    root = Path(configured_root).expanduser()
     for candidate in (root / filename, root / f"{filename}.gz"):
         if candidate.is_file():
             return candidate
@@ -95,19 +86,22 @@ def seed(settings):
                         raise RuntimeError(
                             f"Refusing to reuse non-demo account {existing_user.username!r}"
                         )
+                    existing_user.password_hash = hash_password(DEMO_PASSWORD)
+                    existing_user.profile = fixture_user_profile()
+                    db.commit()
                     continue
                 user = User(
                     username=fixture_user.username,
                     role=fixture_user.role,
-                    password_hash=hash_password(DEMO_PASSWORDS[fixture_user.username]),
+                    password_hash=hash_password(DEMO_PASSWORD),
                     profile=fixture_user_profile(),
                 )
                 db.add(user)
                 db.flush()
                 db.add(
-                    Doctor(user_id=user.id)
-                    if fixture_user.role == "doctor"
-                    else Patient(user_id=user.id)
+                    Patient(user_id=user.id)
+                    if fixture_user.role == "patient"
+                    else Doctor(user_id=user.id)
                 )
                 db.commit()
 
@@ -137,21 +131,24 @@ def seed(settings):
                 patient.deleted_at = None
                 for doctor_username in fixture_patient.doctor_access:
                     set_access(db, doctor_username, patient_id, "active")
-                image_id = f"img_demo_{index + 1:04d}"
-                is_new = install_demo_image(db, settings, patient_id, image_id, source, index)
-                if is_new:
-                    template = DEMO_FIXTURE.record_template
-                    for days in template.day_offsets:
-                        db.add(
-                            MedicalRecord(
-                                patient_id=patient_id,
-                                doctor_id=doctor.id,
-                                organ_id=template.organ_id,
-                                diagnosis=template.diagnosis,
-                                description=template.description,
-                                record_date=date.today() - timedelta(days=days + index),
+                if source is not None:
+                    image_id = f"img_demo_{index + 1:04d}"
+                    is_new = install_demo_image(
+                        db, settings, patient_id, image_id, source, index
+                    )
+                    if is_new:
+                        template = DEMO_FIXTURE.record_template
+                        for days in template.day_offsets:
+                            db.add(
+                                MedicalRecord(
+                                    patient_id=patient_id,
+                                    doctor_id=doctor.id,
+                                    organ_id=template.organ_id,
+                                    diagnosis=template.diagnosis,
+                                    description=template.description,
+                                    record_date=date.today() - timedelta(days=days + index),
+                                )
                             )
-                        )
                 db.commit()
 
             for organ in ORGANS:
@@ -162,7 +159,11 @@ def seed(settings):
                     and os.environ.get("VMRB_REFRESH_DEMO_MODELS") != "1"
                 ):
                     continue
-                asset = Path(__file__).resolve().parents[2] / "public/models" / f"organ-{organ}.glb"
+                asset = (
+                    Path(__file__).resolve().parents[2]
+                    / "public/models"
+                    / f"organ-{organ}.glb"
+                )
                 if asset.is_file():
                     install_default(db, settings, organ, asset)
                     continue
@@ -179,9 +180,7 @@ def seed(settings):
                     mesh.apply_scale([0.09, 0.065, 0.055])
                     mesh.visual.vertex_colors = [106, 171, 170, 255]
                     scene.add_geometry(mesh)
-                scene.metadata["description"] = (
-                    "Schematic demo geometry; not patient anatomy or segmentation"
-                )
+                scene.metadata["description"] = "Schematic demo geometry; not patient anatomy or segmentation"
                 path = stored_path(settings, f"demo-assets/{organ}.glb")
                 path.parent.mkdir(parents=True, exist_ok=True)
                 scene.export(path)
@@ -200,4 +199,8 @@ if __name__ == "__main__":
     ):
         raise SystemExit("Demo seed is restricted to the explicitly enabled vmrb_preview database")
     seed(settings)
-    print("Real demo CT fixtures are ready.")
+    scan_count = sum(
+        demo_scan_path(DEMO_SCAN_FILENAMES[item.fixture_id]) is not None
+        for item in DEMO_PATIENTS
+    )
+    print(f"Demo accounts and patients are ready ({scan_count} CT fixtures configured).")

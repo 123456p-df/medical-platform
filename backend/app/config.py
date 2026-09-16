@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     segmentation_image_types: list[str] = ["CT", "MRI"]
     nv_segment_ct_dir: Path | None = None
     nv_segment_device: str = "cuda:0"
+    nv_segment_roi_size: tuple[int, int, int] = (192, 192, 128)
+    nv_segment_overlap: float = Field(default=0.3, ge=0, lt=1)
     segmentation_model_fingerprint: str = "nv-segment-ctmr-vista3d-1mm"
     synthstrip_command: str | None = None
     dcm2niix_command: str | None = "dcm2niix"
@@ -69,4 +71,6 @@ class Settings(BaseSettings):
         self.storage_root = self.storage_root.resolve()
         if self.nv_segment_ct_dir is not None:
             self.nv_segment_ct_dir = self.nv_segment_ct_dir.resolve()
+        if any(size <= 0 for size in self.nv_segment_roi_size):
+            raise ValueError("NV_SEGMENT_ROI_SIZE values must be positive")
         return self

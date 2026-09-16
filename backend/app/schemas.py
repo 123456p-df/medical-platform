@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from math import isfinite
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -10,10 +11,11 @@ class Input(BaseModel):
 
 class Credentials(Input):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[\w.-]+$")
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=6, max_length=128)
 
 
 class RegisterInput(Credentials):
+    password: str = Field(min_length=8, max_length=128)
     role: Literal["patient"] = "patient"
 
 
@@ -22,6 +24,8 @@ class UserOut(BaseModel):
     username: str
     role: Literal["admin", "doctor", "patient"]
     patient_id: int | None = None
+    account_role: Literal["admin", "doctor", "patient"]
+    profile_completed: bool = False
 
 
 class TokenOut(BaseModel):
@@ -32,6 +36,7 @@ class TokenOut(BaseModel):
 
 
 class DoctorProvisionInput(Credentials):
+    password: str = Field(min_length=8, max_length=128)
     department: str = Field(default="", max_length=100)
 
 
@@ -81,6 +86,102 @@ class PatientCreate(ResolveInput):
         return value
 
 
+class PatientOnboardingPatch(ResolveInput):
+    birth_date: date | None = None
+    gender: Literal["male", "female", "unknown"] = "unknown"
+    height: float | None = Field(None, gt=0, le=300, allow_inf_nan=False)
+    weight: float | None = Field(None, gt=0, le=700, allow_inf_nan=False)
+    blood_type: str | None = Field(None, pattern=r"^(A|B|AB|O)([+-])?$")
+
+    @field_validator("birth_date")
+    @classmethod
+    def valid_birth_date(cls, value):
+        if value and (value > date.today() or value.year < 1850):
+            raise ValueError("Invalid birth date")
+        return value
+
+
+class InvitationCreate(Input):
+    expires_minutes: int = Field(default=30, ge=5, le=1440)
+
+
+class InvitationOut(BaseModel):
+    invitation_id: str
+    patient_id: int
+    patient_name: str | None
+    code: str
+    expires_at: datetime
+
+
+class PatientLinkInput(ResolveInput):
+    token: str = Field(min_length=32, max_length=128)
+
+
+class PatientLinkOut(BaseModel):
+    patient_id: int
+    account_role: Literal["patient"]
+    profile_completed: bool = True
+
+
+class LinkExistingInput(ResolveInput):
+    birth_date: date | None = None
+
+    @field_validator("birth_date")
+    @classmethod
+    def valid_birth_date(cls, value):
+        if value and (value > date.today() or value.year < 1850):
+            raise ValueError("Invalid birth date")
+        return value
+
+
+class LinkExistingOut(BaseModel):
+    patient_id: int
+    name: str | None
+    already_linked: bool = False
+
+
+class PatientArchiveInput(Input):
+    reason: str = Field(min_length=3, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value):
+        if not value.strip():
+            raise ValueError("Reason must not be blank")
+        return value.strip()
+
+
+class PatientArchiveOut(BaseModel):
+    archive_id: int
+    patient_id: int
+    patient_name: str | None
+    reason: str
+    archived_by_user_id: int
+    archived_by_username: str
+    archived_at: datetime
+    restored_by_user_id: int | None = None
+    restored_by_username: str | None = None
+    restored_at: datetime | None = None
+
+
+class PatientArchivePage(BaseModel):
+    items: list[PatientArchiveOut]
+    page: int
+    page_size: int
+    total: int
+
+
+class DicomConvertInput(Input):
+    organ_id: str = Field(min_length=1, max_length=64)
+
+
+class DicomConvertOut(BaseModel):
+    series_id: str
+    medical_image_id: str
+    status: Literal["ready"]
+    already_converted: bool = False
+
+
 class ProfilePatch(Input):
     display_name: str = Field(min_length=1, max_length=100)
     title: str = Field(default="", max_length=100)
@@ -104,7 +205,7 @@ class RecordCreate(Input):
     diagnosis: str = Field(min_length=1, max_length=10000)
     description: str = Field(min_length=1, max_length=30000)
     recommendation: str = Field(default="", max_length=10000)
-    reviewed: bool = True
+    reviewed: bool = False
     record_date: date
 
     @field_validator("diagnosis", "description")
@@ -163,6 +264,16 @@ class AddendumCreate(Input):
         return value.strip()
 
 
+class AddendumOut(BaseModel):
+    addendum_id: int
+    record_id: int
+    author_user_id: int
+    author_name: str
+    reason: str
+    content: str
+    created_at: datetime
+
+
 class RecordOut(BaseModel):
     record_id: int
     patient_id: int
@@ -178,15 +289,7 @@ class RecordOut(BaseModel):
     doctor_name: str
     created_at: datetime
     updated_at: datetime
-
-
-class AddendumOut(BaseModel):
-    addendum_id: int
-    record_id: int
-    author_user_id: int
-    reason: str
-    content: str
-    created_at: datetime
+    addenda: list[AddendumOut] = Field(default_factory=list)
 
 
 class RecordPage(BaseModel):
@@ -281,6 +384,29 @@ class ImageAcquisitionPatch(Input):
         if not self.model_dump(exclude_unset=True):
             raise ValueError("Provide at least one field")
         return self
+
+
+class ImagePage(BaseModel):
+    items: list[ImageOut]
+    page: int
+    page_size: int
+    total: int
+
+
+class PatientRosterItem(BaseModel):
+    patient_id: int
+    name: str | None
+    birth_date: date | None
+    gender: str | None
+    blood_type: str | None
+    latest_image: ImageOut | None
+
+
+class PatientRosterPage(BaseModel):
+    items: list[PatientRosterItem]
+    page: int
+    page_size: int
+    total: int
 
 
 class SegmentationInput(Input):
@@ -414,18 +540,28 @@ class FindingOut(BaseModel):
     model_name: str
     created_at: datetime
     updated_at: datetime
+    revision: int
 
 
 class FindingPatch(Input):
     status: Literal["pending", "confirmed", "modified", "dismissed"] | None = None
     label: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, min_length=1, max_length=4000)
+    diameter_mm: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    center_world_mm: list[float] | None = Field(default=None, min_length=3, max_length=3)
+    box_world_mm: list[float] | None = Field(default=None, min_length=6, max_length=6)
+    center_voxel: list[float] | None = Field(default=None, min_length=3, max_length=3)
+    box_voxel: list[float] | None = Field(default=None, min_length=6, max_length=6)
+    modification_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    expected_revision: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def nonempty(self):
         values = self.model_dump(exclude_unset=True)
         if not values or any(value is None for value in values.values()):
             raise ValueError("Provide at least one non-null field")
+        if not (values.keys() - {"expected_revision", "modification_reason"}):
+            raise ValueError("Provide a finding field to update")
         if self.label is not None:
             self.label = self.label.strip()
             if not self.label:
@@ -434,6 +570,24 @@ class FindingPatch(Input):
             self.description = self.description.strip()
             if not self.description:
                 raise ValueError("Finding description must not be blank")
+        geometry_fields = {
+            "diameter_mm", "center_world_mm", "box_world_mm", "center_voxel", "box_voxel"
+        }
+        supplied = geometry_fields & values.keys()
+        if supplied and supplied != geometry_fields:
+            raise ValueError("Finding geometry must be updated as one complete coordinate set")
+        if supplied:
+            vectors = [self.center_world_mm, self.box_world_mm, self.center_voxel, self.box_voxel]
+            if any(not isfinite(value) for vector in vectors for value in vector or []):
+                raise ValueError("Finding geometry must contain only finite numbers")
+            if any(value <= 0 for value in (self.box_world_mm or [])[3:]):
+                raise ValueError("World-space box dimensions must be positive")
+            if any(value <= 0 for value in (self.box_voxel or [])[3:]):
+                raise ValueError("Voxel-space box dimensions must be positive")
+            if not self.modification_reason:
+                raise ValueError("Geometry changes require a modification reason")
+        elif self.modification_reason is not None:
+            raise ValueError("A modification reason requires a geometry change")
         return self
 
 

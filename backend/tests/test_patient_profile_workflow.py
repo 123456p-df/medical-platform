@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 from sqlalchemy import select
 
-from app.models import AuditEvent, Patient
+from app.models import AuditEvent, Patient, PatientArchive
 from tests.conftest import upload
 
 
@@ -39,8 +39,21 @@ def test_patient_create_duplicate_and_archive(app_env, people, nifti_file):
     assert client.delete(f"/api/v1/patients/{pid}", headers=people["patient_a"]).status_code == 403
     image_id = upload(client, people, nifti_file)
     archived = people["patient_a_pid"]
+    assert client.delete(f"/api/v1/patients/{archived}", headers=people["doctor_a"]).status_code == 403
     assert (
-        client.delete(f"/api/v1/patients/{archived}", headers=people["doctor_a"]).status_code == 200
+        client.delete(
+            f"/api/v1/doctor/patients/{archived}/access", headers=people["doctor_a"]
+        ).status_code
+        == 200
+    )
+    assert client.get(f"/api/v1/patients/{archived}/overview", headers=people["doctor_a"]).status_code == 403
+    assert (
+        client.post(
+            f"/api/v1/admin/patients/{archived}/archive",
+            json={"reason": "归档回归测试"},
+            headers=people["admin"],
+        ).status_code
+        == 200
     )
     for actor in ["doctor_a", "patient_a"]:
         for path in [
@@ -54,7 +67,8 @@ def test_patient_create_duplicate_and_archive(app_env, people, nifti_file):
         assert archived not in [row["patient_id"] for row in rows]
     with app.state.session_factory() as db:
         assert db.get(Patient, archived).deleted_at is not None
-        assert db.scalar(select(AuditEvent).where(AuditEvent.action == "patient.delete"))
+        assert db.scalar(select(PatientArchive).where(PatientArchive.patient_id == archived))
+        assert db.scalar(select(AuditEvent).where(AuditEvent.action == "patient.archive"))
         assert db.get(Patient, pid).id_number_encrypted != payload["id_number"]
 
 

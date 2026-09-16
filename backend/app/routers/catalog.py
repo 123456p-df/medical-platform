@@ -1,12 +1,13 @@
 """Read-only collections for the web portal; use the same patient access rules."""
 
 from fastapi import APIRouter, Query
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, exists, func, or_, select
 
 from app.deps import DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import Envelope, success
 from app.models import (
     DoctorPatientAccess,
+    ImageReview,
     MedicalImage,
     MedicalRecord,
     OrganModel,
@@ -15,13 +16,23 @@ from app.models import (
 )
 from app.routers.images import image_out
 from app.routers.records import record_out
+from app.schemas import ImagePage, PatientRosterPage, RecordPage
 
 router = APIRouter(tags=["Portal collections"])
 
 
-@router.get("/patients", response_model=Envelope[dict])
+@router.get("/patients", response_model=Envelope[PatientRosterPage])
 def patients(
-    db: DB, user: CurrentUser, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
+    db: DB,
+    user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    search: str | None = Query(None, max_length=100),
+    modality: str | None = Query(None, max_length=16),
+    organ_id: str | None = Query(None, max_length=64),
+    review_status: str | None = Query(None, pattern="^(reviewed|pending|unassessed)$"),
+    sort: str = Query("id", pattern="^(id|name)$"),
+    direction: str = Query("asc", pattern="^(asc|desc)$"),
 ):
     query = select(Patient).where(Patient.deleted_at.is_(None))
     if user.role in {"doctor", "admin"}:
@@ -31,14 +42,53 @@ def patients(
         )
     else:
         query = query.where(Patient.user_id == user.id)
+    if search and search.strip():
+        needle = f"%{search.strip()}%"
+        query = query.where(or_(Patient.name.ilike(needle), cast(Patient.id, String).ilike(needle)))
+    if modality or organ_id:
+        image_filter = select(MedicalImage.id).where(MedicalImage.patient_id == Patient.id)
+        if modality:
+            image_filter = image_filter.where(MedicalImage.image_type == modality)
+        if organ_id:
+            image_filter = image_filter.where(MedicalImage.organ_id == organ_id)
+        query = query.where(exists(image_filter))
+    latest_image_id = (
+        select(MedicalImage.id)
+        .where(MedicalImage.patient_id == Patient.id)
+        .order_by(
+            MedicalImage.study_date.desc().nullslast(),
+            MedicalImage.created_at.desc(),
+            MedicalImage.id.desc(),
+        )
+        .limit(1)
+        .correlate(Patient)
+        .scalar_subquery()
+    )
+    reviewed_latest = exists(
+        select(ImageReview.image_id).where(
+            ImageReview.image_id == latest_image_id,
+            ImageReview.user_id == user.id,
+            ImageReview.completed_at.is_not(None),
+        )
+    )
+    has_image = exists(select(MedicalImage.id).where(MedicalImage.patient_id == Patient.id))
+    if review_status == "reviewed":
+        query = query.where(reviewed_latest)
+    elif review_status == "pending":
+        query = query.where(has_image, ~reviewed_latest)
+    elif review_status == "unassessed":
+        query = query.where(~has_image)
     total = db.scalar(select(func.count()).select_from(query.subquery()))
+    order = Patient.name if sort == "name" else Patient.id
+    order = order.desc() if direction == "desc" else order.asc()
     patients_page = list(
-        db.scalars(query.order_by(Patient.id).offset((page - 1) * page_size).limit(page_size))
+        db.scalars(query.order_by(order, Patient.id).offset((page - 1) * page_size).limit(page_size))
     )
     patient_ids = [patient.id for patient in patients_page]
     latest_images = {}
     batch_ids = {}
     atlas_ids = {}
+    latest_ids = []
     if patient_ids:
         image_rank = (
             func.row_number()
@@ -80,9 +130,32 @@ def patients(
                 ).all()
             )
     latest_by_patient = {image.patient_id: image for image in latest_images.values()}
+    reviewed_image_ids = set()
+    if latest_ids:
+        reviewed_image_ids = set(
+            db.scalars(
+                select(ImageReview.image_id).where(
+                    ImageReview.image_id.in_(latest_ids),
+                    ImageReview.user_id == user.id,
+                    ImageReview.completed_at.is_not(None),
+                )
+            )
+        )
     result = []
     for patient in patients_page:
         image = latest_by_patient.get(patient.id)
+        latest_image = (
+            image_out(
+                image,
+                db,
+                segmentation_batch_id=batch_ids.get(image.id),
+                atlas_id=atlas_ids.get(image.id),
+            )
+            if image
+            else None
+        )
+        if latest_image is not None and image.id in reviewed_image_ids:
+            latest_image["status"] = "reviewed"
         result.append(
             {
                 "patient_id": patient.id,
@@ -90,22 +163,13 @@ def patients(
                 "birth_date": patient.birth_date,
                 "gender": patient.gender,
                 "blood_type": patient.blood_type,
-                "latest_image": (
-                    image_out(
-                        image,
-                        db,
-                        segmentation_batch_id=batch_ids.get(image.id),
-                        atlas_id=atlas_ids.get(image.id),
-                    )
-                    if image
-                    else None
-                ),
+                "latest_image": latest_image,
             }
         )
     return success({"items": result, "total": total, "page": page, "page_size": page_size})
 
 
-@router.get("/patients/{patient_id}/medical-images", response_model=Envelope[dict])
+@router.get("/patients/{patient_id}/medical-images", response_model=Envelope[ImagePage])
 def images(
     patient_id: int,
     db: DB,
@@ -135,7 +199,7 @@ def images(
     )
 
 
-@router.get("/patients/{patient_id}/medical-records", response_model=Envelope[dict])
+@router.get("/patients/{patient_id}/medical-records", response_model=Envelope[RecordPage])
 def records(
     patient_id: int,
     db: DB,

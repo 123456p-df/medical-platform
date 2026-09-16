@@ -4,10 +4,10 @@ import { ArrowLeft, FileText, Info } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
-import StudyComparisonViewer from '@/components/medical/StudyComparisonViewer.vue'
-import SliceViewport from '@/components/medical/SliceViewport.vue'
+import MedicalImageViewer from '@/components/medical/MedicalImageViewer.vue'
 import ReportCard from '@/components/medical/ReportCard.vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
+import StatePanel from '@/components/ui/StatePanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -20,8 +20,7 @@ const examination = computed(() =>
   store.examinations.find((exam) => exam.id === examId.value),
 )
 const reviewedReport = computed(() =>
-  store.reviewedReports.find((report) => report.examinationId === examId.value) ||
-  store.reviewedReports.find((report) => !report.examinationId && report.organId === examination.value?.organId),
+  store.reviewedReports.find((report) => report.examinationId === examId.value),
 )
 
 function formatDate(date?: string) {
@@ -43,7 +42,7 @@ watch(patientId, async (newId) => {
 <template>
   <div class="page">
     <button type="button" class="back-link" @click="router.push({ name: 'patient-examinations' })">
-      <ArrowLeft :size="16" /> My Examinations
+      <ArrowLeft :size="16" /> {{ $t('My Examinations') }}
     </button>
 
     <section v-if="examination" class="exam-detail-grid">
@@ -56,19 +55,7 @@ watch(patientId, async (newId) => {
           <StatusBadge :status="examination.status" />
         </div>
         <div class="card-body">
-          <StudyComparisonViewer
-            v-if="examination.type === 'CT' || examination.type === 'MRI'"
-            :examinations="store.examinations.length ? store.examinations : [examination]"
-            :initial-id="examination.id"
-          />
-          <SliceViewport
-            v-else
-            :examination="examination"
-            axis="axial"
-            preset="auto"
-            :zoom="1"
-            :renderer="null"
-          />
+          <MedicalImageViewer :examination="examination" :findings="[]" />
         </div>
       </div>
 
@@ -76,7 +63,7 @@ watch(patientId, async (newId) => {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3>About this examination</h3>
+              <h3>{{ $t('About this examination') }}</h3>
             </div>
             <Info :size="18" class="header-icon" />
           </div>
@@ -84,15 +71,15 @@ watch(patientId, async (newId) => {
             <p class="exam-description">{{ examination.description }}</p>
             <dl class="exam-facts">
               <div>
-                <dt>Body region</dt>
+                <dt>{{ $t('Body region') }}</dt>
                 <dd>{{ examination.organ }}</dd>
               </div>
               <div>
-                <dt>Imaging type</dt>
+                <dt>{{ $t('Imaging type') }}</dt>
                 <dd>{{ examination.type }}</dd>
               </div>
               <div>
-                <dt>Images</dt>
+                <dt>{{ $t('Images') }}</dt>
                 <dd>{{ examination.sliceCount }}</dd>
               </div>
             </dl>
@@ -102,19 +89,23 @@ watch(patientId, async (newId) => {
         <div class="card">
           <div class="card-header">
             <div>
-              <h3>Doctor's Report</h3>
-              <p class="muted">Latest medical record for this organ.</p>
+              <h3>{{ $t("Doctor's Report") }}</h3>
+              <p class="muted">{{ $t('Signed report linked to this examination.') }}</p>
             </div>
             <FileText :size="18" class="header-icon" />
           </div>
           <div class="card-body">
             <ReportCard v-if="reviewedReport" :report="reviewedReport" patient-facing />
-            <div v-else class="empty-state">
-              Your doctor is still reviewing this examination.
-            </div>
+            <StatePanel v-else kind="empty" compact :message="$t('Your doctor is still reviewing this examination.')" />
           </div>
         </div>
       </aside>
+    </section>
+    <section v-else-if="!store.loading" class="card missing-examination" role="status">
+      <Info :size="26" />
+      <h2>{{ $t('ui.exam.missingTitle') }}</h2>
+      <p>{{ $t('ui.exam.missingBody') }}</p>
+      <button type="button" class="btn btn-primary" @click="router.push({ name: 'patient-examinations' })">{{ $t('ui.exam.backToList') }}</button>
     </section>
   </div>
 </template>
@@ -157,6 +148,9 @@ watch(patientId, async (newId) => {
 .header-icon {
   color: var(--text-muted);
 }
+.missing-examination { display: grid; justify-items: start; gap: 12px; padding: 28px; }
+.missing-examination h2, .missing-examination p { margin: 0; }
+.missing-examination p { color: var(--text-muted); }
 
 .exam-description {
   margin: 0;

@@ -5,12 +5,13 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { request } from '@/api/client'
+import { t } from '@/i18n'
 
 type OrganModelInfo = { model_id: string; source: string; available: boolean }
 
 const props = defineProps<{ organId: string; modelInfo: OrganModelInfo | null }>()
 const host = ref<HTMLDivElement | null>(null)
-const status = ref('正在加载真实解剖模型…')
+const status = ref(t('ui.model.loadingReal'))
 const source = ref('')
 const isPatientReconstruction = ref(false)
 const wireframe = ref(false)
@@ -22,9 +23,22 @@ let camera: THREE.PerspectiveCamera
 let model: THREE.Group | undefined
 let version = 0
 let observer: ResizeObserver | undefined
+let loadController: AbortController | undefined
 
 function renderScene() {
   if (renderer && scene && camera) renderer.render(scene, camera)
+}
+
+function onContextLost(event: Event) {
+  event.preventDefault()
+  version++
+  loadController?.abort()
+  status.value = t('ui.model.contextLost')
+}
+
+function onContextRestored() {
+  status.value = t('ui.model.contextRestored')
+  void load()
 }
 
 function dispose(object: THREE.Object3D) {
@@ -33,7 +47,9 @@ function dispose(object: THREE.Object3D) {
       child.geometry.dispose()
       const materials = Array.isArray(child.material) ? child.material : [child.material]
       materials.forEach(m => {
-        if ('map' in m && m.map instanceof THREE.Texture) m.map.dispose()
+        for (const value of Object.values(m)) {
+          if (value instanceof THREE.Texture) value.dispose()
+        }
         m.dispose()
       })
     }
@@ -64,12 +80,15 @@ function resetView() {
 async function load() {
   if (!scene) return
   const revision = ++version
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   if (model) {
     scene.remove(model)
     dispose(model)
     model = undefined
   }
-  status.value = '正在加载解剖模型…'
+  status.value = t('ui.model.loadingModel')
   source.value = ''
   isPatientReconstruction.value = false
   renderScene()
@@ -82,16 +101,16 @@ async function load() {
     if (organModel.available) {
       isPatientReconstruction.value = organModel.source !== 'default'
       source.value = isPatientReconstruction.value
-        ? '患者专属真实 CT 重建 (0.75mm FMRC 亚体素连续曲面)'
-        : '临床 0.75mm 实心封闭解剖标本 (100% Watertight)'
-      const response = await request('/organ-models/' + organModel.model_id + '/file')
+        ? t('ui.model.patientReconstruction', { source: organModel.source })
+        : t('ui.model.teachingModel')
+      const response = await request('/organ-models/' + organModel.model_id + '/file', { signal: controller.signal })
       buffer = await response.arrayBuffer()
     } else {
       isPatientReconstruction.value = false
-      source.value = '临床 0.75mm 实心封闭解剖标本 (100% Watertight)'
-      const response = await fetch('/models/organ-' + props.organId + '.glb')
+      source.value = t('ui.model.teachingModel')
+      const response = await fetch('/models/organ-' + props.organId + '.glb', { signal: controller.signal })
       if (!response.ok) {
-        status.value = '该器官尚未配置解剖模型。'
+        status.value = t('ui.model.notConfigured')
         renderScene()
         return
       }
@@ -125,7 +144,8 @@ async function load() {
     controls?.reset()
     renderScene()
   } catch (reason) {
-    if (revision === version) status.value = reason instanceof Error ? reason.message : '模型加载失败'
+    if (controller.signal.aborted) return
+    if (revision === version) status.value = reason instanceof Error ? reason.message : t('ui.model.loadFailed')
     renderScene()
   }
 }
@@ -141,6 +161,8 @@ onMounted(() => {
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
     host.value.appendChild(renderer.domElement)
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost)
+    renderer.domElement.addEventListener('webglcontextrestored', onContextRestored)
 
     camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100)
     camera.position.set(0, 0.3, 5.5)
@@ -175,17 +197,22 @@ onMounted(() => {
     renderScene()
     void load()
   } catch {
-    status.value = 'WebGL 无法启动，请在支持 WebGL 的浏览器中打开。'
+    status.value = t('ui.model.webglUnavailable')
   }
 })
 
 onBeforeUnmount(() => {
   version++
+  loadController?.abort()
   observer?.disconnect()
   controls?.removeEventListener('change', renderScene)
   controls?.dispose()
   if (model) dispose(model)
+  scene?.clear()
+  renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
+  renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
   renderer?.dispose()
+  renderer?.forceContextLoss()
   renderer?.domElement.remove()
 })
 
@@ -200,21 +227,21 @@ watch(wireframe, updateWireframe)
   <div class="organ-stage">
     <div ref="host" class="organ-canvas" />
     <div class="organ-toolbar">
-      <button :class="{ active: wireframe }" title="切换三角网格线框模式" @click="wireframe = !wireframe">
+      <button :class="{ active: wireframe }" :title="$t('ui.model.toggleWireframe')" @click="wireframe = !wireframe">
         <Grid :size="15" />
       </button>
-      <button title="恢复默认解剖视角" @click="resetView">
+      <button :title="$t('ui.model.resetView')" @click="resetView">
         <RotateCcw :size="15" />
       </button>
     </div>
     <div class="organ-badge">
-      <span class="badge-title">3D REAL ANATOMY (0.75mm)</span>
+      <span class="badge-title">{{ $t('ui.model.badge') }}</span>
       <p class="badge-source">
         <Sparkles v-if="isPatientReconstruction" :size="12" class="sparkle" />
         {{ source }}
       </p>
     </div>
-    <p v-if="status" class="organ-status">{{ status }}</p>
+    <p v-if="status" class="organ-status">{{ status }} <button v-if="status.includes($t('ui.model.failedWord'))" type="button" class="btn btn-sm btn-secondary" @click="load">{{ $t('Retry') }}</button></p>
   </div>
 </template>
 

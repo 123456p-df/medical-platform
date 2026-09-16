@@ -108,7 +108,7 @@ def test_dicom_gateway_is_closed_when_unconfigured(app_env, people):
     assert response.status_code == 503
 
 
-def test_bad_uploads_and_mri_rejection(app_env, people, nifti_file):
+def test_bad_uploads_and_mri_segmentation(app_env, people, nifti_file):
     app, client, settings, _ = app_env
     route = f"/api/v1/patients/{people['patient_a_pid']}/medical-images"
     for name, content, status in [

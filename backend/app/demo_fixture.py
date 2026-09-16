@@ -8,11 +8,10 @@ from pathlib import Path
 
 FIXTURE_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "demo_database.fixture.json"
 EXPECTED_USERS = {
-    "admin": "doctor",
+    "admin": "admin",
     "demo_doctor": "doctor",
     "demo_patient": "patient",
-    "demo_patient_2": "patient",
-    "demo_patient_3": "patient",
+    "test_patient": "patient",
 }
 PROFILE_MARKER_KEY = "_vmrb_demo_fixture"
 PROFILE_MARKER_VALUE = "synthetic-demo-v1"
@@ -104,7 +103,9 @@ def load_demo_fixture(path: Path = FIXTURE_PATH) -> DemoDatabaseFixture:
     } != EXPECTED_USERS:
         raise ValueError("Demo fixture account list is incomplete or duplicated")
 
-    doctor_usernames = {user.username for user in users if user.role == "doctor"}
+    doctor_usernames = {
+        user.username for user in users if user.role in {"admin", "doctor"}
+    }
     patient_usernames = {user.username for user in users if user.role == "patient"}
     patients = []
     seen_ids: set[str] = set()
@@ -118,7 +119,7 @@ def load_demo_fixture(path: Path = FIXTURE_PATH) -> DemoDatabaseFixture:
             username not in patient_usernames
             or re.fullmatch(r"patient-\d{3}", fixture_id) is None
             or fixture_id in seen_ids
-            or not display_name.startswith("演示患者")
+            or display_name != username
             or not access
             or not set(access) <= doctor_usernames
         ):

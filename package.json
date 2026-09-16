@@ -6,12 +6,29 @@
   "scripts": {
     "dev": "vite",
     "start": "node scripts/start.mjs",
+    "start:demo": "node scripts/start.mjs --frontend-only",
     "build": "vue-tsc -b && vite build && node scripts/gzip-static.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "serve": "vite preview --host 127.0.0.1 --port 4173",
     "typecheck": "vue-tsc -b",
     "test:volume": "node scripts/verify-volume-renderer.mjs",
-    "test:comparison": "node scripts/verify-comparison.mjs"
+    "test:comparison": "node scripts/verify-comparison.mjs",
+    "test:p0": "node scripts/verify-p0.mjs",
+    "test:p1-consistency": "node scripts/verify-p1-consistency.mjs",
+    "test:viewer-stability": "node scripts/verify-viewer-stability.mjs",
+    "test:docs": "node scripts/verify-project-docs.mjs",
+    "test:i18n": "node scripts/verify-i18n.mjs",
+    "test:profile": "node scripts/verify-profile-upload.mjs",
+    "test:a11y": "node scripts/verify-accessibility.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:real": "playwright test --config=playwright.real.config.ts --workers=1",
+    "test:e2e:ui": "playwright test --ui",
+    "test:bundle-budget": "node scripts/verify-bundle-budget.mjs",
+    "test:performance": "node scripts/measure-performance.mjs",
+    "test:migrations": "node scripts/verify-migrations.mjs",
+    "test:backend": "uv run --project backend pytest backend/tests -q",
+    "contract:generate": "node scripts/generate-contract.mjs",
+    "test:contract": "node scripts/verify-contract.mjs && node scripts/verify-mappers.mjs"
   },
   "dependencies": {
     "@cornerstonejs/core": "^5.8.2",
@@ -27,9 +44,12 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "@types/three": "^0.172.0",
     "@vitejs/plugin-vue": "^5.2.1",
+    "openapi-typescript": "^7.13.0",
     "typescript": "~5.7.2",
     "vite": "^6.0.7",
     "vue-tsc": "^2.2.0"

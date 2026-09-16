@@ -1,4 +1,4 @@
-"""Replace the explicitly marked demo database with three local CT samples."""
+"""Replace the explicitly approved demo database with two synthetic demo patients."""
 
 import os
 import sys
@@ -7,61 +7,71 @@ from pathlib import Path
 from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = ROOT / "backend"
 if not (BACKEND_ROOT / "app").is_dir() and (ROOT / "app").is_dir():
     BACKEND_ROOT = ROOT
 sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.config import Settings  # noqa: E402
-from app.db import make_engine, make_session_factory  # noqa: E402
-from app.demo import (  # noqa: E402
-    DEMO_FIXTURE,
-    DEMO_PATIENTS,
-    DEMO_SCAN_FILENAMES,
-    seed,
-)
-from app.demo_fixture import is_fixture_user  # noqa: E402
-from app.models import OrganModel, User  # noqa: E402
+from app.config import Settings
+from app.db import make_engine, make_session_factory
+from app.demo import DEMO_PATIENTS, seed
+from app.models import OrganModel, User
 
-
-ALLOWED_USERNAMES = {user.username for user in DEMO_FIXTURE.users}
+ALLOWED_USERNAMES = {
+    "admin",
+    "demo_doctor",
+    "demo_patient",
+    "test_patient",
+    # Historical synthetic preview accounts accepted only by this explicitly
+    # confirmed reset command. Unknown or user-created accounts still abort it.
+    "demo_patient_2",
+    "demo_patient_3",
+    "demo_patient_full",
+    "demo_patient_test",
+}
 
 
 def assert_demo_only(db):
-    users = list(db.scalars(select(User)))
-    unexpected = {
-        user.username
-        for user in users
-        if user.username not in ALLOWED_USERNAMES
-        or not is_fixture_user(username=user.username, role=user.role, profile=user.profile)
-    }
+    usernames = set(db.scalars(select(User.username)))
+    unexpected = usernames - ALLOWED_USERNAMES
     if unexpected:
         names = ", ".join(sorted(unexpected))
-        raise SystemExit(f"Refusing to clear an unmarked or non-demo database: {names}")
+        raise SystemExit(f"Refusing to clear non-demo users: {names}")
 
 
 def clear_demo_rows(db):
-    # Delete children first so the default organ catalog can remain available.
-    for statement in (
-        "DELETE FROM ai_messages",
-        "DELETE FROM ai_conversations",
-        "DELETE FROM findings",
-        "DELETE FROM analysis_tasks",
-        "DELETE FROM image_reviews",
-        "DELETE FROM segmentation_tasks",
-        "DELETE FROM organ_models WHERE source = 'segmentation'",
-        "DELETE FROM medical_images",
-        "DELETE FROM record_organs",
-        "DELETE FROM medical_records",
-        "DELETE FROM audit_events",
-        "DELETE FROM profile_files",
-        "DELETE FROM doctor_patient_access",
-    ):
-        db.execute(text(statement))
-    db.execute(text("TRUNCATE TABLE users, doctors, patients RESTART IDENTITY CASCADE"))
-    db.commit()
+    # The application protects signed records and audit rows from ordinary
+    # mutation. This explicit, demo-only reset temporarily disables those two
+    # user triggers inside the transaction, then restores them before commit.
+    db.execute(text("ALTER TABLE medical_records DISABLE TRIGGER trg_medical_records_immutable"))
+    db.execute(text("ALTER TABLE audit_events DISABLE TRIGGER trg_audit_events_immutable"))
+    try:
+        # Delete children first so the default organ catalog can remain available.
+        for statement in (
+            "DELETE FROM ai_messages",
+            "DELETE FROM ai_conversations",
+            "DELETE FROM findings",
+            "DELETE FROM analysis_tasks",
+            "DELETE FROM image_reviews",
+            "DELETE FROM segmentation_tasks",
+            "DELETE FROM record_addenda",
+            "DELETE FROM record_organs",
+            "DELETE FROM organ_models WHERE source = 'segmentation'",
+            "DELETE FROM medical_records",
+            "DELETE FROM medical_images",
+            "DELETE FROM audit_events",
+            "DELETE FROM profile_files",
+            "DELETE FROM doctor_patient_access",
+        ):
+            db.execute(text(statement))
+        db.execute(text("TRUNCATE TABLE users, doctors, patients RESTART IDENTITY CASCADE"))
+        db.execute(text("ALTER TABLE medical_records ENABLE TRIGGER trg_medical_records_immutable"))
+        db.execute(text("ALTER TABLE audit_events ENABLE TRIGGER trg_audit_events_immutable"))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
 
 def clear_image_storage(settings):
@@ -114,8 +124,7 @@ def main():
     clear_image_storage(settings)
     seed(settings)
     prune_orphan_default_assets(settings)
-    scans = ", ".join(DEMO_SCAN_FILENAMES[patient.fixture_id] for patient in DEMO_PATIENTS)
-    print(f"Demo database reset: 3 patients seeded with {scans}.")
+    print(f"Demo database reset: {len(DEMO_PATIENTS)} patients seeded.")
 
 
 if __name__ == "__main__":

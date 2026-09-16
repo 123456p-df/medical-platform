@@ -5,22 +5,19 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy.exc import IntegrityError
 import nibabel as nib
 import numpy as np
 import trimesh
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.adapters.nv_segment_ct import NVSegmentCT
 from app.adapters.synthstrip import SynthStrip
-from app.services.brain_preprocess import preprocess_brain_t1
-from app.services.mri_metadata import resolve_segmentation_mode
 from app.audit import audit
 from app.deps import check_patient_access
 from app.errors import APIError
-from app.models import (
-    MedicalImage, OrganModel, SegmentationBatch, SegmentationTask, User, utcnow
-)
+from app.models import MedicalImage, OrganModel, SegmentationBatch, SegmentationTask, User, utcnow
+from app.services.brain_preprocess import preprocess_brain_t1
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
 from app.services.glb import (
     build_atlas_glb,
@@ -31,6 +28,7 @@ from app.services.glb import (
 )
 from app.services.imaging import mask_to_glb, prepare_label_cache
 from app.services.label_catalog import LabelCatalog
+from app.services.mri_metadata import resolve_segmentation_mode
 from app.services.storage import relative_path, stored_path
 
 logger = logging.getLogger(__name__)
@@ -448,10 +446,13 @@ class SegmentationRunner:
                 except Exception as exc:
                     logger.error("Segmentation batch label %s failed (%s)", spec[0], type(exc).__name__)
             with self.sessions() as db:
-                tasks = list(db.scalars(select(SegmentationTask).where(SegmentationTask.batch_id == batch_id)))
+                tasks = list(
+                    db.scalars(
+                        select(SegmentationTask).where(SegmentationTask.batch_id == batch_id)
+                    )
+                )
                 completed = sum(task.status == "completed" for task in tasks)
                 failed = sum(task.status == "failed" for task in tasks)
-
             if completed:
                 try:
                     prepare_label_cache(native_path, self.settings)
@@ -461,14 +462,17 @@ class SegmentationRunner:
                     self._store_atlas(batch_id, image_id, patient_id)
                 except Exception:
                     logger.error("Atlas GLB for batch %s failed", batch_id)
-
+            # Keep the batch in "running" until all completion artifacts are visible.
+            # Otherwise clients can observe a completed batch before its atlas exists.
             with self.sessions() as db:
                 batch = db.get(SegmentationBatch, batch_id)
                 batch.completed_count = completed
                 batch.failed_count = failed
                 batch.progress = 100
                 batch.status = "completed" if not failed else "partial" if completed else "failed"
-                batch.error_message = None if not failed else "Some recognized labels failed to generate"
+                batch.error_message = (
+                    None if not failed else "Some recognized labels failed to generate"
+                )
                 batch.updated_at = utcnow()
                 db.commit()
         except Exception as exc:

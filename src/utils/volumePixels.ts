@@ -17,22 +17,6 @@ export const WINDOW_PRESETS: Record<string, [number, number]> = {
   bone: [400, 1800],
   brain: [40, 80],
 }
-export const MRI_PERCENTILE_PRESETS: Record<string, [number, number]> = {
-  auto: [0.01, 0.99],
-  'mri-t1': [0.01, 0.99],
-  'mri-t2': [0.01, 0.99],
-  'mri-flair': [0.02, 0.98],
-  'mri-dwi': [0.005, 0.995],
-}
-
-export function defaultPresetFor(type?: string, sequence?: string) {
-  if (type !== 'MRI') return 'lung'
-  if (sequence === 'T1') return 'mri-t1'
-  if (sequence === 'T2') return 'mri-t2'
-  if (sequence === 'FLAIR') return 'mri-flair'
-  if (sequence === 'DWI') return 'mri-dwi'
-  return 'auto'
-}
 
 // Canonical RAS orientation and NPY storage order are independent; support both C and Fortran.
 export function parseVolume(buffer: ArrayBuffer, expectedShape: Shape3D, byteLength = buffer.byteLength): VolumeData {
@@ -168,23 +152,6 @@ export function renderVolumeSlice(
     winWidth = customWindow[1]
     low = center - winWidth / 2
     high = center + winWidth / 2
-  } else if (MRI_PERCENTILE_PRESETS[preset] || preset.startsWith('mri-')) {
-    const [q0, q1] = MRI_PERCENTILE_PRESETS[preset] || MRI_PERCENTILE_PRESETS.auto
-    const sampleSize = Math.min(8192, plane.length)
-    const stride = Math.max(1, Math.floor(plane.length / sampleSize))
-    const sampled: number[] = []
-    for (let i = 0; i < plane.length && sampled.length < sampleSize; i += stride) sampled.push(plane[i])
-    sampled.sort((a, b) => a - b)
-    const percentile = (q: number) => {
-      const position = (sampled.length - 1) * q
-      const lower = Math.floor(position)
-      const fraction = position - lower
-      return sampled[lower] * (1 - fraction) + sampled[Math.min(lower + 1, sampled.length - 1)] * fraction
-    }
-    low = percentile(q0)
-    high = percentile(q1)
-    center = Math.round((low + high) / 2)
-    winWidth = Math.round(high - low)
   } else if (WINDOW_PRESETS[preset]) {
     const w = WINDOW_PRESETS[preset]
     center = w[0]

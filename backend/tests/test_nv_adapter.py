@@ -4,6 +4,23 @@ import numpy as np
 from app.adapters.nv_segment_ct import NVSegmentCT
 
 
+def test_nvidia_wrapper_requires_complete_model_and_runtime(app_env, tmp_path, monkeypatch):
+    _, _, settings, _ = app_env
+    model_root = tmp_path / "NV-Segment-CTMR"
+    (model_root / "vista3d_pretrained_model").mkdir(parents=True)
+    (model_root / "hugging_face_pipeline.py").write_text("", encoding="utf-8")
+    settings.nv_segment_ct_dir = model_root
+    adapter = NVSegmentCT(settings)
+
+    assert not adapter.available()
+    (model_root / "vista3d_pretrained_model" / "model.pt").write_bytes(b"fixture")
+    monkeypatch.setattr("app.adapters.nv_segment_ct.torch", object())
+    monkeypatch.setattr("app.adapters.nv_segment_ct.decollate_batch", object())
+    monkeypatch.setattr("app.adapters.nv_segment_ct.VistaPostTransformd", object())
+
+    assert adapter.available()
+
+
 def test_nvidia_wrapper_uses_organ_labels_and_excludes_unknown_voxels(
     app_env, nifti_file, tmp_path
 ):

@@ -89,7 +89,9 @@ def image_out(image, db=None, segmentation_batch_id=None, atlas_id=None):
     acquisition.setdefault("contrast", image.contrast)
     acquisition.setdefault("segmentation_mode", image.segmentation_mode)
     acquisition.setdefault("source_format", image.source_format)
-    acquisition.setdefault("series_description", (image.acquisition or {}).get("series_description"))
+    acquisition.setdefault(
+        "series_description", (image.acquisition or {}).get("series_description")
+    )
     return {
         "image_id": image.id,
         "patient_id": image.patient_id,
@@ -127,7 +129,9 @@ def upload_image(
     organ_id: str = Form(max_length=64),
     image_type: Literal["CT", "MRI"] = Form(),
     study_date: date | None = Form(None),
-    sequence: Literal["T1", "T2", "FLAIR", "DWI", "other", "unknown"] | None = Form(None),
+    sequence: Literal["T1", "T2", "FLAIR", "DWI", "other", "unknown"] | None = Form(
+        None
+    ),
     contrast: bool | None = Form(None),
     segmentation_mode: Literal["CT_BODY", "MRI_BODY", "MRI_BRAIN"] | None = Form(None),
 ):
@@ -186,7 +190,7 @@ def upload_image(
         acquisition = acquisition_from_volume(volume, data)
         if source_format == "nifti":
             detected = detect_from_nifti(nifti_path, volume, original_name=file.filename)
-        acquisition.update({k: v for k, v in detected.items() if v is not None})
+        acquisition.update({key: value for key, value in detected.items() if value is not None})
         chosen_sequence = sequence or detected.get("sequence") or "unknown"
         if chosen_sequence not in SEQUENCES:
             chosen_sequence = "unknown"

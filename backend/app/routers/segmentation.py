@@ -4,12 +4,12 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.adapters.nv_segment_ct import LABELS_BY_TYPE
 from app.audit import audit
 from app.deps import DB, CurrentUser
 from app.errors import APIError, Envelope, success
 from app.models import OrganModel, SegmentationBatch, SegmentationTask
 from app.organs import require_organ
-from app.adapters.nv_segment_ct import LABELS_BY_TYPE
 from app.routers.images import accessible_image
 from app.schemas import BatchItemOut, SegmentationBatchOut, SegmentationInput, TaskCreated, TaskOut
 from app.services.geometry_engine import overlay_style

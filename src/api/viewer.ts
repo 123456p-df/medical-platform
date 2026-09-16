@@ -50,6 +50,7 @@ export interface ComparisonCandidate {
   reasons: string[]
   warnings: string[]
   device?: string | null
+  world_matrix?: number[][] | null
 }
 
 export const AXIS_FROM_XYZ: Record<'X' | 'Y' | 'Z', SliceAxis> = {
@@ -88,8 +89,11 @@ export const viewerApi = {
     const response = await request('/medical-images/' + imageId + '/label-volume')
     return decodeLabelPayload(await response.arrayBuffer(), shape)
   },
-  async loadGlb(modelId: string) {
-    const response = await request('/organ-models/' + modelId + '/file', { priority: 'low' } as RequestInit)
+  async loadGlb(modelId: string, signal?: AbortSignal) {
+    const response = await request('/organ-models/' + modelId + '/file', {
+      signal,
+      priority: 'low',
+    } as RequestInit)
     return response.arrayBuffer()
   },
 }

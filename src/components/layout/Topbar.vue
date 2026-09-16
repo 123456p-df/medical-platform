@@ -2,33 +2,66 @@
 import { computed, ref, onMounted } from 'vue'
 import { useProfileStore } from '@/stores/profile'
 import { useWorkflowStore } from '@/stores/workflow'
-import { locale, setLocale } from '@/i18n'
+import { locale, setLocale, t } from '@/i18n'
 import { Bell, ChevronRight, Menu } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { usePatientStore } from '@/stores/patients'
 
 const emit = defineEmits<{
   openSidebar: []
 }>()
 
 const auth = useAuthStore()
+const patients = usePatientStore()
 const route = useRoute()
 const profile = useProfileStore(), workflow = useWorkflowStore(), notices = ref(false), profileError = ref('')
 const displayName = computed(() => profile.data?.display_name || auth.session?.name || '')
+const noticeStorageKey = computed(() => `pulmolink-read-notifications:${auth.session?.username || 'anonymous'}`)
+const readNoticeIds = ref<string[]>([])
+const patientNotices = computed(() => patients.reviewedReports
+  .map(report => ({ id: `report:${report.id}`, report }))
+  .sort((a, b) => (b.report.signedAt || b.report.date).localeCompare(a.report.signedAt || a.report.date)))
+const patientUnread = computed(() => patientNotices.value.filter(item => !readNoticeIds.value.includes(item.id)).length)
+const notificationCount = computed(() => auth.portal === 'doctor' ? workflow.pending.length : patientUnread.value)
+
+function loadReadNotices() {
+  try { readNoticeIds.value = JSON.parse(localStorage.getItem(noticeStorageKey.value) || '[]') }
+  catch { readNoticeIds.value = [] }
+}
+
+function markRead(id: string) {
+  if (!readNoticeIds.value.includes(id)) readNoticeIds.value.push(id)
+  localStorage.setItem(noticeStorageKey.value, JSON.stringify(readNoticeIds.value))
+}
+
+function markAllRead() {
+  for (const item of patientNotices.value) markRead(item.id)
+}
+
+async function toggleNotices() {
+  notices.value = !notices.value
+  if (!notices.value) return
+  if (auth.portal === 'doctor') await workflow.load()
+  else if (auth.session?.id) await patients.loadPatientContext(auth.session.id)
+}
 onMounted(async () => {
-  try { await profile.load() } catch (e) { profileError.value = e instanceof Error ? e.message : '资料加载失败' }
+  loadReadNotices()
+  try { await profile.load() } catch (e) { profileError.value = e instanceof Error ? e.message : t('ui.topbar.profileLoadFailed') }
   if (auth.portal === 'doctor') await workflow.load()
 })
 
 const pageTitles: Record<string, string> = {
   'doctor-dashboard': 'Patient Workspace',
+  'doctor-archived': 'ui.archive.title',
   'doctor-patients': 'Patient Workspace',
   'doctor-patient-overview': 'Patient Record',
   'doctor-patient-imaging': 'Medical Imaging',
-  'doctor-patient-ai': 'AI 辅助诊断',
+  'doctor-patient-ai': 'ui.sidebar.aiDiagnosis',
   'doctor-patient-report': 'Doctor Report',
   'doctor-patient-3d': 'Digital Human',
   'patient-dashboard': 'My Health',
+  'patient-onboarding': 'ui.onboarding.title',
   'patient-examinations': 'My Examinations',
   'patient-examination-detail': 'Examination Detail',
   'patient-reports': 'My Reports',
@@ -36,7 +69,7 @@ const pageTitles: Record<string, string> = {
   'patient-ai': 'AI Assistant',
 }
 
-const title = computed(() => route.path.endsWith('/profile') ? '个人资料' : pageTitles[String(route.name)] ?? 'PulmoLink')
+const title = computed(() => route.path.endsWith('/profile') ? 'ui.profile.title' : pageTitles[String(route.name)] ?? 'PulmoLink')
 const greeting = computed(() => {
   if (auth.portal === 'patient') {
     return `Good morning, ${displayName.value || 'Patient'}`
@@ -60,33 +93,37 @@ const initials = computed(() =>
         <Menu :size="20" />
       </button>
       <div class="title-wrap">
-        <span class="eyebrow">{{ auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health' }}</span>
+        <span class="eyebrow">{{ $t(auth.portal === 'doctor' ? 'ui.topbar.workspace.doctor' : 'ui.topbar.workspace.patient') }}</span>
         <strong>{{ $t(title) }}</strong>
       </div>
     </div>
 
     <div class="topbar-actions">
       <div class="greeting">{{ $t(greeting) }}</div>
-      <button class="btn btn-secondary btn-sm" aria-label="切换界面语言" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? '中文 / EN' : 'EN / 中文' }}</button>
+      <button class="btn btn-secondary btn-sm language-toggle" :aria-label="$t(locale === 'zh' ? 'ui.topbar.languageEnglish' : 'ui.topbar.languageChinese')" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? '中 / EN' : 'EN / 中' }}</button>
       <div class="notification-wrap" @keydown.esc="notices = false">
-        <button class="icon-btn notification" type="button" aria-label="通知" :aria-expanded="notices" @click="notices = !notices; notices && auth.portal === 'doctor' && workflow.load()">
-          <Bell :size="18" /><span v-if="auth.portal === 'doctor' && workflow.pending.length" class="notification-dot" />
+        <button class="icon-btn notification" type="button" :aria-label="$t('ui.topbar.notifications')" :aria-expanded="notices" @click="toggleNotices">
+          <Bell :size="18" /><span v-if="notificationCount" class="notification-dot" />
         </button>
         <div v-if="notices" class="notice-panel">
-          <div class="notice-heading"><strong>通知与待办</strong><button class="btn btn-secondary btn-sm" @click="notices = false">关闭</button></div>
+          <div class="notice-heading"><strong>{{ $t('ui.topbar.noticeHeading') }}</strong><button class="btn btn-secondary btn-sm" @click="notices = false">{{ $t('ui.topbar.close') }}</button></div>
           <p v-if="workflow.error" role="alert">{{ workflow.error }}</p>
           <template v-if="auth.portal === 'doctor' && workflow.pending.length">
-            <RouterLink v-for="item in workflow.pending.slice(0, 5)" :key="item.image_id" :to="{path:'/doctor/patients/' + item.patient_id + '/imaging',query:{exam:item.image_id}}" @click="notices = false"><strong>{{ item.patient_name }} · {{ item.image_type }}</strong><small>影像待确认 · {{ item.created_at.slice(0,10) }}</small></RouterLink>
-            <RouterLink to="/doctor/dashboard" @click="notices = false">查看全部 {{ workflow.pending.length }} 项待办</RouterLink>
+            <RouterLink v-for="item in workflow.pending.slice(0, 5)" :key="item.image_id" :to="{path:'/doctor/patients/' + item.patient_id + '/imaging',query:{exam:item.image_id}}" @click="notices = false"><strong>{{ item.patient_name }} · {{ item.image_type }}</strong><small>{{ $t('ui.topbar.pendingImage') }} · {{ item.created_at.slice(0,10) }}</small></RouterLink>
+            <RouterLink to="/doctor/dashboard" @click="notices = false">{{ $t('ui.topbar.viewAllTasks', { count: workflow.pending.length }) }}</RouterLink>
           </template>
-          <p v-else>当前没有待处理通知</p>
+          <template v-else-if="auth.portal === 'patient' && patientNotices.length">
+            <button v-if="patientUnread" class="mark-read" type="button" @click="markAllRead">{{ $t('ui.topbar.markAllRead') }}</button>
+            <RouterLink v-for="item in patientNotices.slice(0, 5)" :key="item.id" :to="{ path: '/patient/reports', hash: '#report-' + item.report.id }" @click="markRead(item.id); notices = false"><strong>{{ $t('ui.topbar.newReport') }} · {{ item.report.diagnosis }}</strong><small>{{ item.report.signedAt?.slice(0, 10) || item.report.date }}</small></RouterLink>
+          </template>
+          <p v-else>{{ $t('ui.topbar.noNotices') }}</p>
         </div>
       </div>
-      <RouterLink class="topbar-profile" :to="'/' + auth.portal + '/profile'" aria-label="打开个人资料">
-        <span class="profile-avatar"><img v-if="profile.data?.avatar_url" :src="profile.data.avatar_url" alt="头像" /><template v-else>{{ initials }}</template></span>
+      <RouterLink class="topbar-profile" :to="'/' + auth.portal + '/profile'" :aria-label="$t('ui.topbar.openProfile')">
+        <span class="profile-avatar"><img v-if="profile.data?.avatar_url" :src="profile.data.avatar_url" :alt="$t('ui.profile.avatarAlt')" /><template v-else>{{ initials }}</template></span>
         <span class="profile-copy">
           <strong>{{ displayName }}</strong>
-          <small>{{ auth.portal === 'doctor' ? 'Doctor' : 'Patient' }} · Profile</small>
+          <small>{{ $t(auth.portal === 'doctor' ? 'Doctor' : 'Patient') }} · {{ $t('ui.topbar.profile') }}</small>
         </span>
         <ChevronRight class="profile-chevron" :size="15" />
       </RouterLink>
@@ -96,7 +133,7 @@ const initials = computed(() =>
 </template>
 
 <style scoped>
-.profile-avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover}.notification-wrap{position:relative}.notice-panel{position:absolute;right:0;top:46px;width:330px;padding:18px;background:white;border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 50px #12332f25}.notice-panel>a{display:grid;gap:6px;padding:12px 0;border-bottom:1px solid var(--border);font-size:12px}.notice-panel small,.notice-panel p{color:var(--text-muted);font-size:11px}.notice-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px;font-size:13px}@media(max-width:600px){.notice-panel{position:fixed;right:16px;top:72px;width:calc(100vw - 32px)}}
+.profile-avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover}.notification-wrap{position:relative}.notice-panel{position:absolute;right:0;top:46px;width:330px;padding:18px;background:white;border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 50px #12332f25}.notice-panel>a{display:grid;gap:6px;padding:12px 0;border-bottom:1px solid var(--border);font-size:12px}.notice-panel small,.notice-panel p{color:var(--text-muted);font-size:11px}.notice-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px;font-size:13px}.mark-read{display:block;margin-left:auto;border:0;background:none;color:var(--accent);font-size:11px}@media(max-width:600px){.notice-panel{position:fixed;right:16px;top:72px;width:calc(100vw - 32px)}}
 
 .topbar {
   position: sticky;
@@ -155,6 +192,11 @@ const initials = computed(() =>
 
 .topbar-actions {
   gap: 12px;
+}
+
+.language-toggle {
+  min-width: 66px;
+  white-space: nowrap;
 }
 
 .greeting {

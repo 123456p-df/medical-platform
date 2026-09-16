@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.audit import audit
 from app.config import Settings
 from app.db import make_engine, make_session_factory
-from app.models import Doctor, DoctorPatientAccess, OrganModel, Patient, User
+from app.models import Doctor, DoctorPatientAccess, OrganModel, Patient, User, utcnow
 from app.organs import ORGANS
 from app.security import encrypt_identity, identity_hash
 from app.services.storage import relative_path, stored_path
@@ -57,6 +57,7 @@ def provision_patient(
     patient.id_number_hash = identity_hash(id_number, settings)
     patient.birth_date, patient.gender = birth_date, gender
     patient.height, patient.weight, patient.blood_type = height, weight, blood_type
+    patient.profile_completed_at = patient.profile_completed_at or utcnow()
     audit(db, None, patient.id, "patient.provision", "patient", patient.id)
     db.commit()
     return patient.id
@@ -66,7 +67,7 @@ def set_access(db, doctor_username, patient_id, status):
     doctor = db.scalar(
         select(Doctor)
         .join(User, User.id == Doctor.user_id)
-        .where(User.username == doctor_username, User.role == "doctor")
+        .where(User.username == doctor_username, User.role.in_(("admin", "doctor")))
     )
     if not doctor or not db.get(Patient, patient_id):
         raise ValueError("Doctor or patient not found")

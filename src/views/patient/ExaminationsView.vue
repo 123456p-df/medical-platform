@@ -7,6 +7,7 @@ import PageHeader from '@/components/layout/PageHeader.vue'
 import ExaminationCard from '@/components/medical/ExaminationCard.vue'
 import StudyComparisonViewer from '@/components/medical/StudyComparisonViewer.vue'
 import MultiStudyUpload from '@/components/medical/MultiStudyUpload.vue'
+import StatePanel from '@/components/ui/StatePanel.vue'
 import type { Examination } from '@/types'
 
 const router = useRouter()
@@ -44,7 +45,7 @@ async function handleUploaded(studies: Examination[]) {
 
 <template>
   <div class="page">
-    <PageHeader title="My Examinations" subtitle="上传并比较多个时期的 CT 检查。" />
+    <PageHeader :title="$t('ui.exams.title')" :subtitle="$t('ui.exams.subtitle')" />
 
     <section class="comparison-layout">
       <StudyComparisonViewer
@@ -65,9 +66,11 @@ async function handleUploaded(studies: Examination[]) {
       />
     </section>
 
-    <div v-if="!store.examinations.length && !store.loading" class="card empty-state">
-      No examinations are available.
-    </div>
+    <StatePanel v-if="store.loading" kind="loading" :message="$t('Loading patient record...')" />
+    <StatePanel v-else-if="store.error" kind="error" :message="store.error">
+      <template #actions><button type="button" class="btn btn-secondary btn-sm" @click="store.loadPatientContext(patientId)">{{ $t('Retry') }}</button></template>
+    </StatePanel>
+    <StatePanel v-else-if="!store.examinations.length" kind="empty" :message="$t('No examinations are available.')" />
   </div>
 </template>
 

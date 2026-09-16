@@ -57,37 +57,27 @@ export function t(value: unknown, ...args: any[]): string {
   const text = String(value)
   const curLocale = (i18n.global.locale as unknown as Ref<string>).value
 
-  if (curLocale === 'en') {
-    if (args.length > 0) {
-      try {
-        // @ts-ignore
-        return i18n.global.t(text, ...args)
-      } catch {
-        return text
-      }
-    }
-    return text
+  const key = text.trim().replace(/\s+/g, ' ')
+  if (curLocale === 'zh') {
+    // Dynamic presentation strings; names and clinical content remain verbatim.
+    const queueGreeting = key.match(/^Good morning, (.*)\. Here is today's clinical queue\.$/)
+    if (queueGreeting) return `您好，${queueGreeting[1]}。这是今天的临床工作列表。`
+    const greeting = key.match(/^Good morning, (.*?)(\. Here is your health overview\.)?$/)
+    if (greeting) return `您好，${greeting[1]}${greeting[2] ? '。这是您的健康概览。' : ''}`
+    if (key.startsWith('Uploaded study: ')) return `上传检查：${key.slice(16)}`
   }
 
-  const key = text.trim().replace(/\s+/g, ' ')
-  // Dynamic greetings in Chinese
-  const queueGreeting = key.match(/^Good morning, (.*)\. Here is today's clinical queue\.$/)
-  if (queueGreeting) return `您好，${queueGreeting[1]}。这是今天的临床工作列表。`
-  const greeting = key.match(/^Good morning, (.*?)(\. Here is your health overview\.)?$/)
-  if (greeting) return `您好，${greeting[1]}${greeting[2] ? '。这是您的健康概览。' : ''}`
-  if (key.startsWith('Uploaded study: ')) return `上传检查：${key.slice(16)}`
-
-  // Direct dictionary lookup for best fidelity
-  if (zhCN[key]) return zhCN[key]
-
-  // vue-i18n lookup
+  // Resolve the active locale first so semantic messages can interpolate values.
   try {
-    // @ts-ignore
+    // @ts-ignore vue-i18n exposes several compatible overloads here.
     const res = i18n.global.t(key, ...args)
     if (res && res !== key) return res
   } catch {
-    // ignore
+    // Fall through to the presentation dictionary or original text.
   }
+
+  // Direct dictionary lookup for best fidelity
+  if (curLocale === 'zh' && zhCN[key]) return zhCN[key]
 
   return text
 }

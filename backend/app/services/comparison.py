@@ -1,6 +1,5 @@
 from app.models import MedicalImage
 
-
 SPACING_TOLERANCE = 0.20
 FOV_TOLERANCE = 0.25
 
@@ -15,7 +14,7 @@ def _relative_diff(left, right):
     if left is None or right is None or len(left) < 3 or len(right) < 3:
         return None
     diffs = []
-    for a, b in zip(left, right):
+    for a, b in zip(left, right, strict=False):
         scale = max(abs(a), abs(b), 1e-6)
         diffs.append(abs(a - b) / scale)
     return diffs
@@ -27,7 +26,10 @@ def acquisition_of(image: MedicalImage) -> dict:
     spacing = stored.get("spacing_mm") or image.spacing
     fov = stored.get("fov_mm")
     if (not fov) and shape and spacing:
-        fov = [float(s) * float(p) for s, p in zip(shape[:3], spacing[:3])]
+        fov = [
+            float(s) * float(p)
+            for s, p in zip(shape[:3], spacing[:3], strict=False)
+        ]
     return {
         "shape": [int(v) for v in shape[:3]] if shape else None,
         "spacing_mm": _vector(spacing),

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ArrowRight, HeartPulse, ShieldCheck, Stethoscope, Activity, UserPlus } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { localPreview } from '@/utils/runtime'
 import type { PortalRole } from '@/types'
+import { ApiError } from '@/api/client'
+import { t } from '@/i18n'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 
 const REMEMBERED_USERNAME_KEY = 'pulmolink-remembered-username'
@@ -18,6 +21,7 @@ const role = ref<PortalRole>('patient')
 const remember = ref(true)
 const busy = ref(false)
 const error = ref('')
+const fieldErrors = reactive({ username: '', password: '', confirmPassword: '' })
 const preview = localPreview || import.meta.env.VITE_PREVIEW === 'true'
 type PreviewAccount = 'admin' | 'doctor' | 'patient'
 
@@ -26,6 +30,7 @@ function switchMode(next: 'login' | 'signup') {
   password.value = ''
   confirmPassword.value = ''
   error.value = ''
+  Object.assign(fieldErrors, { username: '', password: '', confirmPassword: '' })
 }
 
 async function submit(previewAccount?: PreviewAccount) {
@@ -33,25 +38,42 @@ async function submit(previewAccount?: PreviewAccount) {
   if (previewAccount) {
     mode.value = 'login'
     const credentials = {
-      admin: ['admin', 'Admin123!'],
-      doctor: ['demo_doctor', 'DemoDoctor123!'],
-      patient: ['demo_patient', 'DemoPatient123!'],
+      admin: ['admin', '123456'],
+      doctor: ['demo_doctor', '123456'],
+      patient: ['demo_patient', '123456'],
     } as const
     ;[username.value, password.value] = credentials[previewAccount]
   }
   busy.value = true
   error.value = ''
+  Object.assign(fieldErrors, { username: '', password: '', confirmPassword: '' })
   try {
+    if (!/^[\w.-]{3,64}$/.test(username.value.trim())) fieldErrors.username = t('ui.login.error.username')
+    const minimumPasswordLength = mode.value === 'signup' ? 8 : 6
+    if (password.value.length < minimumPasswordLength || password.value.length > 128) fieldErrors.password = t('ui.login.error.password')
     if (mode.value === 'signup' && password.value !== confirmPassword.value) {
-      throw new Error('两次输入的密码不一致。')
+      fieldErrors.confirmPassword = t('ui.login.error.confirm')
     }
+    if (Object.values(fieldErrors).some(Boolean)) return
     const destinationRole = mode.value === 'signup'
       ? await auth.register(username.value, password.value, role.value, remember.value)
       : await auth.login(username.value, password.value, remember.value)
     if (remember.value) localStorage.setItem(REMEMBERED_USERNAME_KEY, username.value.trim())
     else localStorage.removeItem(REMEMBERED_USERNAME_KEY)
-    await router.push(destinationRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard')
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : '登录失败' }
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+    const portalPrefix = destinationRole === 'doctor' ? '/doctor/' : '/patient/'
+    const destination = redirect.startsWith(portalPrefix) && !redirect.startsWith('//')
+      ? redirect
+      : destinationRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard'
+    await router.push(destination)
+  } catch (reason) {
+    if (reason instanceof ApiError && reason.details.fieldErrors) {
+      fieldErrors.username = reason.details.fieldErrors.username || ''
+      fieldErrors.password = reason.details.fieldErrors.password || ''
+      fieldErrors.confirmPassword = reason.details.fieldErrors.confirm_password || ''
+    }
+    error.value = reason instanceof Error ? reason.message : t('ui.login.error.failed')
+  }
   finally { busy.value = false }
 }
 </script>
@@ -63,90 +85,86 @@ async function submit(previewAccount?: PreviewAccount) {
         <span class="brand-symbol"><Activity :size="23" /></span>
         <span>
           <strong>PulmoLink</strong>
-          <small>Medical AI Platform</small>
+          <small>{{ $t('Medical AI Platform') }}</small>
         </span>
       </div>
       <div class="brand-message">
-        <span class="kicker">AI Medical Imaging &amp; Digital Human</span>
-        <h1>Connecting imaging, AI findings, and clinical review.</h1>
+        <span class="kicker">{{ $t('AI Medical Imaging & Digital Human') }}</span>
+        <h1>{{ $t('Connecting imaging, AI findings, and clinical review.') }}</h1>
         <p>
-          A clinical workspace for doctors and a calm digital health portal for patients,
-          starting with the lung workflow.
+          {{ $t('A clinical workspace for doctors and a calm digital health portal for patients, starting with the lung workflow.') }}
         </p>
       </div>
       <div class="brand-notes">
-        <span><HeartPulse :size="17" /> Doctor-reviewed workflow</span>
-        <span><Stethoscope :size="17" /> Lung-first clinical module</span>
+        <span><HeartPulse :size="17" /> {{ $t('Doctor-reviewed workflow') }}</span>
+        <span><Stethoscope :size="17" /> {{ $t('Lung-first clinical module') }}</span>
       </div>
     </section>
 
     <section class="login-panel">
       <div class="login-heading">
-        <span class="kicker">PulmoLink account</span>
-        <h2>{{ mode === 'login' ? 'Sign in to PulmoLink' : 'Create your account' }}</h2>
-        <p>{{ mode === 'login' ? 'Sign in to access your authorized medical records.' : 'Register once, then return with the same account on this device.' }}</p>
+        <span class="kicker">{{ $t('ui.login.account') }}</span>
+        <h2>{{ $t(mode === 'login' ? 'ui.login.title.signin' : 'ui.login.title.signup') }}</h2>
+        <p>{{ $t(mode === 'login' ? 'ui.login.subtitle.signin' : 'ui.login.subtitle.signup') }}</p>
       </div>
 
-      <div class="auth-switch" aria-label="Account action">
-        <button type="button" :class="{ active: mode === 'login' }" @click="switchMode('login')">Sign in</button>
-        <button type="button" :class="{ active: mode === 'signup' }" @click="switchMode('signup')">Sign up</button>
+      <div class="auth-switch" :aria-label="$t('ui.login.action')">
+        <button type="button" :class="{ active: mode === 'login' }" @click="switchMode('login')">{{ $t('ui.login.signin') }}</button>
+        <button type="button" :class="{ active: mode === 'signup' }" @click="switchMode('signup')">{{ $t('ui.login.signup') }}</button>
       </div>
 
       <form class="login-form" @submit.prevent="submit()">
-        <label class="label" for="username">Username</label>
-        <input id="username" v-model="username" class="input" autocomplete="username" required />
+        <label class="label" for="username">{{ $t('ui.login.username') }}</label>
+        <input id="username" v-model="username" class="input" autocomplete="username" :aria-invalid="Boolean(fieldErrors.username)" aria-describedby="username-error" required />
+        <small v-if="fieldErrors.username" id="username-error" class="field-error">{{ fieldErrors.username }}</small>
+        <p v-if="mode === 'signup'" class="signup-role"><strong>{{ $t('ui.login.patientAccount') }}</strong><span>{{ $t('ui.login.doctorProvisioning') }}</span></p>
+        <label class="label" for="password">{{ $t('ui.login.password') }}</label>
+        <input id="password" v-model="password" class="input" type="password" :autocomplete="mode === 'signup' ? 'new-password' : 'current-password'" :aria-invalid="Boolean(fieldErrors.password)" aria-describedby="password-error" :minlength="mode === 'signup' ? 8 : 6" required />
+        <small v-if="fieldErrors.password" id="password-error" class="field-error">{{ fieldErrors.password }}</small>
         <template v-if="mode === 'signup'">
-          <label class="label" for="role">Account type</label>
-          <select id="role" v-model="role" class="select" required>
-            <option value="patient">Patient</option>
-            <option value="doctor">Doctor</option>
-          </select>
-        </template>
-        <label class="label" for="password">Password</label>
-        <input id="password" v-model="password" class="input" type="password" :autocomplete="mode === 'signup' ? 'new-password' : 'current-password'" minlength="8" required />
-        <template v-if="mode === 'signup'">
-          <label class="label" for="confirm-password">Confirm password</label>
-          <input id="confirm-password" v-model="confirmPassword" class="input" type="password" autocomplete="new-password" minlength="8" required />
+          <label class="label" for="confirm-password">{{ $t('ui.login.confirmPassword') }}</label>
+          <input id="confirm-password" v-model="confirmPassword" class="input" type="password" autocomplete="new-password" :aria-invalid="Boolean(fieldErrors.confirmPassword)" aria-describedby="confirm-password-error" minlength="8" required />
+          <small v-if="fieldErrors.confirmPassword" id="confirm-password-error" class="field-error">{{ fieldErrors.confirmPassword }}</small>
         </template>
         <label class="remember-row">
           <input v-model="remember" type="checkbox" />
-          <span>Remember me on this device</span>
+          <span>{{ $t('ui.login.remember') }}</span>
         </label>
         <p v-if="error" role="alert" class="login-error">{{ error }}</p>
         <button type="submit" class="btn btn-primary" :disabled="busy">
           <UserPlus v-if="mode === 'signup'" :size="16" />
-          {{ busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account' }}
+          {{ $t(busy ? 'ui.login.wait' : mode === 'login' ? 'ui.login.signin' : 'ui.login.create') }}
         </button>
       </form>
       <div v-if="preview && mode === 'login'" class="role-options">
         <button class="role-card admin" type="button" @click="submit('admin')">
           <span class="role-icon"><ShieldCheck :size="24" /></span>
           <span class="role-copy">
-            <strong>Administrator</strong>
-            <small>查看和管理全部演示患者 · admin / Admin123!</small>
+            <strong>{{ $t('ui.login.admin') }}</strong>
+            <small>{{ $t('ui.login.previewAdmin') }}</small>
           </span>
           <ArrowRight :size="19" />
         </button>
         <button class="role-card doctor" type="button" @click="submit('doctor')">
           <span class="role-icon"><Stethoscope :size="24" /></span>
           <span class="role-copy">
-            <strong>Doctor Portal</strong>
-            <small>Clinical review, imaging, AI findings, and reporting.</small>
+            <strong>{{ $t('Doctor Portal') }}</strong>
+            <small>{{ $t('Clinical review, imaging, AI findings, and reporting.') }}</small>
           </span>
           <ArrowRight :size="19" />
         </button>
         <button class="role-card patient" type="button" @click="submit('patient')">
           <span class="role-icon"><HeartPulse :size="24" /></span>
           <span class="role-copy">
-            <strong>Patient Portal</strong>
-            <small>Your health, examinations, reports, and body.</small>
+            <strong>{{ $t('Patient Portal') }}</strong>
+            <small>{{ $t('Your health, examinations, reports, and body.') }}</small>
           </span>
           <ArrowRight :size="19" />
         </button>
       </div>
 
       <div class="login-footnote">
-        {{ preview && mode === 'login' ? '本地演示 · 以下快捷入口使用合成患者数据' : '账号会安全保存在服务端；勾选后本设备保持登录' }}
+        {{ $t(preview && mode === 'login' ? 'ui.login.previewFootnote' : 'ui.login.serverFootnote') }}
       </div>
     </section>
   </main>
@@ -155,6 +173,9 @@ async function submit(previewAccount?: PreviewAccount) {
 <style scoped>
 .login-form { display: grid; gap: 10px; margin-bottom: 24px; }
 .login-error { color: #aa4f55; font-size: 13px; }
+.field-error { margin-top: -5px; color: #aa4f55; font-size: 11px; }
+.signup-role { display: grid; gap: 4px; margin: 2px 0; padding: 10px 12px; border-radius: 8px; background: #edf5f3; color: var(--accent-strong); font-size: 12px; }
+.signup-role span { color: var(--text-muted); font-size: 11px; }
 .auth-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;

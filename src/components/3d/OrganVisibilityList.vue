@@ -43,13 +43,13 @@ const filtered = computed(() => {
 <template>
   <section :class="['organ-list', { 'theme-light': theme === 'light' }]">
     <header>
-      <strong>本检查出现的器官与图层</strong>
+      <strong>{{ $t('ui.model.visibleOrgans') }}</strong>
       <span>{{ groups.length + (findingsCount > 0 ? 1 : 0) }}</span>
     </header>
     <div class="list-tools">
-      <input v-model="query" type="search" placeholder="搜索器官" />
-      <button type="button" @click="emit('setAll', true)">全选</button>
-      <button type="button" @click="emit('setAll', false)">全不选</button>
+      <input v-model="query" type="search" :placeholder="$t('ui.model.searchOrgans')" />
+      <button type="button" @click="emit('setAll', true)">{{ $t('ui.model.selectAll') }}</button>
+      <button type="button" @click="emit('setAll', false)">{{ $t('ui.model.selectNone') }}</button>
     </div>
     <ul>
       <!-- AI 检出肿瘤/病灶特殊图层项 -->
@@ -81,7 +81,7 @@ const filtered = computed(() => {
           <span v-if="item.count > 1" class="count">{{ item.count }}</span>
         </label>
       </li>
-      <li v-if="!filtered.length && findingsCount === 0" class="empty">当前检查没有可显示的器官</li>
+      <li v-if="!filtered.length && findingsCount === 0" class="empty">{{ $t('ui.model.noVisibleOrgans') }}</li>
     </ul>
   </section>
 </template>

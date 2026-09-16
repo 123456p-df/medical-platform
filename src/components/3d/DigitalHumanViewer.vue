@@ -5,19 +5,29 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { organNames } from '@/api/mappers'
+import { t } from '@/i18n'
 
 const props = withDefaults(
   defineProps<{
     selectedOrganId?: string | null
     compact?: boolean
+    sliceAxis?: string
+    slicePosition?: number
+    showSlicingPlane?: boolean
+    enableClipping?: boolean
   }>(),
   {
     selectedOrganId: null,
     compact: false,
+    sliceAxis: 'axial',
+    slicePosition: 0.5,
+    showSlicingPlane: false,
+    enableClipping: false,
   }
 )
 const emit = defineEmits<{
   select: [organId: string]
+  'navigate-slice': [pos: number]
 }>()
 
 const host = ref<HTMLDivElement>()
@@ -33,12 +43,12 @@ type CategoryId = 'all' | 'viscera' | 'skeletal' | 'cardiovascular' | 'respirato
 const activeCategory = ref<CategoryId>('all')
 
 const categories: { id: CategoryId; label: string }[] = [
-  { id: 'all', label: '全部 (70项)' },
-  { id: 'viscera', label: '内脏实质' },
-  { id: 'skeletal', label: '骨骼系统' },
-  { id: 'cardiovascular', label: '心血管' },
-  { id: 'respiratory', label: '呼吸系统' },
-  { id: 'muscular', label: '肌群组织' },
+  { id: 'all', label: 'ui.model.category.all' },
+  { id: 'viscera', label: 'ui.model.category.viscera' },
+  { id: 'skeletal', label: 'ui.model.category.skeletal' },
+  { id: 'cardiovascular', label: 'ui.model.category.cardiovascular' },
+  { id: 'respiratory', label: 'ui.model.category.respiratory' },
+  { id: 'muscular', label: 'ui.model.category.muscular' },
 ]
 
 let renderer: THREE.WebGLRenderer | undefined
@@ -55,6 +65,18 @@ let down: { x: number; y: number } | null = null
 
 function renderScene() {
   if (scene && camera && renderer) renderer.render(scene, camera)
+}
+
+function onContextLost(event: Event) {
+  event.preventDefault()
+  stopRotation()
+  error.value = t('ui.model.contextLost')
+}
+
+function onContextRestored() {
+  error.value = ''
+  renderScene()
+  if (rotating.value) animateRotation()
 }
 
 // Anatomical Chinese mapping dictionary
@@ -114,7 +136,12 @@ function disposeObject(object: THREE.Object3D) {
     if (child instanceof THREE.Mesh) {
       child.geometry.dispose()
       const materials = Array.isArray(child.material) ? child.material : [child.material]
-      materials.forEach(m => m.dispose())
+      materials.forEach(m => {
+        for (const value of Object.values(m)) {
+          if (value instanceof THREE.Texture) value.dispose()
+        }
+        m.dispose()
+      })
     }
   })
 }
@@ -289,8 +316,10 @@ onMounted(async () => {
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
-    renderer.domElement.setAttribute('aria-label', '可旋转的三维人体器官导航')
+    renderer.domElement.setAttribute('aria-label', t('ui.model.rotatableNavigation'))
     host.value.appendChild(renderer.domElement)
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost)
+    renderer.domElement.addEventListener('webglcontextrestored', onContextRestored)
 
     scene = new THREE.Scene()
     camera = new THREE.PerspectiveCamera(39, 1, 0.05, 30)
@@ -377,7 +406,7 @@ onMounted(async () => {
         child.userData.category = category
         child.userData.rawName = name
         child.userData.displayName = zhName
-        child.userData.categoryLabel = categories.find(c => c.id === category)?.label || ''
+        child.userData.categoryLabel = t(categories.find(c => c.id === category)?.label || '')
         child.userData.organId = mainOrganId
 
         const m = child.material as THREE.MeshStandardMaterial
@@ -395,7 +424,7 @@ onMounted(async () => {
   } catch (e) {
     if (!disposed) {
       loading.value = false
-      error.value = e instanceof Error ? e.message : '三维视图加载失败'
+      error.value = e instanceof Error ? e.message : t('ui.model.loadFailed')
     }
   }
 })
@@ -409,8 +438,12 @@ onBeforeUnmount(() => {
   renderer?.domElement.removeEventListener('pointerdown', pointerDown)
   renderer?.domElement.removeEventListener('pointermove', pointerMove)
   renderer?.domElement.removeEventListener('pointerup', pointerUp)
+  renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
+  renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
   if (scene) disposeObject(scene)
+  scene?.clear()
   renderer?.dispose()
+  renderer?.forceContextLoss()
   renderer?.domElement.remove()
 })
 </script>
@@ -426,7 +459,7 @@ onBeforeUnmount(() => {
         :class="{ active: activeCategory === cat.id }"
         @click="setCategory(cat.id)"
       >
-        {{ cat.label }}
+        {{ $t(cat.label) }}
       </button>
     </div>
 
@@ -439,19 +472,19 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="anatomy-caption">
-      <span>70+ ANATOMY ATLAS</span>
-      <strong>{{ selectedOrganId && selectedOrganId !== 'other' ? $t(organNames[selectedOrganId]) : '临床 0.75mm 全实心解剖图谱' }}</strong>
-      <small>100% 封闭实心 (Watertight) · 0.75mm 亚体素平滑</small>
+      <span>ANATOMY NAVIGATION</span>
+      <strong>{{ selectedOrganId && selectedOrganId !== 'other' ? $t(organNames[selectedOrganId]) : $t('ui.model.teachingAtlas') }}</strong>
+      <small>{{ $t('ui.model.noModelMetadata') }}</small>
     </div>
 
     <div class="anatomy-tools">
-      <button :class="{ active: shell }" aria-label="显示或隐藏人体外壳" :aria-pressed="shell" @click="shell = !shell">
+      <button :class="{ active: shell }" :aria-label="$t('ui.model.toggleShell')" :aria-pressed="shell" @click="shell = !shell">
         <Layers :size="16" />
       </button>
-      <button :class="{ active: rotating }" aria-label="自动旋转人体" :aria-pressed="rotating" @click="rotating = !rotating">
+      <button :class="{ active: rotating }" :aria-label="$t('ui.model.autoRotate')" :aria-pressed="rotating" @click="rotating = !rotating">
         <Rotate3D :size="16" />
       </button>
-      <button aria-label="恢复人体正面视角" @click="reset">
+      <button :aria-label="$t('ui.model.resetFront')" @click="reset">
         <RotateCcw :size="16" />
       </button>
     </div>
@@ -460,9 +493,9 @@ onBeforeUnmount(() => {
     <span class="side-label patient-left">L</span>
 
     <p v-if="loading || error" :role="error ? 'alert' : 'status'" class="anatomy-state">
-      {{ error || '正在载入 70 项 0.75mm 实心解剖大图谱…' }}
+      {{ error || $t('ui.model.loadingNavigation') }}
     </p>
-    <div class="anatomy-hint">悬停探查解剖部位 · 拖动旋转 · 滚轮缩放</div>
+    <div class="anatomy-hint">{{ $t('ui.model.anatomyHint') }}</div>
   </div>
 </template>
 

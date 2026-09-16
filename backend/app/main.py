@@ -1,5 +1,4 @@
 import logging
-from app.audit import reset_request_context, set_request_context
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -11,6 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from starlette.exceptions import HTTPException
 
+from app.audit import reset_request_context, set_request_context
 from app.config import Settings
 from app.db import make_engine, make_session_factory
 from app.errors import APIError, success
@@ -168,6 +168,7 @@ def create_app(
     @app.middleware("http")
     async def private_responses(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or uuid4().hex
+        request.state.request_id = request_id
         token = set_request_context(
             request_id,
             request.client.host if request.client else None,
@@ -187,7 +188,15 @@ def create_app(
     async def api_error(request: Request, exc: APIError):
         headers = {"WWW-Authenticate": "Bearer"} if exc.status == 401 else {}
         return JSONResponse(
-            {"code": exc.code, "message": exc.message, "data": None},
+            {
+                "code": exc.code,
+                "message": exc.message,
+                "data": None,
+                "field_errors": exc.field_errors,
+                "retryable": exc.retryable,
+                "phase": exc.phase,
+                "request_id": getattr(request.state, "request_id", None),
+            },
             status_code=exc.status,
             headers=headers,
         )
@@ -195,8 +204,20 @@ def create_app(
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
         # Pydantic errors normally echo input (including passwords and identity numbers).
+        field_errors = {
+            ".".join(str(part) for part in item["loc"] if part not in {"body", "query", "path"}): item["msg"]
+            for item in exc.errors()
+        }
         return JSONResponse(
-            {"code": 42201, "message": "Invalid request format", "data": None}, status_code=422
+            {
+                "code": 42201,
+                "message": "Invalid request format",
+                "data": None,
+                "field_errors": field_errors,
+                "retryable": False,
+                "request_id": getattr(request.state, "request_id", None),
+            },
+            status_code=422,
         )
 
     @app.exception_handler(HTTPException)
