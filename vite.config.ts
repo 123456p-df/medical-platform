@@ -1,9 +1,15 @@
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+const authBootId = randomUUID()
+
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    __VMRB_AUTH_BOOT_ID__: JSON.stringify(authBootId),
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

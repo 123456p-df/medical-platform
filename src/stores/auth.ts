@@ -48,13 +48,32 @@ function clearStoredSession() {
   writeSession(null)
 }
 
+function tokenIsExpired(accessToken: string): boolean {
+  if (accessToken === 'local-preview') return false
+  try {
+    const payload = accessToken.split('.')[1]
+    if (!payload) return true
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const decoded = JSON.parse(atob(padded)) as { exp?: number }
+    return typeof decoded.exp !== 'number' || decoded.exp * 1000 <= Date.now()
+  } catch {
+    return true
+  }
+}
+
 function stored(): UserSession | null {
   try {
     const raw = readSession()
     if (!raw) return null
     const value = JSON.parse(raw) as Partial<UserSession> & { role?: AccountRole }
     const role = toPortalRole(value?.role)
-    if (!role || typeof value.accessToken !== 'string' || !value.accessToken) {
+    if (
+      !role
+      || typeof value.accessToken !== 'string'
+      || !value.accessToken
+      || tokenIsExpired(value.accessToken)
+    ) {
       clearStoredSession()
       return null
     }
@@ -103,6 +122,7 @@ export const useAuthStore = defineStore('auth', () => {
     writeSession(JSON.stringify(session.value), remember)
   }
   async function login(username: string, password: string, remember = true) {
+    clearSessionState()
     if (localPreview) {
       const account = {
         ...previewAccounts,
@@ -112,7 +132,6 @@ export const useAuthStore = defineStore('auth', () => {
       rememberSession(account.session, remember)
       return account.session.role
     }
-    clearSessionState()
     const result = await api<{ access_token: string; role: AccountRole; user_id: number }>('/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }),
     })

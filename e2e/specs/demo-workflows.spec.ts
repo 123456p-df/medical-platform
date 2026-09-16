@@ -7,6 +7,52 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
+test('a new app launch rejects a session from an earlier frontend process', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('vmrb-session-v2', JSON.stringify({
+      id: 'demo_doctor',
+      username: 'demo_doctor',
+      name: 'demo_doctor',
+      role: 'doctor',
+      accountRole: 'doctor',
+      profileCompleted: true,
+      accessToken: 'local-preview',
+    }))
+    localStorage.setItem('vmrb-session-boot-v1', 'previous-frontend-process')
+  })
+
+  await page.goto('/doctor/dashboard')
+
+  await expect(page).toHaveURL(/\/login/)
+  await expect(page.getByRole('heading', { name: 'Sign in to PulmoLink' })).toBeVisible()
+  const storedSession = await page.evaluate(() => localStorage.getItem('vmrb-session-v2'))
+  expect(storedSession).toBeNull()
+})
+
+test('the current app process survives reload but rejects an expired token', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /Doctor Portal/ }).click()
+  await expect(page).toHaveURL(/\/doctor\/dashboard/)
+
+  await page.reload()
+  await expect(page).toHaveURL(/\/doctor\/dashboard/)
+
+  await page.evaluate(() => {
+    const raw = localStorage.getItem('vmrb-session-v2')
+    if (!raw) throw new Error('Expected a remembered login session')
+    const session = JSON.parse(raw)
+    const expiredPayload = btoa(JSON.stringify({ exp: 1 }))
+      .replace(/=/g, '')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+    session.accessToken = `header.${expiredPayload}.signature`
+    localStorage.setItem('vmrb-session-v2', JSON.stringify(session))
+  })
+
+  await page.reload()
+  await expect(page).toHaveURL(/\/login/)
+})
+
 test('doctor opens a patient, preserves a report draft, signs it, and the patient sees it', async ({ page }) => {
   await page.goto('/login')
   await page.getByRole('button', { name: /Doctor Portal/ }).click()
