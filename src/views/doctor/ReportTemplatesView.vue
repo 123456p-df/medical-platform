@@ -20,6 +20,13 @@ const fields = ref<ReportTemplateField[]>([])
 
 const selected = computed(() => templates.value.find(item => item.id === selectedId.value) || null)
 const fieldTypes: ReportTemplateFieldType[] = ['text', 'textarea', 'number', 'date', 'select', 'boolean']
+const reportItemCatalog = Array.from(
+  new Map(
+    DEFAULT_REPORT_TEMPLATES
+      .flatMap(template => template.fields)
+      .map(field => [field.key, field]),
+  ).values(),
+)
 
 function readLocalTemplates() {
   try {
@@ -79,14 +86,9 @@ function createNewTemplate() {
 }
 
 function addField() {
-  fields.value.push({
-    key: `field_${fields.value.length + 1}`,
-    label: '',
-    section: 'ui.reportTemplate.section.findings',
-    type: 'text',
-    required: false,
-    options: [],
-  })
+  const next = reportItemCatalog.find(item => !fields.value.some(field => field.key === item.key))
+    || reportItemCatalog[0]
+  fields.value.push(cloneFields([next])[0])
 }
 
 function removeField(index: number) {
@@ -100,12 +102,31 @@ function moveField(index: number, direction: -1 | 1) {
   fields.value.splice(target, 0, item)
 }
 
+function applyReportItem(index: number, event: Event) {
+  const key = (event.target as HTMLSelectElement).value
+  const item = reportItemCatalog.find(candidate => candidate.key === key)
+  if (item) fields.value[index] = cloneFields([item])[0]
+}
+
+function optionsText(field: ReportTemplateField) {
+  return (field.options || [])
+    .map(option => option.startsWith('ui.') ? t(option) : option)
+    .join('\n')
+}
+
 function setOptions(index: number, event: Event) {
   const value = (event.target as HTMLTextAreaElement).value
+  const currentOptions = fields.value[index].options || []
+  const currentLabels = new Map(
+    currentOptions
+      .filter(option => option.startsWith('ui.'))
+      .map(option => [t(option), option]),
+  )
   fields.value[index].options = value
     .split('\n')
     .map(item => item.trim())
     .filter(Boolean)
+    .map(item => currentLabels.get(item) || item)
 }
 
 function validateFields() {
@@ -259,22 +280,14 @@ onMounted(loadTemplates)
             </header>
 
             <div class="field-grid">
-              <label class="label">{{ $t('ui.reportTemplates.fieldLabel') }}<input v-model="field.label" class="input" maxlength="160" :disabled="busy" :placeholder="$t('ui.reportTemplates.fieldLabelPlaceholder')" /></label>
-              <label class="label">{{ $t('ui.reportTemplates.fieldSection') }}<input v-model="field.section" class="input" maxlength="160" :disabled="busy" :placeholder="$t('ui.reportTemplates.fieldSectionPlaceholder')" /></label>
+              <label class="label">{{ $t('ui.reportTemplates.reportItem') }}<select class="select" :value="field.key" :disabled="busy" @change="applyReportItem(index, $event)"><option v-for="item in reportItemCatalog" :key="item.key" :value="item.key">{{ $t(item.label) }}</option></select></label>
               <label class="label">{{ $t('ui.reportTemplates.fieldType') }}<select v-model="field.type" class="select" :disabled="busy"><option v-for="type in fieldTypes" :key="type" :value="type">{{ $t(`ui.reportTemplates.type.${type}`) }}</option></select></label>
-              <label class="label">{{ $t('ui.reportTemplates.unit') }}<input v-model="field.unit" class="input" maxlength="40" :disabled="busy || field.type !== 'number'" /></label>
               <label class="required-toggle"><input v-model="field.required" type="checkbox" :disabled="busy" /><span>{{ $t('ui.reportTemplates.requiredField') }}</span></label>
             </div>
 
-            <details class="advanced-field">
-              <summary>{{ $t('ui.reportTemplates.advanced') }}</summary>
-              <label class="label">{{ $t('ui.reportTemplates.fieldKey') }}<input v-model="field.key" class="input mono" maxlength="80" :disabled="busy" /></label>
-              <small>{{ $t('ui.reportTemplates.fieldKeyHelp') }}</small>
-            </details>
-
             <label v-if="field.type === 'select'" class="label">
               {{ $t('ui.reportTemplates.options') }}
-              <textarea class="textarea options-input" rows="4" :disabled="busy" :value="(field.options || []).join('\n')" @input="setOptions(index, $event)" />
+              <textarea class="textarea options-input" rows="4" :disabled="busy" :value="optionsText(field)" @input="setOptions(index, $event)" />
               <small>{{ $t('ui.reportTemplates.optionsHelp') }}</small>
             </label>
           </article>
@@ -293,5 +306,5 @@ onMounted(loadTemplates)
 </template>
 
 <style scoped>
-.template-page{display:grid;gap:18px}.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.page-header h2{display:flex;align-items:center;gap:9px;margin:7px 0 4px}.page-header p{margin:0;color:var(--text-muted);font-size:12px}.eyebrow{color:var(--accent-strong);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.template-layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:18px;align-items:start}.template-list{display:grid;gap:6px;padding:10px}.template-list-item{display:grid;gap:5px;padding:12px;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left}.template-list-item.active{background:var(--accent-soft);border-color:#cfe4e0}.template-list-item strong{font-size:13px}.template-list-item small{color:var(--text-muted);font-size:10px}.template-editor{display:grid;gap:18px;padding:22px}.editor-grid{display:grid;grid-template-columns:1fr 150px 180px;gap:14px}.label{display:grid;gap:7px;color:var(--text-soft);font-size:12px}.builder-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding-top:4px;border-top:1px solid var(--border)}.builder-heading h3{margin:16px 0 4px;font-size:15px}.builder-heading p{margin:0;color:var(--text-muted);font-size:11px}.field-list{display:grid;gap:12px}.field-card{display:grid;gap:14px;padding:15px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}.field-card header{display:flex;align-items:center;justify-content:space-between;gap:12px}.field-card header strong{font-size:12px}.field-actions{display:flex;gap:4px}.field-actions button{display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:6px;background:var(--surface);color:var(--text-muted)}.field-actions button:hover:not(:disabled){color:var(--accent-strong);background:var(--accent-soft)}.field-grid{display:grid;grid-template-columns:1.2fr 1fr 150px 100px auto;gap:12px;align-items:end}.required-toggle{display:flex;align-items:center;gap:7px;min-height:34px;color:var(--text-soft);font-size:12px}.advanced-field{display:grid;gap:8px;padding-top:10px;border-top:1px dashed var(--border)}.advanced-field summary{cursor:pointer;color:var(--text-muted);font-size:11px}.advanced-field small{color:var(--text-muted);font-size:10px}.options-input{min-height:86px}.options-input+small{color:var(--text-muted);font-size:10px}.empty-fields{margin:0;padding:22px;border:1px dashed var(--border-strong);border-radius:8px;color:var(--text-muted);font-size:12px;text-align:center}.actions{display:flex;gap:10px}.success{color:var(--green);font-size:12px}.error{color:var(--red);font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px}@media(max-width:1100px){.field-grid{grid-template-columns:1fr 1fr 1fr}.required-toggle{grid-column:span 3}}@media(max-width:900px){.template-layout,.editor-grid{grid-template-columns:1fr}.page-header{align-items:stretch;flex-direction:column}.page-header .btn{width:100%}}@media(max-width:650px){.field-grid{grid-template-columns:1fr}.required-toggle{grid-column:auto}.builder-heading{align-items:stretch;flex-direction:column}.builder-heading .btn{width:100%}}
+.template-page{display:grid;gap:18px}.page-header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.page-header h2{display:flex;align-items:center;gap:9px;margin:7px 0 4px}.page-header p{margin:0;color:var(--text-muted);font-size:12px}.eyebrow{color:var(--accent-strong);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.template-layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:18px;align-items:start}.template-list{display:grid;gap:6px;padding:10px}.template-list-item{display:grid;gap:5px;padding:12px;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left}.template-list-item.active{background:var(--accent-soft);border-color:#cfe4e0}.template-list-item strong{font-size:13px}.template-list-item small{color:var(--text-muted);font-size:10px}.template-editor{display:grid;gap:18px;padding:22px}.editor-grid{display:grid;grid-template-columns:1fr 150px 180px;gap:14px}.label{display:grid;gap:7px;color:var(--text-soft);font-size:12px}.builder-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding-top:4px;border-top:1px solid var(--border)}.builder-heading h3{margin:16px 0 4px;font-size:15px}.builder-heading p{margin:0;color:var(--text-muted);font-size:11px}.field-list{display:grid;gap:12px}.field-card{display:grid;gap:14px;padding:15px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)}.field-card header{display:flex;align-items:center;justify-content:space-between;gap:12px}.field-card header strong{font-size:12px}.field-actions{display:flex;gap:4px}.field-actions button{display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:6px;background:var(--surface);color:var(--text-muted)}.field-actions button:hover:not(:disabled){color:var(--accent-strong);background:var(--accent-soft)}.field-grid{display:grid;grid-template-columns:1fr 170px auto;gap:12px;align-items:end}.required-toggle{display:flex;align-items:center;gap:7px;min-height:34px;color:var(--text-soft);font-size:12px}.options-input{min-height:86px}.options-input+small{color:var(--text-muted);font-size:10px}.empty-fields{margin:0;padding:22px;border:1px dashed var(--border-strong);border-radius:8px;color:var(--text-muted);font-size:12px;text-align:center}.actions{display:flex;gap:10px}.success{color:var(--green);font-size:12px}.error{color:var(--red);font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px}@media(max-width:900px){.template-layout,.editor-grid{grid-template-columns:1fr}.page-header{align-items:stretch;flex-direction:column}.page-header .btn{width:100%}}@media(max-width:650px){.field-grid{grid-template-columns:1fr}.required-toggle{grid-column:auto}.builder-heading{align-items:stretch;flex-direction:column}.builder-heading .btn{width:100%}}
 </style>

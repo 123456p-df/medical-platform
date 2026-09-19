@@ -745,6 +745,7 @@ export const enUS: Record<string, string> = {
   'ui.reportTemplates.fieldSection': 'Show in report section',
   'ui.reportTemplates.fieldSectionPlaceholder': 'e.g. Findings',
   'ui.reportTemplates.fieldType': 'How doctors fill it',
+  'ui.reportTemplates.reportItem': 'Report item',
   'ui.reportTemplates.unit': 'Unit',
   'ui.reportTemplates.requiredField': 'Must fill',
   'ui.reportTemplates.options': 'Answer choices',

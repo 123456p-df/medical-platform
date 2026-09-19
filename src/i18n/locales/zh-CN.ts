@@ -863,6 +863,7 @@ export const zhCN: Record<string, string> = {
   'ui.reportTemplates.fieldSection': '显示在报告哪个部分',
   'ui.reportTemplates.fieldSectionPlaceholder': '例如：影像所见',
   'ui.reportTemplates.fieldType': '填写方式',
+  'ui.reportTemplates.reportItem': '报告项目',
   'ui.reportTemplates.unit': '单位',
   'ui.reportTemplates.requiredField': '必须填写',
   'ui.reportTemplates.options': '可选答案',
