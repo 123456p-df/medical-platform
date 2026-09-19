@@ -185,7 +185,7 @@ def test_mpr_axes_window_and_bounds(app_env, people, nifti_file):
             response = client.get(url, headers=people["doctor_a"])
             assert response.status_code == 200
             assert response.headers["x-slice-axis"] == axis
-            actual = np.asarray(Image.open(io.BytesIO(response.content)))
+            actual = np.asarray(Image.open(io.BytesIO(response.content)).convert("L"))
             plane = np.take(source, index, axis=dimension)
             expected = np.flip((np.clip(plane / 2800, 0, 1) * 255).astype(np.uint8).T, axis=(0, 1))
             np.testing.assert_array_equal(actual, expected)

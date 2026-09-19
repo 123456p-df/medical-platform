@@ -10,14 +10,25 @@ export type OrganGroup = {
   count: number
 }
 
-const props = defineProps<{
-  groups: OrganGroup[]
-  selected: string[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    groups: OrganGroup[]
+    selected: string[]
+    theme?: 'light' | 'dark'
+    findingsCount?: number
+    findingsVisible?: boolean
+  }>(),
+  {
+    theme: 'dark',
+    findingsCount: 0,
+    findingsVisible: true,
+  },
+)
 
 const emit = defineEmits<{
   toggle: [groupId: string, visible: boolean]
   setAll: [visible: boolean]
+  toggleFindings: [visible: boolean]
 }>()
 
 const query = ref('')
@@ -30,10 +41,10 @@ const filtered = computed(() => {
 </script>
 
 <template>
-  <section class="organ-list">
+  <section :class="['organ-list', { 'theme-light': theme === 'light' }]">
     <header>
       <strong>{{ $t('ui.model.visibleOrgans') }}</strong>
-      <span>{{ groups.length }}</span>
+      <span>{{ groups.length + (findingsCount > 0 ? 1 : 0) }}</span>
     </header>
     <div class="list-tools">
       <input v-model="query" type="search" :placeholder="$t('ui.model.searchOrgans')" />
@@ -41,6 +52,23 @@ const filtered = computed(() => {
       <button type="button" @click="emit('setAll', false)">{{ $t('ui.model.selectNone') }}</button>
     </div>
     <ul>
+      <!-- AI 检出肿瘤/病灶特殊图层项 -->
+      <li v-if="findingsCount > 0" class="finding-layer-item">
+        <label>
+          <input
+            type="checkbox"
+            :checked="findingsVisible"
+            @change="emit('toggleFindings', ($event.target as HTMLInputElement).checked)"
+          />
+          <span class="finding-swatch" />
+          <span class="name finding-label">
+            <span class="ai-badge">AI</span>
+            肿瘤 / 结节病灶
+          </span>
+          <span class="count finding-count-badge">{{ findingsCount }} 个</span>
+        </label>
+      </li>
+
       <li v-for="item in filtered" :key="item.id">
         <label>
           <input
@@ -53,7 +81,7 @@ const filtered = computed(() => {
           <span v-if="item.count > 1" class="count">{{ item.count }}</span>
         </label>
       </li>
-      <li v-if="!filtered.length" class="empty">{{ $t('ui.model.noVisibleOrgans') }}</li>
+      <li v-if="!filtered.length && findingsCount === 0" class="empty">{{ $t('ui.model.noVisibleOrgans') }}</li>
     </ul>
   </section>
 </template>
@@ -119,5 +147,86 @@ li label {
   padding: 16px;
   color: #7f9aa3;
   font-size: 12px;
+}
+
+/* AI 肿瘤特殊图层项样式 */
+.finding-layer-item {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.08);
+  border-radius: 6px;
+}
+.finding-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 99px;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+.finding-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #fca5a5;
+}
+.ai-badge {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.finding-count-badge {
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Light Theme */
+.organ-list.theme-light {
+  border-top: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #1e293b;
+}
+.organ-list.theme-light header {
+  color: #0f172a;
+}
+.organ-list.theme-light .list-tools input,
+.organ-list.theme-light .list-tools button {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+}
+.organ-list.theme-light .list-tools button:hover {
+  background: #f1f5f9;
+}
+.organ-list.theme-light li label:hover {
+  background: #f8fafc;
+  border-radius: 4px;
+}
+.organ-list.theme-light .count {
+  color: #64748b;
+}
+.organ-list.theme-light .empty {
+  color: #94a3b8;
+}
+.organ-list.theme-light .finding-layer-item {
+  background: rgba(239, 68, 68, 0.05);
+  border-bottom: 1px dashed rgba(239, 68, 68, 0.2);
+}
+.organ-list.theme-light .finding-label {
+  color: #dc2626;
+}
+.organ-list.theme-light .finding-count-badge {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
 }
 </style>

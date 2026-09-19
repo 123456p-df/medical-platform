@@ -2,6 +2,70 @@ import { request } from '@/api/client'
 import { MAX_BROWSER_VOLUME_BYTES } from './volumePixels'
 import type { Shape3D, SliceAxis, SlicePixels } from './volumePixels'
 
+async function readVolumeBody(
+  response: Response,
+  signal: AbortSignal,
+  progress: (value: number) => void,
+): Promise<Uint8Array> {
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('浏览器无法读取影像数据流')
+  const declared = Number(response.headers.get('content-length'))
+  const first = await reader.read()
+  if (first.done || !first.value) throw new Error('影像传输不完整，请重试')
+  const gzip = first.value.length >= 2 && first.value[0] === 0x1f && first.value[1] === 0x8b
+  const mark = (offset: number) => {
+    progress(Math.min(99, Math.floor(offset / Math.max(declared || offset, 1) * 100)))
+  }
+  if (gzip && typeof DecompressionStream !== 'undefined') {
+    const stream = new DecompressionStream('gzip')
+    const writer = stream.writable.getWriter()
+    const decoded = new Response(stream.readable).arrayBuffer()
+    let offset = 0
+    try {
+      offset += first.value.length
+      mark(offset)
+      await writer.write(first.value)
+      while (true) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+        const { value, done } = await reader.read()
+        if (done) break
+        offset += value.length
+        mark(offset)
+        await writer.write(value)
+      }
+      await writer.close()
+    } catch (reason) {
+      await writer.abort(reason).catch(() => {})
+      throw reason
+    } finally {
+      await reader.cancel().catch(() => {})
+    }
+    return new Uint8Array(await decoded)
+  }
+  const chunks: Uint8Array[] = [first.value]
+  let totalLength = first.value.length
+  mark(totalLength)
+  try {
+    while (true) {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+      const { value, done } = await reader.read()
+      if (done) break
+      chunks.push(value)
+      totalLength += value.length
+      mark(totalLength)
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+  const bytes = new Uint8Array(totalLength)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  return bytes
+}
+
 type Job = {
   id: number
   axis: SliceAxis
@@ -40,29 +104,28 @@ export class VolumeRenderer {
   }
 
   async load(imageId: string, shape: Shape3D, progress: (value: number) => void) {
-    const size = shape.reduce((a, b) => a * b, 1) * 4
-    if (!Number.isSafeInteger(size) || size > MAX_BROWSER_VOLUME_BYTES) throw new Error('此影像超出本地连续浏览的 256 MiB 上限，可使用逐张预览。')
+    const count = shape.reduce((a, b) => a * b, 1)
+    if (!Number.isSafeInteger(count) || count * 2 > MAX_BROWSER_VOLUME_BYTES) {
+      throw new Error('此影像超出本地连续浏览的 256 MiB 上限，可使用逐张预览。')
+    }
     const ready = new Promise<void>((resolve, reject) => { this.loaded = resolve; this.failed = reject })
-    // Consume a potential worker error while fetch is still pending.
     void ready.catch(() => {})
-    const response = await request('/medical-images/' + imageId + '/volume', { signal: this.controller.signal })
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('浏览器无法读取影像数据流')
-    // Preallocate once; avoid keeping chunks plus a second full-volume concatenation.
-    const bytes = new Uint8Array(size + 65548)
-    let offset = 0
-    try {
-      while (true) {
-        const { value, done } = await reader.read()
-        if (done) break
-        if (offset + value.length > bytes.length) throw new Error('影像数据超过预期大小')
-        bytes.set(value, offset); offset += value.length
-        progress(Math.min(99, Math.floor(offset / (size + 128) * 100)))
-      }
-    } finally { await reader.cancel().catch(() => {}) }
-    if (offset < size + 10) throw new Error('影像传输不完整，请重试')
+    const response = await request('/medical-images/' + imageId + '/volume', {
+      signal: this.controller.signal,
+      priority: 'high',
+    } as RequestInit)
+    const dtype = response.headers.get('X-Voxel-Dtype')
+    const shuffle = Number(response.headers.get('X-Byte-Shuffle') || '0')
+    const payload = await readVolumeBody(response, this.controller.signal, progress)
+    if (payload.byteLength < 16) throw new Error('影像传输不完整，请重试')
     if (this.disposed) throw new DOMException('Aborted', 'AbortError')
-    this.worker.postMessage({ type: 'load', shape: [...shape], buffer: bytes.buffer, byteLength: offset }, [bytes.buffer])
+    const bytes = payload.byteOffset === 0 && payload.byteLength === payload.buffer.byteLength
+      ? payload
+      : payload.slice()
+    this.worker.postMessage(
+      { type: 'load', shape: [...shape], buffer: bytes.buffer, byteLength: bytes.byteLength, dtype, shuffle },
+      [bytes.buffer],
+    )
     await ready
     progress(100)
   }

@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+
+const authBootId = randomUUID()
 
 export default defineConfig(({ mode }) => ({
   plugins: [vue()],
@@ -8,6 +11,7 @@ export default defineConfig(({ mode }) => ({
     __PULMOLINK_BUILD_ID__: JSON.stringify(
       process.env.VMRB_BUILD_ID || `${mode}-${new Date().toISOString().slice(0, 10)}`,
     ),
+    __VMRB_AUTH_BOOT_ID__: JSON.stringify(authBootId),
   },
   resolve: {
     alias: {

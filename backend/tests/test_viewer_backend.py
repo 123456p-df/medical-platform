@@ -11,6 +11,14 @@ from app.services.geometry_engine import overlay_style
 from tests.conftest import SyntheticBatchAdapter, upload
 
 
+def _glb_bytes(response):
+    data = response.content
+    if data.startswith(b"\x1f\x8b"):
+        data = __import__("gzip").decompress(data)
+    assert data.startswith(b"glTF")
+    return data
+
+
 def wait_batch(client, headers, image_id, timeout=30):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -58,18 +66,19 @@ def test_upload_batch_stores_glb_blobs_and_label_volume(app_env, people, nifti_f
         f"/api/v1/organ-models/{batch['atlas_model_id']}/file", headers=people["doctor_a"]
     )
     assert atlas.status_code == 200
-    assert atlas.content.startswith(b"glTF")
+    atlas_bytes = _glb_bytes(atlas)
     organ = client.get(
         f"/api/v1/organ-models/{models[0]['model_id']}/file", headers=people["patient_a"]
     )
-    assert organ.content.startswith(b"glTF")
-    scene = trimesh.load(io.BytesIO(atlas.content), file_type="glb", force="scene")
+    assert _glb_bytes(organ).startswith(b"glTF")
+    scene = trimesh.load(io.BytesIO(atlas_bytes), file_type="glb", force="scene")
     assert len(scene.geometry) >= 1
     labels = client.get(
         f"/api/v1/medical-images/{image_id}/label-volume", headers=people["doctor_a"]
     )
     assert labels.status_code == 200
-    volume = np.load(io.BytesIO(labels.content), allow_pickle=False)
+    assert labels.headers.get("x-volume-encoding") == "gzip"
+    volume = np.load(io.BytesIO(__import__("gzip").decompress(labels.content)), allow_pickle=False)
     assert volume.dtype == np.uint16
     assert set(np.unique(volume)) <= {0, 1, 3}
     with app.state.session_factory() as db:

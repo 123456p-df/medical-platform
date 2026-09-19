@@ -1377,6 +1377,17 @@
       },
       "Body_upload_image_api_v1_patients__patient_id__medical_images_post": {
         "properties": {
+          "contrast": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contrast"
+          },
           "file": {
             "contentMediaType": "application/octet-stream",
             "title": "File",
@@ -1394,6 +1405,41 @@
             "maxLength": 64,
             "title": "Organ Id",
             "type": "string"
+          },
+          "segmentation_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CT_BODY",
+                  "MRI_BODY",
+                  "MRI_BRAIN"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segmentation Mode"
+          },
+          "sequence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "T1",
+                  "T2",
+                  "FLAIR",
+                  "DWI",
+                  "other",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence"
           },
           "study_date": {
             "anyOf": [
@@ -1561,6 +1607,17 @@
             "title": "Reasons",
             "type": "array"
           },
+          "sequence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence"
+          },
           "shape": {
             "anyOf": [
               {
@@ -1638,7 +1695,7 @@
         "properties": {
           "password": {
             "maxLength": 128,
-            "minLength": 8,
+            "minLength": 6,
             "title": "Password",
             "type": "string"
           },
@@ -3125,6 +3182,70 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "ImageAcquisitionPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "already_skull_stripped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Already Skull Stripped"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contrast"
+          },
+          "segmentation_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CT_BODY",
+                  "MRI_BODY",
+                  "MRI_BRAIN"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segmentation Mode"
+          },
+          "sequence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "T1",
+                  "T2",
+                  "FLAIR",
+                  "DWI",
+                  "other",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence"
+          }
+        },
+        "title": "ImageAcquisitionPatch",
+        "type": "object"
+      },
       "ImageOut": {
         "properties": {
           "acquisition": {
@@ -3149,6 +3270,17 @@
               }
             ],
             "title": "Atlas Model Id"
+          },
+          "contrast": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contrast"
           },
           "created_at": {
             "format": "date-time",
@@ -3186,6 +3318,66 @@
             ],
             "title": "Segmentation Batch Id"
           },
+          "segmentation_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CT_BODY",
+                  "MRI_BODY",
+                  "MRI_BRAIN"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segmentation Mode"
+          },
+          "segmentation_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segmentation Warning"
+          },
+          "sequence": {
+            "default": "unknown",
+            "enum": [
+              "T1",
+              "T2",
+              "FLAIR",
+              "DWI",
+              "other",
+              "unknown"
+            ],
+            "title": "Sequence",
+            "type": "string"
+          },
+          "sequence_confidence": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "manual"
+            ],
+            "title": "Sequence Confidence",
+            "type": "string"
+          },
+          "series_uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Uid"
+          },
           "shape": {
             "items": {
               "type": "integer"
@@ -3196,6 +3388,15 @@
           "slice_count": {
             "title": "Slice Count",
             "type": "integer"
+          },
+          "source_format": {
+            "default": "nifti",
+            "enum": [
+              "nifti",
+              "dicom"
+            ],
+            "title": "Source Format",
+            "type": "string"
           },
           "spacing": {
             "items": {
@@ -17598,6 +17799,311 @@
           }
         ],
         "summary": "Get Image",
+        "tags": [
+          "Medical Image"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_image_api_v1_medical_images__image_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageAcquisitionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Envelope_ImageOut_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "null"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Error envelope"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Image",
         "tags": [
           "Medical Image"
         ]

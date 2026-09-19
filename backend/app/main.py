@@ -154,7 +154,15 @@ def create_app(
         allow_origins=settings.cors_origins,
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Image-Orientation", "X-Slice-Axis", "X-Request-ID"],
+        expose_headers=[
+            "X-Image-Orientation",
+            "X-Slice-Axis",
+            "X-Request-ID",
+            "X-Voxel-Dtype",
+            "X-Byte-Shuffle",
+            "X-Volume-Encoding",
+            "X-Volume-Kind",
+        ],
     )
 
     @app.middleware("http")
@@ -168,7 +176,8 @@ def create_app(
         )
         try:
             response = await call_next(request)
-            response.headers["Cache-Control"] = "no-store"
+            if not response.headers.get("Cache-Control"):
+                response.headers["Cache-Control"] = "no-store"
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Request-ID"] = request_id
             return response

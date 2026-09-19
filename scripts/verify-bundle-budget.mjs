@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
-const buildDir = process.argv[2] || 'dist-v5-stage4-smoke'
+const buildDir = process.argv[2] || 'dist'
 const assetDir = path.join(buildDir, 'assets')
 const assets = fs.readdirSync(assetDir).map(name => ({ name, bytes: fs.statSync(path.join(assetDir, name)).size }))
 const one = prefix => assets.find(asset => asset.name.startsWith(prefix) && asset.name.endsWith('.js'))

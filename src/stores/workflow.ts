@@ -5,7 +5,7 @@ import { mockExaminations, mockPatients } from '@/data/mockData'
 import { localPreview } from '@/utils/runtime'
 import { getLocalUploads } from '@/api/localStudyRepository'
 import { usePatientStore } from './patients'
-const PREVIEW_REVIEW_KEY = 'pulmolink-preview-review-status'
+const PREVIEW_REVIEW_KEY = 'pulmolink-preview-review-status-v2'
 interface PreviewReviewState { completed: boolean; completedAt: string | null }
 
 function readReviewStatus() {

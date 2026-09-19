@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, watch } from 'vue'
 import { ArrowLeft, FileText, Info } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -32,11 +32,11 @@ function formatDate(date?: string) {
   }).format(new Date(`${date}T00:00:00`))
 }
 
-onMounted(async () => {
-  if (!store.examinations.length) {
-    await store.loadPatientContext(patientId.value)
+watch(patientId, async (newId) => {
+  if (newId && (!store.examinations.length || store.selectedPatientId !== newId)) {
+    await store.loadPatientContext(newId)
   }
-})
+}, { immediate: true })
 </script>
 
 <template>
@@ -131,6 +131,12 @@ onMounted(async () => {
 
 .viewer-card {
   overflow: hidden;
+}
+
+.viewer-card :deep(.card-body) {
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
 }
 
 .exam-detail-side {

@@ -1,0 +1,373 @@
+\documentclass[aspectratio=169,12pt]{beamer}
+
+% Compile with XeLaTeX, LuaLaTeX, or Tectonic.
+% A wrapper may redefine \DeckFontSetup before inputting this file.
+\usepackage[UTF8,scheme=plain,fontset=none]{ctex}
+\usepackage{booktabs,array}
+
+\providecommand{\DeckFontSetup}{%
+  \setsansfont[
+    Path={fonts/noto/}, Extension=.otf,
+    UprightFont=*-Regular, BoldFont=*-Bold
+  ]{NotoSansSC}%
+  \setmainfont[
+    Path={fonts/noto/}, Extension=.otf,
+    UprightFont=*-Regular, BoldFont=*-Bold
+  ]{NotoSansSC}%
+  \setCJKsansfont[
+    Path={fonts/noto/}, Extension=.otf,
+    UprightFont=*-Regular, BoldFont=*-Bold
+  ]{NotoSansSC}%
+  \setCJKmainfont[
+    Path={fonts/noto/}, Extension=.otf,
+    UprightFont=*-Regular, BoldFont=*-Bold
+  ]{NotoSansSC}%
+}
+\DeckFontSetup
+
+\usetheme{Madrid}
+\usefonttheme{professionalfonts}
+
+\definecolor{BeamerRoyal}{HTML}{3939B8}
+\definecolor{BeamerDeep}{HTML}{171B72}
+\definecolor{BeamerInk}{HTML}{20212B}
+\definecolor{SoftBlue}{HTML}{F1F2FF}
+\definecolor{SoftGray}{HTML}{F5F5F7}
+\definecolor{WarmAccent}{HTML}{B2472E}
+
+\setbeamercolor{normal text}{fg=BeamerInk,bg=white}
+\setbeamercolor{structure}{fg=BeamerRoyal}
+\setbeamercolor{frametitle}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{title}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{subtitle}{fg=BeamerInk}
+\setbeamercolor{block title}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{block body}{fg=BeamerInk,bg=SoftBlue}
+\setbeamercolor{alertblock title}{fg=white,bg=WarmAccent}
+\setbeamercolor{alertblock body}{fg=BeamerInk,bg=WarmAccent!9}
+\setbeamercolor{author in head/foot}{fg=white,bg=BeamerDeep}
+\setbeamercolor{title in head/foot}{fg=white,bg=BeamerRoyal}
+\setbeamercolor{date in head/foot}{fg=white,bg=BeamerDeep}
+
+\setbeamertemplate{items}[ball]
+\setbeamertemplate{blocks}[rounded][shadow=true]
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{headline}{}
+
+\setbeamertemplate{title page}{%
+  \vspace{0.90cm}
+  \begin{beamercolorbox}[wd=.80\paperwidth,sep=.24cm,center,rounded=true,shadow=true]{title}
+    \usebeamerfont{title}\inserttitle
+  \end{beamercolorbox}
+  \vspace{0.72cm}
+  \begin{center}
+    {\usebeamerfont{subtitle}\insertsubtitle\par}
+    \vspace{0.86cm}
+    {\usebeamerfont{author}\insertauthor\par}
+    \vspace{0.24cm}
+    {\usebeamerfont{institute}\insertinstitute\par}
+    \vspace{0.74cm}
+    {\usebeamerfont{date}\insertdate\par}
+  \end{center}
+}
+
+\setbeamertemplate{frametitle}{%
+  \nointerlineskip
+  \begin{beamercolorbox}[wd=\paperwidth,ht=.64cm,dp=.14cm,leftskip=.38cm]{frametitle}
+    \usebeamerfont{frametitle}\insertframetitle
+  \end{beamercolorbox}
+}
+
+\setbeamertemplate{footline}{%
+  \leavevmode
+  \hbox{%
+    \begin{beamercolorbox}[wd=.31\paperwidth,ht=2.6ex,dp=1.05ex,center]{author in head/foot}
+      \usebeamerfont{author in head/foot}\insertshortauthor\enspace(\insertshortinstitute)
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.36\paperwidth,ht=2.6ex,dp=1.05ex,center]{title in head/foot}
+      \usebeamerfont{title in head/foot}\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.33\paperwidth,ht=2.6ex,dp=1.05ex,center]{date in head/foot}
+      \usebeamerfont{date in head/foot}\insertshortdate\hspace{1.2em}
+      \insertframenumber/\inserttotalframenumber
+    \end{beamercolorbox}%
+  }
+}
+
+\setbeamersize{text margin left=1.12cm,text margin right=1.12cm}
+\setbeamerfont{title}{size*={21pt}{26pt},series=\bfseries}
+\setbeamerfont{subtitle}{size*={13.5pt}{18pt}}
+\setbeamerfont{author}{size*={12.5pt}{16.5pt},series=\bfseries}
+\setbeamerfont{institute}{size*={10.5pt}{14pt}}
+\setbeamerfont{date}{size*={11.5pt}{15pt}}
+\setbeamerfont{frametitle}{size*={17pt}{20.5pt}}
+\setbeamerfont{normal text}{size*={11.8pt}{16pt}}
+\setbeamerfont{itemize/enumerate body}{size*={11.6pt}{16pt}}
+\setbeamerfont{itemize/enumerate subbody}{size*={10.7pt}{14.5pt}}
+\setbeamerfont{block title}{size*={11.5pt}{14.8pt},series=\bfseries}
+\setbeamerfont{block body}{size*={11.1pt}{15pt}}
+\setbeamerfont{author in head/foot}{size*={7pt}{8.5pt}}
+\setbeamerfont{title in head/foot}{size*={7pt}{8.5pt}}
+\setbeamerfont{date in head/foot}{size*={7pt}{8.5pt}}
+
+\newcommand{\key}[1]{\textcolor{BeamerRoyal}{\textbf{#1}}}
+\newcommand{\takeaway}[1]{%
+  \begin{beamercolorbox}[wd=\linewidth,sep=.16cm,center,rounded=true,shadow=true]{block body}
+    \textcolor{BeamerDeep}{\textbf{#1}}
+  \end{beamercolorbox}
+}
+\newcommand{\bigarrow}{\textcolor{BeamerRoyal}{\large\bfseries →}}
+
+\title[NV-Segment-CTMR]{NV-Segment-CTMR 模型简介}
+\subtitle{从 CT / MRI 到三维器官标签}
+\author[学习笔记]{NV-Segment-CTMR 学习笔记}
+\institute[医学影像分割]{面向入门学习者的简明讲解}
+\date[2026.09]{2026 年 9 月}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{它解决什么问题？}
+  \vspace{0.12cm}
+  \begin{columns}[c,onlytextwidth]
+    \column{.28\textwidth}
+      \begin{block}{输入}
+        \centering
+        三维 CT / MRI\\[0.08cm]
+        {\small 每个 voxel 是图像强度}
+      \end{block}
+    \column{.06\textwidth}\centering\bigarrow
+    \column{.28\textwidth}
+      \begin{block}{模型}
+        \centering
+        自动寻找结构\\[0.08cm]
+        {\small 器官、组织等类别}
+      \end{block}
+    \column{.06\textwidth}\centering\bigarrow
+    \column{.28\textwidth}
+      \begin{block}{输出}
+        \centering
+        三维标签体数据\\[0.08cm]
+        {\small 每个 voxel 一个标签}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.30cm}
+  \begin{itemize}
+    \item 支持 CT 与 MRI（身体和脑部），用于\key{自动分割}
+    \item 官方类别表包含 \key{345+ 类}；不同模态使用的类别集合并不完全相同
+    \item 没有属于目标结构的位置会保留为 \textbf{background}
+  \end{itemize}
+  \vfill
+  \takeaway{输入是图像强度，输出才是器官标签。}
+\end{frame}
+
+\begin{frame}{一张图看懂整体流程}
+  \vspace{0.10cm}
+  \begin{columns}[T,onlytextwidth]
+    \column{.31\textwidth}
+      \begin{block}{1. Preprocessing}
+        统一方向、spacing 与强度，让不同扫描更容易比较。
+      \end{block}
+    \column{.31\textwidth}
+      \begin{block}{2. Sliding Window}
+        把很大的三维影像分成 GPU 能处理的小块。
+      \end{block}
+    \column{.31\textwidth}
+      \begin{block}{3. 3D CNN}
+        编码图像，再逐步恢复空间位置与细节。
+      \end{block}
+  \end{columns}
+
+  \vspace{0.05cm}
+  \begin{columns}[T,onlytextwidth]
+    \column{.31\textwidth}
+      \begin{block}{4. Feature Map}
+        把灰度变成描述边缘、形状和位置的多维特征。
+      \end{block}
+    \column{.31\textwidth}
+      \begin{block}{5. Class Matching}
+        图像特征与器官的 class embedding 进行匹配。
+      \end{block}
+    \column{.31\textwidth}
+      \begin{block}{6. Merge \& Output}
+        融合重叠窗口，恢复坐标并生成最终标签。
+      \end{block}
+  \end{columns}
+
+  \vfill
+  \takeaway{{\fontsize{11.8}{15.2}\selectfont
+    先整理数据，再提取特征、寻找类别，最后拼回完整结果。}}
+\end{frame}
+
+\begin{frame}{Preprocessing：先把数据整理好}
+  \begin{columns}[T,onlytextwidth]
+    \column{.47\textwidth}
+      \begin{block}{Orientation｜统一方向}
+        把影像调整到一致的坐标方向，避免左右、前后定义混乱。
+      \end{block}
+      \begin{block}{Spacing｜统一物理尺度}
+        重采样到统一的 voxel 尺度，让相同器官看起来大小更接近。
+      \end{block}
+    \column{.47\textwidth}
+      \begin{block}{Crop｜裁掉大块背景}
+        保留包含身体的区域，减少没有信息的计算。
+      \end{block}
+      \begin{block}{Intensity｜处理强度}
+        缩放并截断极端值，让不同扫描的数值范围更稳定。
+      \end{block}
+  \end{columns}
+
+  \vspace{0.10cm}
+  \takeaway{预处理只是在“整理试卷”，真正的器官识别还没有开始。}
+\end{frame}
+
+\begin{frame}{训练：模型如何一步步变准？}
+  \begin{columns}[T,onlytextwidth]
+    \column{.61\textwidth}
+      \begin{enumerate}
+        \item \key{前向传播}：输入影像，模型按当前参数生成预测 mask
+        \item \key{比较}：预测与人工标注的 ground-truth mask 产生 loss
+        \item \key{反向传播}：计算各参数对错误应负多少责任
+        \item \key{更新}：optimizer 根据梯度修改参数，再重复训练
+      \end{enumerate}
+    \column{.34\textwidth}
+      \begin{block}{可以记成五个词}
+        \centering
+        尝试 → 比较\\[0.10cm]
+        {\color{BeamerRoyal}\Large ↓}\\[-0.02cm]
+        修改 ← 追责\\[0.10cm]
+        {\color{BeamerRoyal}\Large ↓}\\[-0.02cm]
+        再尝试
+      \end{block}
+  \end{columns}
+
+  \vfill
+  \takeaway{{\fontsize{11.8}{15.2}\selectfont
+    训练就是不断“先做题、看答案、找原因、改方法”。}}
+\end{frame}
+
+\begin{frame}{Sliding Window：为什么要切成小块？}
+  \begin{columns}[T,onlytextwidth]
+    \column{.47\textwidth}
+      \begin{block}{主要原因：显存有限}
+        完整三维 CT / MRI 往往很大，难以一次全部送入 GPU。滑窗让模型一次只处理一个 3D patch。
+      \end{block}
+    \column{.47\textwidth}
+      \begin{block}{为什么窗口要重叠？}
+        同一区域会被多个窗口预测，再把结果融合，可减轻 patch 边缘的不稳定与断裂。
+      \end{block}
+  \end{columns}
+
+  \vspace{0.22cm}
+  \begin{alertblock}{最容易讲错的一点}
+    滑动窗口不是为了让 patch 直接“互相交流”，而是为了控制单次显存；重叠主要用于减少块边缘伪影。
+  \end{alertblock}
+
+  \begin{itemize}
+    \item 整幅图基本仍要被扫过，重叠区域还会重复计算
+    \item 所以它主要降低\key{单次内存需求}，不一定降低总计算量
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{3D Encoder--Decoder 与 Feature Map}
+  \begin{columns}[c,onlytextwidth]
+    \column{.27\textwidth}
+      \begin{block}{Encoder}
+        \centering
+        缩小空间范围\\
+        看更大的上下文
+      \end{block}
+    \column{.07\textwidth}\centering\bigarrow
+    \column{.31\textwidth}
+      \begin{block}{Feature Map}
+        \centering
+        每个位置不再只有灰度，\\
+        而是一组图像特征
+      \end{block}
+    \column{.07\textwidth}\centering\bigarrow
+    \column{.27\textwidth}
+      \begin{block}{Decoder}
+        \centering
+        恢复空间分辨率\\
+        找回边界与位置
+      \end{block}
+  \end{columns}
+
+  \vspace{0.18cm}
+  \begin{itemize}
+    \item 这些特征可以描述边缘、纹理、形状、位置和周围结构
+    \item 本模型采用 SegResNet 式 3D 编码器--解码器；中间特征图会缩小，再由 decoder 恢复空间位置
+  \end{itemize}
+  \vfill
+  \takeaway{{\fontsize{11.8}{15.2}\selectfont
+    Feature Map 是模型整理出的“线索地图”，还不是最终答案。}}
+\end{frame}
+
+\begin{frame}{Class Embedding：告诉模型要找什么}
+  \begin{columns}[T,onlytextwidth]
+    \column{.45\textwidth}
+      \begin{block}{Image Feature}
+        \centering
+        “这个位置看起来有什么？”\\[0.10cm]
+        {\small 来自 3D 图像的特征}
+      \end{block}
+    \column{.45\textwidth}
+      \begin{block}{Class Embedding}
+        \centering
+        “现在要寻找哪一类？”\\[0.10cm]
+        {\small 每一类都有一个可学习编码}
+      \end{block}
+  \end{columns}
+
+  \vspace{0.14cm}
+  \begin{center}
+    \bigarrow\quad
+    \textbf{匹配后得到该类别的分数与 mask}
+  \end{center}
+
+  \begin{itemize}
+    \item 模型通过类别 ID 选择相应的 class embedding
+    \item 图像特征与类别编码匹配，为所选模态的支持类别生成 mask
+    \item 它学到的是\key{类别编码与图像特征的对应关系}，不是词语的字面含义
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{最终输出：三维 Label Volume}
+  \begin{columns}[c,onlytextwidth]
+    \column{.20\textwidth}
+      \begin{block}{Patch 预测}
+        \centering 各窗口的器官 mask
+      \end{block}
+    \column{.045\textwidth}\centering\bigarrow
+    \column{.20\textwidth}
+      \begin{block}{融合}
+        \centering 合并重叠位置的预测
+      \end{block}
+    \column{.045\textwidth}\centering\bigarrow
+    \column{.20\textwidth}
+      \begin{block}{恢复}
+        \centering 映射回原影像坐标
+      \end{block}
+    \column{.045\textwidth}\centering\bigarrow
+    \column{.22\textwidth}
+      \begin{block}{Label Volume}
+        \centering 每个 voxel 一个类别标签
+      \end{block}
+  \end{columns}
+
+  \vspace{0.20cm}
+  \begin{itemize}
+    \item 最终输出不是 feature vector，而是器官 / 组织标签或 background
+    \item 标签体数据可用于着色、统计体积，并进一步生成三维表面模型
+  \end{itemize}
+
+  \vspace{0.08cm}
+  \takeaway{{\fontsize{11.3}{14.8}\selectfont
+    滑窗解决“图像太大”；Feature Map 说明“看到了什么”；\\
+    Class Embedding 说明“要找什么”；Label Volume 给出最终答案。}}
+\end{frame}
+
+\end{document}

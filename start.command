@@ -21,11 +21,17 @@ if [[ ! -f node_modules/vite/bin/vite.js ]]; then
   pnpm install --frozen-lockfile
 fi
 
-VITE_LOCAL_PREVIEW=true node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 > /tmp/pulmolink-vite.log 2>&1 &
+LOG_FILE="${TMPDIR:-/tmp}/pulmolink-vite.log"
+VITE_LOCAL_PREVIEW=true node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173 > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
-trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT INT TERM
+cleanup() {
+  kill "$SERVER_PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
-for _ in {1..30}; do
+for _ in {1..300}; do
   if curl -fsS "http://127.0.0.1:4173/" >/dev/null 2>&1; then
     open "http://127.0.0.1:4173"
     echo "网页已启动：http://127.0.0.1:4173"
@@ -33,8 +39,15 @@ for _ in {1..30}; do
     wait "$SERVER_PID"
     exit $?
   fi
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "网页启动失败，请查看 $LOG_FILE"
+    wait "$SERVER_PID"
+    exit $?
+  fi
   sleep 0.2
 done
 
-echo "网页启动失败，请查看 /tmp/pulmolink-vite.log"
-wait "$SERVER_PID"
+echo "网页启动超时，请查看 $LOG_FILE"
+cleanup
+wait "$SERVER_PID" 2>/dev/null || true
+exit 1

@@ -1,6 +1,5 @@
 from app.models import MedicalImage
 
-
 SPACING_TOLERANCE = 0.20
 FOV_TOLERANCE = 0.25
 
@@ -15,7 +14,7 @@ def _relative_diff(left, right):
     if left is None or right is None or len(left) < 3 or len(right) < 3:
         return None
     diffs = []
-    for a, b in zip(left, right):
+    for a, b in zip(left, right, strict=False):
         scale = max(abs(a), abs(b), 1e-6)
         diffs.append(abs(a - b) / scale)
     return diffs
@@ -27,7 +26,10 @@ def acquisition_of(image: MedicalImage) -> dict:
     spacing = stored.get("spacing_mm") or image.spacing
     fov = stored.get("fov_mm")
     if (not fov) and shape and spacing:
-        fov = [float(s) * float(p) for s, p in zip(shape[:3], spacing[:3])]
+        fov = [
+            float(s) * float(p)
+            for s, p in zip(shape[:3], spacing[:3], strict=False)
+        ]
     return {
         "shape": [int(v) for v in shape[:3]] if shape else None,
         "spacing_mm": _vector(spacing),
@@ -43,8 +45,8 @@ def compare_studies(primary: MedicalImage, candidate: MedicalImage) -> dict:
     warnings: list[str] = []
     if primary.patient_id != candidate.patient_id:
         reasons.append("不是同一患者")
-    if primary.image_type != "CT" or candidate.image_type != "CT":
-        reasons.append("只支持 CT 与 CT 对比")
+    if primary.image_type != candidate.image_type:
+        reasons.append("只支持同一影像类型对比")
     left = acquisition_of(primary)
     right = acquisition_of(candidate)
     has_world = left["affine"] is not None and right["affine"] is not None
@@ -68,12 +70,17 @@ def compare_studies(primary: MedicalImage, candidate: MedicalImage) -> dict:
         warnings.append("采集设备不同")
     elif not left["device"] or not right["device"]:
         warnings.append("设备信息缺失，按几何相似允许对比")
+    left_seq = getattr(primary, "sequence", None) or "unknown"
+    right_seq = getattr(candidate, "sequence", None) or "unknown"
+    if primary.image_type == "MRI" and left_seq != right_seq:
+        warnings.append("MRI 序列不同，解剖位置按相对层位联动")
     return {
         "image_id": candidate.id,
         "patient_id": candidate.patient_id,
         "image_type": candidate.image_type,
         "organ_id": candidate.organ_id,
         "study_date": candidate.study_date,
+        "sequence": right_seq,
         "shape": candidate.shape,
         "spacing": candidate.spacing,
         "comparable": not reasons,

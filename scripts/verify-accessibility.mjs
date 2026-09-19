@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -36,7 +36,7 @@ for (const file of walk(join(root, 'src'))) {
     }
   }
   for (const match of source.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)) {
-    if (file.endsWith('components/ui/AppButton.vue')) continue
+    if (basename(file) === 'AppButton.vue') continue
     const attributes = match[1]
     const hasInterpolation = /\{\{/.test(match[2])
     const inner = match[2]

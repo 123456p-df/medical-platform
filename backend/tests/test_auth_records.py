@@ -5,8 +5,29 @@ import pytest
 from sqlalchemy import select
 
 from app.cli import set_access
-from app.models import AuditEvent, MedicalRecord, Patient, ReportTask, User, utcnow
+from app.models import (
+    AuditEvent,
+    Doctor,
+    DoctorPatientAccess,
+    MedicalRecord,
+    Patient,
+    ReportTask,
+    User,
+    utcnow,
+)
 from tests.conftest import record, upload
+
+
+def test_admin_clinical_identity_can_receive_patient_access(app_env, people):
+    app, _, _, _ = app_env
+    with app.state.session_factory() as db:
+        set_access(db, "admin", people["patient_b_pid"], "active")
+        doctor_id = db.scalar(
+            select(Doctor.id).join(User, User.id == Doctor.user_id).where(User.username == "admin")
+        )
+        grant = db.get(DoctorPatientAccess, (doctor_id, people["patient_b_pid"]))
+        assert grant is not None
+        assert grant.status == "active"
 
 
 def test_registration_roles_passwords_uniqueness(app_env):

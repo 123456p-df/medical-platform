@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
-import { useStudyWorkspaceStore } from '@/stores/studyWorkspace'
 import PageHeader from '@/components/layout/PageHeader.vue'
 import ExaminationCard from '@/components/medical/ExaminationCard.vue'
 import StudyComparisonViewer from '@/components/medical/StudyComparisonViewer.vue'
@@ -14,31 +13,33 @@ import type { Examination } from '@/types'
 const router = useRouter()
 const auth = useAuthStore()
 const store = usePatientStore()
-const workspace = useStudyWorkspaceStore()
 const patientId = computed(() => auth.session?.id ?? '')
-const comparisonId = ref(workspace.context.examinationId || '')
+const comparisonId = ref('')
 
 function openExam(examId: string) {
   router.push({ name: 'patient-examination-detail', params: { id: examId } })
 }
 
-onMounted(async () => {
-  if (!store.examinations.length) {
-    await store.loadPatientContext(patientId.value)
+watch(patientId, async (newId) => {
+  if (newId) {
+    await store.loadPatientContext(newId)
+    if (!comparisonId.value || !store.examinations.some(e => e.id === comparisonId.value)) {
+      comparisonId.value = store.examinations.find(item => item.type === 'CT')?.id || store.examinations[0]?.id || ''
+    }
   }
-  comparisonId.value ||= store.examinations.find(item => item.type === 'CT')?.id || ''
-  if (comparisonId.value) workspace.selectExamination(comparisonId.value)
-})
+}, { immediate: true })
+
+watch(() => store.examinations, (exams) => {
+  if (exams.length && (!comparisonId.value || !exams.some(e => e.id === comparisonId.value))) {
+    comparisonId.value = exams.find(item => item.type === 'CT')?.id || exams[0]?.id || ''
+  }
+}, { immediate: true })
 
 async function handleUploaded(studies: Examination[]) {
-  await store.loadPatientContext(patientId.value)
+  if (patientId.value) {
+    await store.loadPatientContext(patientId.value)
+  }
   comparisonId.value = studies.at(-1)?.id || comparisonId.value
-  workspace.selectExamination(comparisonId.value)
-}
-
-function selectStudy(id: string) {
-  comparisonId.value = id
-  workspace.selectExamination(id)
 }
 </script>
 
@@ -51,7 +52,7 @@ function selectStudy(id: string) {
         :examinations="store.examinations"
         :findings="store.findings"
         :initial-id="comparisonId"
-        @select-study="selectStudy"
+        @select-study="comparisonId = $event"
       />
       <MultiStudyUpload class="card" :patient-id="patientId" ct-only @complete="handleUploaded" />
     </section>
@@ -79,7 +80,7 @@ function selectStudy(id: string) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
-.comparison-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start;margin-bottom:24px}
+.comparison-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:stretch;margin-bottom:24px}
 
 @media (max-width: 760px) {
   .comparison-layout,

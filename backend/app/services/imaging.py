@@ -18,6 +18,12 @@ from skimage.segmentation import random_walker
 
 from app.config import Settings
 from app.errors import APIError
+from app.services.watermark import (
+    embed_dwt_dct_svd,
+    get_cached_slice_png,
+    make_user_payload,
+    set_cached_slice_png,
+)
 
 ORGAN_COLORS = {
     "liver": [180, 82, 82, 255],
@@ -55,6 +61,127 @@ def slice_cache_path(path: Path):
     return path.with_name(path.name + ".slices.npy")
 
 
+def volume_wire_path(path: Path):
+    return path.with_name(path.name + ".slices.wire.gz")
+
+
+def label_wire_path(path: Path):
+    return path.with_name(path.name + ".labels.npy.gz")
+
+
+def shuffle_i16(voxels: np.ndarray) -> bytes:
+    flat = np.ascontiguousarray(voxels, dtype="<i2").reshape(-1)
+    planes = flat.view(np.uint8).reshape(-1, 2)
+    return np.ascontiguousarray(planes.T).tobytes()
+
+
+def unshuffle_i16(payload: bytes, shape: tuple[int, int, int]) -> np.ndarray:
+    count = int(math.prod(shape))
+    if len(payload) != count * 2:
+        raise ValueError("Shuffled int16 payload size mismatch")
+    planes = np.frombuffer(payload, dtype=np.uint8).reshape(2, count)
+    stacked = np.empty((count, 2), dtype=np.uint8)
+    stacked[:, 0] = planes[0]
+    stacked[:, 1] = planes[1]
+    return stacked.reshape(-1).view("<i2").reshape(shape)
+
+
+def pack_integer_voxels(voxels: np.ndarray) -> np.ndarray:
+    if voxels.dtype == np.int16:
+        return np.ascontiguousarray(voxels)
+    as_f32 = np.asarray(voxels, dtype=np.float32)
+    rounded = np.rint(as_f32)
+    info = np.iinfo(np.int16)
+    if (
+        as_f32.size
+        and float(np.max(np.abs(as_f32 - rounded))) == 0.0
+        and float(rounded.min()) >= info.min
+        and float(rounded.max()) <= info.max
+    ):
+        return rounded.astype(np.int16, copy=False)
+    return np.ascontiguousarray(as_f32)
+
+
+def write_gzip_file(target: Path, payload: bytes) -> None:
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=target.parent, prefix=".wire-", suffix=".tmp", delete=False
+        ) as output:
+            temporary = Path(output.name)
+            with gzip.GzipFile(fileobj=output, mode="wb", compresslevel=6, mtime=0) as encoded:
+                encoded.write(payload)
+        os.replace(temporary, target)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+
+
+def write_volume_wire(voxels: np.ndarray, target: Path) -> dict[str, str]:
+    packed = pack_integer_voxels(voxels)
+    if packed.dtype == np.int16:
+        payload = shuffle_i16(packed)
+        meta = {"dtype": "int16", "shuffle": "2"}
+    else:
+        payload = np.ascontiguousarray(packed, dtype="<f4").tobytes()
+        meta = {"dtype": "float32", "shuffle": "0"}
+    write_gzip_file(target, payload)
+    return meta
+
+
+def volume_wire_headers(voxels: np.ndarray) -> dict[str, str]:
+    packed = pack_integer_voxels(voxels)
+    if packed.dtype == np.int16:
+        return {"X-Voxel-Dtype": "int16", "X-Byte-Shuffle": "2", "X-Volume-Encoding": "gzip"}
+    return {"X-Voxel-Dtype": "float32", "X-Byte-Shuffle": "0", "X-Volume-Encoding": "gzip"}
+
+
+def prepare_existing_volume_wires(root: Path, settings: Settings) -> list[Path]:
+    prepared: list[Path] = []
+    if not root.is_dir():
+        return prepared
+    for source in sorted(root.rglob("*")):
+        if not source.is_file():
+            continue
+        name = source.name
+        if name.endswith(".slices.npy") or name.endswith(".wire.gz") or name.endswith(".gz.gz"):
+            continue
+        if not (name.endswith(".nii") or name.endswith(".nii.gz")):
+            continue
+        try:
+            wire, _ = prepare_volume_wire(source, settings)
+            prepared.append(wire)
+        except Exception:
+            continue
+    return prepared
+
+
+def prepare_volume_wire(path: Path, settings: Settings) -> tuple[Path, dict[str, str]]:
+    voxels = canonical_voxels(path, settings)
+    target = volume_wire_path(path)
+    source = slice_cache_path(path)
+    if (
+        not target.is_file()
+        or (source.is_file() and target.stat().st_mtime_ns < source.stat().st_mtime_ns)
+        or target.stat().st_mtime_ns < path.stat().st_mtime_ns
+    ):
+        write_volume_wire(voxels, target)
+    return target, volume_wire_headers(voxels)
+
+
+def prepare_label_wire(path: Path, settings: Settings) -> Path:
+    canonical_labels(path, settings)
+    source = label_cache_path(path)
+    target = label_wire_path(path)
+    if (
+        not target.is_file()
+        or target.stat().st_mtime_ns < source.stat().st_mtime_ns
+        or target.stat().st_mtime_ns < path.stat().st_mtime_ns
+    ):
+        write_gzip_file(target, source.read_bytes())
+    return target
+
+
 def release_volume_cache(root: Path):
     with _volume_lock:
         for key in list(_volume_cache):
@@ -64,13 +191,20 @@ def release_volume_cache(root: Path):
 
 def prepare_slice_cache(path: Path, volume, data):
     canonical = nib.as_closest_canonical(nib.Nifti1Image(data, volume.affine))
+    packed = pack_integer_voxels(np.asarray(canonical.dataobj, dtype=np.float32))
     target = slice_cache_path(path)
-    with tempfile.NamedTemporaryFile(
-        dir=path.parent, prefix=".slice-", suffix=".tmp", delete=False
-    ) as output:
-        temporary = Path(output.name)
-        np.save(output, np.asarray(canonical.dataobj, dtype=np.float32), allow_pickle=False)
-    os.replace(temporary, target)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=".slice-", suffix=".tmp", delete=False
+        ) as output:
+            temporary = Path(output.name)
+            np.save(output, packed, allow_pickle=False)
+        os.replace(temporary, target)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+    write_volume_wire(packed, volume_wire_path(path))
     return canonical
 
 
@@ -105,12 +239,18 @@ def prepare_label_cache(path: Path, settings: Settings):
     labels = np.rint(data).astype(np.uint16, copy=False)
     canonical = nib.as_closest_canonical(nib.Nifti1Image(labels, image.affine))
     target = label_cache_path(path)
-    with tempfile.NamedTemporaryFile(
-        dir=path.parent, prefix=".labels-", suffix=".tmp", delete=False
-    ) as output:
-        temporary = Path(output.name)
-        np.save(output, np.asarray(canonical.dataobj, dtype=np.uint16), allow_pickle=False)
-    os.replace(temporary, target)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=".labels-", suffix=".tmp", delete=False
+        ) as output:
+            temporary = Path(output.name)
+            np.save(output, np.asarray(canonical.dataobj, dtype=np.uint16), allow_pickle=False)
+        os.replace(temporary, target)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
+    write_gzip_file(label_wire_path(path), target.read_bytes())
     return target
 
 
@@ -158,7 +298,7 @@ def canonical_voxels(path: Path, settings: Settings):
             try:
                 voxels = np.load(target, mmap_mode="r", allow_pickle=False)
                 if (
-                    voxels.dtype != np.float32
+                    voxels.dtype not in (np.float32, np.int16)
                     or voxels.ndim != 3
                     or min(voxels.shape) < 2
                     or voxels.size > settings.max_volume_voxels
@@ -219,8 +359,30 @@ def load_volume(path: Path, settings: Settings):
 
 
 def slice_png(
-    path: Path, index: int, settings: Settings, window_center=None, window_width=None, axis="axial"
+    path: Path, index: int, settings: Settings, window_center=None, window_width=None, axis="axial", user=None
 ):
+    return slice_image(path, index, settings, window_center, window_width, axis, fmt="png", user=user)
+
+
+def slice_image(
+    path: Path,
+    index: int,
+    settings: Settings,
+    window_center=None,
+    window_width=None,
+    axis="axial",
+    fmt="webp",
+    user=None,
+):
+    user_id = getattr(user, "id", None)
+    if user_id is None and isinstance(user, int):
+        user_id = user
+
+    cache_key = (str(path.resolve()), index, axis, window_center, window_width, fmt, user_id)
+    cached = get_cached_slice_png(cache_key)
+    if cached is not None:
+        return cached
+
     # Authorization is checked by the route on every request, including cache hits.
     canonical = canonical_voxels(path, settings)
     axes = {"axial": 2, "coronal": 1, "sagittal": 0}
@@ -230,7 +392,7 @@ def slice_png(
         raise APIError(404, 40405, "Slice index out of range")
     selector = [slice(None)] * 3
     selector[axes[axis]] = index
-    plane = canonical[tuple(selector)]
+    plane = np.asarray(canonical[tuple(selector)], dtype=np.float32)
     if (window_center is None) != (window_width is None):
         raise APIError(400, 40003, "window_center and window_width must be provided together")
     if window_width is not None:
@@ -243,9 +405,26 @@ def slice_png(
     if high > low:
         pixels = (np.clip((plane - low) / (high - low), 0, 1) * 255).astype(np.uint8)
     pixels = np.flip(pixels.T, axis=(0, 1))
+
+    if settings.watermark_enabled and user_id is not None:
+        payload_bits = make_user_payload(int(user_id))
+        pixels = embed_dwt_dct_svd(pixels, payload_bits, delta=settings.watermark_delta)
+
     buffer = io.BytesIO()
-    Image.fromarray(pixels).save(buffer, format="PNG")
-    return buffer.getvalue()
+    image = Image.fromarray(pixels)
+    if fmt == "png":
+        image.save(buffer, format="PNG")
+        res = buffer.getvalue()
+    else:
+        try:
+            image.save(buffer, format="WEBP", lossless=True, quality=100, method=4)
+            res = buffer.getvalue()
+        except OSError:
+            fallback = io.BytesIO()
+            image.save(fallback, format="PNG")
+            res = fallback.getvalue()
+    set_cached_slice_png(cache_key, res)
+    return res
 
 
 def refine_boundary_native_grid(

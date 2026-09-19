@@ -1,6 +1,7 @@
 import { t } from '@/i18n'
 
-export const SESSION_KEY = 'vmrb-session-v1'
+export const SESSION_KEY = 'vmrb-session-v2'
+const SESSION_BOOT_KEY = 'vmrb-session-boot-v1'
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -19,20 +20,38 @@ export function readSession(): string | null {
 export function writeSession(value: string | null, remember = false) {
   try {
     sessionStorage.removeItem(SESSION_KEY)
+    sessionStorage.removeItem(SESSION_BOOT_KEY)
     localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(SESSION_BOOT_KEY)
     if (value) {
-      if (remember) localStorage.setItem(SESSION_KEY, value)
-      else sessionStorage.setItem(SESSION_KEY, value)
+      const storage = remember ? localStorage : sessionStorage
+      storage.setItem(SESSION_KEY, value)
+      storage.setItem(SESSION_BOOT_KEY, __VMRB_AUTH_BOOT_ID__)
     }
   } catch { /* private mode */ }
 }
-export function inheritSessionFromOpener() {
+export function inheritSessionFromOpener(): boolean {
   try {
-    if (!sessionStorage.getItem(SESSION_KEY) && window.opener?.sessionStorage) {
-      const inherited = window.opener.sessionStorage.getItem(SESSION_KEY)
-      if (inherited) sessionStorage.setItem(SESSION_KEY, inherited)
-    }
-  } catch { /* opener blocked */ }
+    const inherited = window.opener?.sessionStorage?.getItem(SESSION_KEY)
+    const inheritedBoot = window.opener?.sessionStorage?.getItem(SESSION_BOOT_KEY)
+    if (!inherited || inheritedBoot !== __VMRB_AUTH_BOOT_ID__) return false
+    sessionStorage.setItem(SESSION_KEY, inherited)
+    sessionStorage.setItem(SESSION_BOOT_KEY, inheritedBoot)
+    localStorage.removeItem(SESSION_KEY)
+    localStorage.removeItem(SESSION_BOOT_KEY)
+    return true
+  } catch {
+    return false
+  }
+}
+export function prepareSessionForAppBoot() {
+  try {
+    const sessionBoot = sessionStorage.getItem(SESSION_BOOT_KEY)
+      || localStorage.getItem(SESSION_BOOT_KEY)
+    if (sessionBoot !== __VMRB_AUTH_BOOT_ID__) writeSession(null)
+  } catch {
+    writeSession(null)
+  }
 }
 export function token(): string | null {
   try {
@@ -65,8 +84,7 @@ export async function request(path: string, options: RequestInit = {}): Promise<
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}))
     if (response.status === 401 && accessToken && accessToken !== 'local-preview' && token() === accessToken) {
-      sessionStorage.removeItem(SESSION_KEY)
-      localStorage.removeItem(SESSION_KEY)
+      writeSession(null)
       window.dispatchEvent(new Event('vmrb-session-expired'))
     }
     const messages: Record<number, string> = {

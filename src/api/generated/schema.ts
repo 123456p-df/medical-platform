@@ -634,7 +634,8 @@ export type paths = {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Patch Image */
+        patch: operations["patch_image_api_v1_medical_images__image_id__patch"];
         trace?: never;
     };
     "/api/v1/medical-images/{image_id}/analysis": {
@@ -1619,6 +1620,8 @@ export type components = {
         };
         /** Body_upload_image_api_v1_patients__patient_id__medical_images_post */
         Body_upload_image_api_v1_patients__patient_id__medical_images_post: {
+            /** Contrast */
+            contrast?: boolean | null;
             /** File */
             file: string;
             /**
@@ -1628,6 +1631,10 @@ export type components = {
             image_type: Body_upload_image_api_v1_patients__patient_id__medical_images_postImage_type;
             /** Organ Id */
             organ_id: string;
+            /** Segmentation Mode */
+            segmentation_mode?: Body_upload_image_api_v1_patients__patient_id__medical_images_postSegmentation_modeAnyOf0 | null;
+            /** Sequence */
+            sequence?: Body_upload_image_api_v1_patients__patient_id__medical_images_postSequenceAnyOf0 | null;
             /** Study Date */
             study_date?: string | null;
         };
@@ -1687,6 +1694,8 @@ export type components = {
             patient_id: number;
             /** Reasons */
             reasons?: string[];
+            /** Sequence */
+            sequence?: string | null;
             /** Shape */
             shape?: unknown[] | null;
             /** Spacing */
@@ -2443,6 +2452,17 @@ export type components = {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** ImageAcquisitionPatch */
+        ImageAcquisitionPatch: {
+            /** Already Skull Stripped */
+            already_skull_stripped?: boolean | null;
+            /** Contrast */
+            contrast?: boolean | null;
+            /** Segmentation Mode */
+            segmentation_mode?: ImageAcquisitionPatchSegmentation_modeAnyOf0 | null;
+            /** Sequence */
+            sequence?: ImageAcquisitionPatchSequenceAnyOf0 | null;
+        };
         /** ImageOut */
         ImageOut: {
             /** Acquisition */
@@ -2451,6 +2471,8 @@ export type components = {
             } | null;
             /** Atlas Model Id */
             atlas_model_id?: string | null;
+            /** Contrast */
+            contrast?: boolean | null;
             /**
              * Created At
              * Format: date-time
@@ -2469,10 +2491,34 @@ export type components = {
             patient_id: number;
             /** Segmentation Batch Id */
             segmentation_batch_id?: string | null;
+            /** Segmentation Mode */
+            segmentation_mode?: ImageOutSegmentation_modeAnyOf0 | null;
+            /** Segmentation Warning */
+            segmentation_warning?: string | null;
+            /**
+             * Sequence
+             * @default unknown
+             * @enum {string}
+             */
+            sequence: ImageOutSequence;
+            /**
+             * Sequence Confidence
+             * @default auto
+             * @enum {string}
+             */
+            sequence_confidence: ImageOutSequence_confidence;
+            /** Series Uid */
+            series_uid?: string | null;
             /** Shape */
             shape: number[];
             /** Slice Count */
             slice_count: number;
+            /**
+             * Source Format
+             * @default nifti
+             * @enum {string}
+             */
+            source_format: ImageOutSource_format;
             /** Spacing */
             spacing: number[];
             /**
@@ -9474,6 +9520,162 @@ export interface operations {
             };
         };
     };
+    patch_image_api_v1_medical_images__image_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageAcquisitionPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ImageOut_"];
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
     create_task_api_v1_medical_images__image_id__analysis_post: {
         parameters: {
             query?: never;
@@ -15423,6 +15625,19 @@ export enum Body_upload_image_api_v1_patients__patient_id__medical_images_postIm
     CT = "CT",
     MRI = "MRI"
 }
+export enum Body_upload_image_api_v1_patients__patient_id__medical_images_postSegmentation_modeAnyOf0 {
+    CT_BODY = "CT_BODY",
+    MRI_BODY = "MRI_BODY",
+    MRI_BRAIN = "MRI_BRAIN"
+}
+export enum Body_upload_image_api_v1_patients__patient_id__medical_images_postSequenceAnyOf0 {
+    T1 = "T1",
+    T2 = "T2",
+    FLAIR = "FLAIR",
+    DWI = "DWI",
+    other = "other",
+    unknown = "unknown"
+}
 export enum ComparisonCandidateOutImage_type {
     CT = "CT",
     MRI = "MRI"
@@ -15455,9 +15670,43 @@ export enum FindingPatchStatusAnyOf0 {
     modified = "modified",
     dismissed = "dismissed"
 }
+export enum ImageAcquisitionPatchSegmentation_modeAnyOf0 {
+    CT_BODY = "CT_BODY",
+    MRI_BODY = "MRI_BODY",
+    MRI_BRAIN = "MRI_BRAIN"
+}
+export enum ImageAcquisitionPatchSequenceAnyOf0 {
+    T1 = "T1",
+    T2 = "T2",
+    FLAIR = "FLAIR",
+    DWI = "DWI",
+    other = "other",
+    unknown = "unknown"
+}
 export enum ImageOutImage_type {
     CT = "CT",
     MRI = "MRI"
+}
+export enum ImageOutSegmentation_modeAnyOf0 {
+    CT_BODY = "CT_BODY",
+    MRI_BODY = "MRI_BODY",
+    MRI_BRAIN = "MRI_BRAIN"
+}
+export enum ImageOutSequence {
+    T1 = "T1",
+    T2 = "T2",
+    FLAIR = "FLAIR",
+    DWI = "DWI",
+    other = "other",
+    unknown = "unknown"
+}
+export enum ImageOutSequence_confidence {
+    auto = "auto",
+    manual = "manual"
+}
+export enum ImageOutSource_format {
+    nifti = "nifti",
+    dicom = "dicom"
 }
 export enum ModelOutKindAnyOf0 {
     organ = "organ",

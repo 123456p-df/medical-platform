@@ -17,13 +17,11 @@ import type { Examination } from '@/types'
 import { isLocalUpload } from '@/api/localStudyRepository'
 import { capabilityForStudy } from '@/utils/capabilities'
 import { useAuthStore } from '@/stores/auth'
-import { useStudyWorkspaceStore } from '@/stores/studyWorkspace'
 import { t } from '@/i18n'
 const route = useRoute(), router = useRouter(), store = usePatientStore(), workflow = useWorkflowStore(), auth = useAuthStore()
-const workspace = useStudyWorkspaceStore()
 const reviewBusy = ref(false)
 const patientId = computed(() => String(route.params.id))
-const selected = ref(String(route.query.exam || workspace.context.examinationId || ''))
+const selected = ref(String(route.query.exam || ''))
 const viewerMode = ref<'compare' | 'mpr'>('compare')
 const active = computed(() => store.examinations.find(i => i.id === selected.value) || store.examinations[0])
 watch(() => active.value?.id, () => {
@@ -33,9 +31,6 @@ const capabilities = computed(() => capabilityForStudy(active.value, auth.portal
 const isLocalActive = computed(() => isLocalUpload(active.value))
 const activeFindings = computed(() => store.findings.filter(item => item.examinationId === active.value?.id))
 watch(() => route.query.exam, value => { selected.value = String(value || '') })
-watch(() => workspace.context.examinationId, value => {
-  if (value && value !== selected.value) selected.value = value
-})
 const reviewItem = computed(() => workflow.items.find(i => i.image_id === active.value?.id))
 const reviewed = computed(() => reviewItem.value
   ? Boolean(reviewItem.value.completed_at)
@@ -152,7 +147,6 @@ async function analyzeLungNodules() {
 function selectStudy(id: string) {
   const changed = selected.value !== id
   selected.value = id
-  workspace.selectExamination(id)
   if (String(route.query.exam || '') !== id) {
     void router.replace({ query: { ...route.query, exam: id } })
   }
@@ -164,15 +158,10 @@ function selectStudy(id: string) {
 }
 function setViewerMode(mode: 'compare' | 'mpr') {
   viewerMode.value = mode
-  workspace.setMode(mode)
   if (mode === 'compare' && active.value?.type !== 'CT') {
     const firstCt = store.examinations.find(item => item.type === 'CT' && !isLocalUpload(item))
     if (firstCt) selectStudy(firstCt.id)
   }
-}
-
-function openAIAssistant() {
-  window.dispatchEvent(new CustomEvent('pulmolink-open-ai'))
 }
 async function handleUploaded(studies: Examination[]) {
   await store.loadPatientContext(patientId.value)
@@ -198,7 +187,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           <p>{{ active.date }} · {{ active.sliceCount }} slices · {{ $t(reviewed ? 'ui.imaging.reviewCompleteHelp' : 'ui.imaging.reviewPendingHelp') }}</p>
         </div>
         <div class="review-actions">
-          <button class="btn btn-secondary" type="button" @click="openAIAssistant"><Sparkles :size="16" /> {{ $t('ui.imaging.viewFindings') }}</button>
+          <RouterLink class="btn btn-secondary" :to="{name:'doctor-patient-ai',params:{id:patientId},query:{exam:active.id}}"><Sparkles :size="16" /> {{ $t('ui.imaging.viewFindings') }}</RouterLink>
           <button class="btn" :class="reviewed ? 'btn-secondary' : 'btn-primary'" :disabled="reviewBusy" @click="review">
             <RotateCcw v-if="reviewed" :size="16" /><CheckCircle2 v-else :size="16" />
             {{ $t(reviewBusy ? 'ui.imaging.processing' : reviewed ? 'ui.imaging.reopenReview' : 'ui.imaging.confirmReview') }}
@@ -213,7 +202,7 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           <RouterLink
             v-if="capabilities.reconstruction3d.enabled"
             class="btn btn-sm btn-secondary"
-            :to="{ name: 'doctor-patient-3d', params: { id: patientId }, query: { image: active.id } }"
+            :to="{ path: '/viewer/study/' + patientId, query: { image: active.id } }"
           >
             <Box :size="15" /> {{ $t('ui.imaging.threeD') }}
           </RouterLink>
@@ -258,12 +247,11 @@ onMounted(() => { workflow.load(); loadAnalysisStatus() })
           ><Sparkles :size="16" /> {{ $t(analysisBusy ? 'ui.imaging.starting' : 'ui.imaging.startDetection') }}</button>
           <p v-if="analysisTask">{{ $t('ui.imaging.taskProgress', { status: analysisTask.status, progress: analysisTask.progress || 0 }) }}</p>
           <p v-else-if="activeFindings.length" class="finding-summary">{{ $t('ui.imaging.findingCount', { count: activeFindings.length }) }}</p>
-          <button
+          <RouterLink
             v-if="analysisTask?.status === 'completed' || activeFindings.length"
             class="btn btn-secondary"
-            type="button"
-            @click="openAIAssistant"
-          >{{ $t('ui.imaging.reviewResultCount', { count: analysisTask?.result?.findings_count ?? activeFindings.length }) }}</button>
+            :to="{name:'doctor-patient-ai',params:{id:patientId},query:{exam:active.id}}"
+          >{{ $t('ui.imaging.reviewResultCount', { count: analysisTask?.result?.findings_count ?? activeFindings.length }) }}</RouterLink>
         </div>
       </div>
     </section>

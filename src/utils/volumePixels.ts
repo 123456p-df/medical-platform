@@ -1,6 +1,6 @@
 export type SliceAxis = 'axial' | 'coronal' | 'sagittal'
 export type Shape3D = [number, number, number]
-export type VolumeData = { shape: Shape3D; voxels: Float32Array; strides?: Shape3D }
+export type VolumeData = { shape: Shape3D; voxels: Float32Array | Int16Array; strides?: Shape3D }
 export type LabelVolume = { shape: Shape3D; labels: Uint16Array; strides?: Shape3D }
 export type SlicePixels = {
   width: number
@@ -46,6 +46,63 @@ export function parseVolume(buffer: ArrayBuffer, expectedShape: Shape3D, byteLen
   }
   const [nx, ny, nz] = shape
   return { shape: shape as Shape3D, voxels: new Float32Array(buffer, offset, count), strides: order === 'True' ? [1, nx, nx * ny] : [ny * nz, nz, 1] }
+}
+
+export function unshuffleInt16(shuffled: Uint8Array, count: number): Int16Array {
+  if (shuffled.byteLength < count * 2) throw new Error('影像体积传输不完整')
+  const voxels = new Int16Array(count)
+  const bytes = new Uint8Array(voxels.buffer)
+  for (let i = 0; i < count; i++) {
+    bytes[i * 2] = shuffled[i]
+    bytes[i * 2 + 1] = shuffled[count + i]
+  }
+  return voxels
+}
+
+export async function gunzipBytes(bytes: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream === 'undefined') throw new Error('浏览器无法解压影像数据')
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+
+export function isGzip(bytes: Uint8Array) {
+  return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b
+}
+
+export async function decodeVolumePayload(
+  buffer: ArrayBuffer,
+  expectedShape: Shape3D,
+  byteLength = buffer.byteLength,
+  dtype?: string | null,
+  shuffle = 0,
+): Promise<VolumeData> {
+  let bytes = new Uint8Array(buffer, 0, byteLength)
+  if (isGzip(bytes)) bytes = await gunzipBytes(bytes)
+  if (bytes.length >= 6 && bytes[0] === 0x93 && String.fromCharCode(...bytes.subarray(1, 6)) === 'NUMPY') {
+    const copy = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    return parseVolume(copy, expectedShape, bytes.byteLength)
+  }
+  const count = expectedShape.reduce((a, b) => a * b, 1)
+  const [, ny, nz] = expectedShape
+  const strides: Shape3D = [ny * nz, nz, 1]
+  const kind = dtype || (bytes.byteLength === count * 2 ? 'int16' : 'float32')
+  if (kind === 'int16') {
+    if (bytes.byteLength !== count * 2) throw new Error('影像体积传输不完整')
+    if (count * 2 > MAX_BROWSER_VOLUME_BYTES) throw new Error('影像体积超限或传输不完整')
+    const aligned = bytes.byteOffset % 2 ? bytes.slice() : bytes
+    const voxels = shuffle === 2 ? unshuffleInt16(aligned, count) : new Int16Array(aligned.buffer, aligned.byteOffset, count)
+    return { shape: expectedShape, voxels, strides }
+  }
+  if (bytes.byteLength !== count * 4 || count * 4 > MAX_BROWSER_VOLUME_BYTES) throw new Error('影像体积超限或传输不完整')
+  const aligned = bytes.byteOffset % 4 ? bytes.slice() : bytes
+  return { shape: expectedShape, voxels: new Float32Array(aligned.buffer, aligned.byteOffset, count), strides }
+}
+
+export async function decodeLabelPayload(buffer: ArrayBuffer, expectedShape: Shape3D): Promise<LabelVolume> {
+  let bytes = new Uint8Array(buffer)
+  if (isGzip(bytes)) bytes = await gunzipBytes(bytes)
+  const copy = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+  return parseLabelVolume(copy, expectedShape)
 }
 
 export function renderVolumeSlice(

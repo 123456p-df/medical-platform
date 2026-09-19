@@ -319,6 +319,29 @@ const {
 let controller: AbortController | undefined
 let frame = 0
 let revision = 0
+const prefetchedSlices = new Set<string>()
+let prefetchAbortController: AbortController | null = null
+
+function prefetchNeighborSlices(index: number, query: URLSearchParams) {
+  if (prefetchAbortController) {
+    prefetchAbortController.abort()
+  }
+  prefetchAbortController = new AbortController()
+  const signal = prefetchAbortController.signal
+
+  const count = geometry.value.count
+  for (const next of [index - 1, index + 1]) {
+    if (next < 0 || next >= count) continue
+    const key = props.examination.id + ':' + props.axis + ':' + next + ':' + query.toString()
+    if (prefetchedSlices.has(key)) continue
+    if (prefetchedSlices.size > 200) prefetchedSlices.clear()
+    prefetchedSlices.add(key)
+    const neighbor = new URLSearchParams(query)
+    void request('/medical-images/' + props.examination.id + '/slice/' + next + '?' + neighbor, { signal })
+      .then((response) => response.blob())
+      .catch(() => { prefetchedSlices.delete(key) })
+  }
+}
 
 function render() {
   const current = ++revision
@@ -392,6 +415,7 @@ function render() {
           '/medical-images/' + props.examination.id + '/slice/' + index + '?' + query,
           { signal: active.signal },
         )
+        prefetchNeighborSlices(index, query)
         const bitmap = await createImageBitmap(await response.blob())
         try {
           if (current !== revision || !canvas.value) return
@@ -704,7 +728,7 @@ defineExpose({
 <style scoped>
 .slice-viewport {
   min-width: 0;
-  min-height: 0;
+  min-height: 380px;
   height: 100%;
   overflow: hidden;
   border: 1px solid #23343f;
@@ -713,6 +737,10 @@ defineExpose({
   display: flex;
   flex-direction: column;
   transition: all 0.2s ease;
+}
+
+.slice-viewport.compact {
+  min-height: 280px;
 }
 
 .slice-viewport.maximized {
@@ -777,7 +805,7 @@ defineExpose({
 .slice-stage {
   position: relative;
   flex: 1;
-  min-height: 0;
+  min-height: 280px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -788,7 +816,7 @@ defineExpose({
 }
 
 .compact .slice-stage {
-  min-height: 0;
+  min-height: 200px;
 }
 
 .slice-stage:focus-visible {

@@ -12,6 +12,8 @@ import {
   voxelToRas,
 } from '@/utils/sliceAxes'
 import { viewerApi } from '@/api/viewer'
+import type { Finding } from '@/types'
+import { createFinding3DObject, type Finding3DObject } from '@/utils/bounding3d'
 import { t } from '@/i18n'
 
 type OrganMetaItem = {
@@ -28,24 +30,49 @@ const props = withDefaults(
   defineProps<{
     modelId?: string | null
     visibleNames: string[]
-    axis: SliceAxis
-    sliceIndex: number
-    shape: [number, number, number]
+    axis?: SliceAxis
+    sliceIndex?: number
+    shape?: [number, number, number]
     spacing?: [number, number, number] | null
     affine?: number[][] | null
     status?: string
     organMeta?: Record<number, OrganMetaItem> | null
+    theme?: 'light' | 'dark'
+    background?: string
+    showPlane?: boolean
+    findings?: Finding[]
+    activeFindingId?: string | null
+    showFindings?: boolean
   }>(),
-  { modelId: null, spacing: null, affine: null, status: '', organMeta: null },
+  {
+    modelId: null,
+    axis: 'axial',
+    sliceIndex: 0,
+    shape: () => [512, 512, 128],
+    spacing: null,
+    affine: null,
+    status: '',
+    organMeta: null,
+    theme: 'dark',
+    background: undefined,
+    showPlane: true,
+    findings: () => [],
+    activeFindingId: null,
+    showFindings: true,
+  },
 )
 
 const emit = defineEmits<{
   selectLabel: [labelId: number]
+  selectFinding: [finding: Finding]
   loaded: []
 }>()
 
 const host = ref<HTMLDivElement | null>(null)
 const progress = ref('')
+const hoveredFinding = ref<Finding | null>(null)
+const tooltipPos = ref<{ x: number; y: number }>({ x: 0, y: 0 })
+
 let renderer: THREE.WebGLRenderer | undefined
 let scene: THREE.Scene | undefined
 let camera: THREE.PerspectiveCamera | undefined
@@ -59,6 +86,10 @@ let version = 0
 let loadController: AbortController | undefined
 let pointerDown: { x: number; y: number } | null = null
 const meshes = new Map<string, THREE.Mesh[]>()
+
+let findingsGroup: THREE.Group | undefined
+const findingObjects = new Map<string, Finding3DObject>()
+const findingHitMeshes: THREE.Mesh[] = []
 
 const planeColors: Record<SliceAxis, number> = {
   axial: 0x4ba3a6,
@@ -146,10 +177,10 @@ function styleMesh(mesh: THREE.Mesh, name: string) {
 
   let color: THREE.Color
   let roughness = 0.38
-  const metalness = 0.0 // 人体生物组织均为介电质绝缘体，严格为 0
-  let clearcoat = 0.90  // 浆膜/腹膜/外膜表面体液湿润反光层
+  const metalness = 0.0
+  let clearcoat = 0.90
   let clearcoatRoughness = 0.10
-  let ior = 1.40        // 软组织物理折射率
+  let ior = 1.40
   let transmission = 0.0
   let thickness = 0.0
   let transparent = false
@@ -157,13 +188,11 @@ function styleMesh(mesh: THREE.Mesh, name: string) {
   let depthWrite = true
 
   if (/rib|vertebra|skull|sternum|sacrum|hip|femur|humerus|scapula|clavicula|bone|spine|pelv/i.test(anatomicalName)) {
-    // 骨骼系统：天然象牙钙质白/暖灰，皮质骨干燥致密，无清漆湿润层，高哑光漫反射
     color = new THREE.Color(0xdcd5c4)
     roughness = 0.78
     clearcoat = 0.0
     ior = 1.55
   } else if (/costal|cartilage/i.test(anatomicalName)) {
-    // 软骨系统（肋软骨）：乳白半透光微浅蓝，含大量蛋白聚糖与水，具半透明感
     color = new THREE.Color(0xc2d7e0)
     roughness = 0.30
     clearcoat = 0.50
@@ -174,7 +203,6 @@ function styleMesh(mesh: THREE.Mesh, name: string) {
     opacity = 0.92
     ior = 1.42
   } else if (/lung/i.test(anatomicalName)) {
-    // 肺叶组织：健康成人肺呈淡粉灰玫瑰色，富含肺泡海绵多孔质感，微弱透光与微弱胸膜反光
     color = new THREE.Color(0xb88a8a)
     roughness = 0.60
     clearcoat = 0.25
@@ -186,86 +214,72 @@ function styleMesh(mesh: THREE.Mesh, name: string) {
     depthWrite = true
     ior = 1.38
   } else if (/heart|atrial|ventricle|myocardium/i.test(anatomicalName)) {
-    // 心脏/心肌：深红心肌组织，心外膜被覆心包浆液，高光清亮晶莹
     color = new THREE.Color(0x7a1f1e)
     roughness = 0.26
     clearcoat = 0.96
     clearcoatRoughness = 0.08
   } else if (/aorta|artery|carotid|subclavian|brachiocephalic|celiac/i.test(anatomicalName)) {
-    // 动脉系统：充盈含氧血的高压弹性血管，厚壁深红，光滑圆润
     color = new THREE.Color(0x9e1d1d)
     roughness = 0.28
     clearcoat = 0.88
     clearcoatRoughness = 0.10
   } else if (/vein|vena|cava|jugular/i.test(anatomicalName)) {
-    // 静脉系统：充盈暗红静脉血的薄壁血管，呈暗蓝灰紫暗调
     color = new THREE.Color(0x284668)
     roughness = 0.30
     clearcoat = 0.85
     clearcoatRoughness = 0.10
   } else if (/airway|trachea|bronch/i.test(anatomicalName)) {
-    // 气道/气管：软骨环淡灰黄白，膜部微透光
     color = new THREE.Color(0xd0d8dc)
     roughness = 0.35
     clearcoat = 0.40
     transmission = 0.15
     thickness = 0.3
   } else if (/liver/i.test(anatomicalName)) {
-    // 肝脏：实性大脏器，富含血窦呈深暗红褐色（肝红），腹膜反光光亮湿润
     color = new THREE.Color(0x5c241c)
     roughness = 0.35
     clearcoat = 0.95
     clearcoatRoughness = 0.10
   } else if (/spleen/i.test(anatomicalName)) {
-    // 脾脏：质脆血窦器官，呈暗紫李色，表面包膜光滑
     color = new THREE.Color(0x4a1c2c)
     roughness = 0.30
     clearcoat = 0.92
     clearcoatRoughness = 0.09
   } else if (/kidney/i.test(anatomicalName)) {
-    // 肾脏：实质深豆红褐色，表面肾纤维膜光滑润泽
     color = new THREE.Color(0x632828)
     roughness = 0.32
     clearcoat = 0.92
     clearcoatRoughness = 0.10
   } else if (/pancreas/i.test(anatomicalName)) {
-    // 胰腺：分叶状腺体，呈淡暖赭黄褐
     color = new THREE.Color(0xb08c50)
     roughness = 0.42
     clearcoat = 0.80
     clearcoatRoughness = 0.15
   } else if (/gallbladder/i.test(anatomicalName)) {
-    // 胆囊：充盈浓缩胆汁呈暗墨绿/橄榄绿，囊壁极湿润光亮
     color = new THREE.Color(0x3a5730)
     roughness = 0.22
     clearcoat = 0.98
     clearcoatRoughness = 0.06
   } else if (/stomach|duodenum|colon|bowel|esophagus|intestine/i.test(anatomicalName)) {
-    // 消化道管壁：粘膜/浆膜暖肉粉色，蠕动湿润
     color = new THREE.Color(0xb8746c)
     roughness = 0.36
     clearcoat = 0.92
     clearcoatRoughness = 0.12
   } else if (/bladder/i.test(anatomicalName)) {
-    // 膀胱：肌性囊性脏器，淡粉肌色，湿润
     color = new THREE.Color(0xb37870)
     roughness = 0.32
     clearcoat = 0.92
     clearcoatRoughness = 0.10
   } else if (/muscle|iliopsoas|autochthon|gluteus/i.test(anatomicalName)) {
-    // 骨骼肌：条纹肌纤维暗牛肉红，哑光漫散射
     color = new THREE.Color(0x852d27)
     roughness = 0.65
     clearcoat = 0.12
     clearcoatRoughness = 0.30
   } else if (/brain/i.test(anatomicalName)) {
-    // 脑组织：灰质淡粉灰，软脑膜湿润
     color = new THREE.Color(0xbda3a2)
     roughness = 0.38
     clearcoat = 0.85
     clearcoatRoughness = 0.12
   } else {
-    // 未知/其他器官
     color = rgbToThreeColor(meta?.color) || hashHueColor(anatomicalName)
     roughness = 0.38
     clearcoat = 0.80
@@ -322,7 +336,12 @@ function applyVisibility() {
 
 function updatePlane() {
   if (!plane) return
-  const spec = SLICE_AXES[props.axis]
+  plane.visible = Boolean(props.showPlane)
+  if (!props.showPlane) {
+    renderScene()
+    return
+  }
+  const spec = SLICE_AXES[props.axis || 'axial']
   const size = props.shape
   const index = Math.max(0, Math.min(size[spec.layer] - 1, props.sliceIndex))
   const u0 = spec.flipU ? size[spec.u] - 1 : 0
@@ -355,12 +374,96 @@ function updatePlane() {
   renderScene()
 }
 
+const STATIC_ORGAN_NAMES: Record<string, number> = {
+  brain: 1,
+  eye: 2,
+  heart: 3,
+  liver: 4,
+  lung: 5,
+  kidney: 6,
+  spleen: 7,
+  pancreas: 8,
+  stomach: 9,
+}
+
 function registerMesh(name: string, mesh: THREE.Mesh) {
   const list = meshes.get(name) || []
   list.push(mesh)
   meshes.set(name, list)
   const match = /label_(\d+)/.exec(name)
-  if (match) mesh.userData.labelId = Number(match[1])
+  if (match) {
+    mesh.userData.labelId = Number(match[1])
+  } else {
+    const lower = name.toLowerCase()
+    for (const [key, id] of Object.entries(STATIC_ORGAN_NAMES)) {
+      if (lower.includes(key)) {
+        mesh.userData.labelId = id
+        break
+      }
+    }
+  }
+}
+
+function updateFindings() {
+  if (!scene) return
+  if (findingsGroup) {
+    scene.remove(findingsGroup)
+    findingsGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
+        child.geometry.dispose()
+        const materials = Array.isArray(child.material) ? child.material : [child.material]
+        materials.forEach((m) => m.dispose())
+      }
+    })
+    findingsGroup = undefined
+  }
+  findingObjects.clear()
+  findingHitMeshes.length = 0
+
+  findingsGroup = new THREE.Group()
+  findingsGroup.name = 'findings_group'
+  findingsGroup.visible = Boolean(props.showFindings)
+
+  if (props.findings && props.findings.length > 0) {
+    const aff = currentAffine()
+    for (const f of props.findings) {
+      const obj = createFinding3DObject(f, aff, f.id === props.activeFindingId)
+      findingObjects.set(f.id, obj)
+      findingHitMeshes.push(obj.userData.hitMesh)
+      findingsGroup.add(obj)
+    }
+  }
+
+  scene.add(findingsGroup)
+  renderScene()
+}
+
+function focusFinding(findingId: string | null | undefined) {
+  if (!findingId || !controls || !camera) return
+  const targetObj = findingObjects.get(findingId)
+  if (!targetObj) return
+
+  const worldPos = new THREE.Vector3()
+  targetObj.getWorldPosition(worldPos)
+
+  const offset = camera.position.clone().sub(controls.target)
+  controls.target.copy(worldPos)
+  const dist = offset.length()
+  const desiredDist = Math.max(0.15, Math.min(dist, 0.45))
+  offset.normalize().multiplyScalar(desiredDist)
+  camera.position.copy(worldPos).add(offset)
+  controls.update()
+  renderScene()
+}
+
+function applyActiveFinding() {
+  findingObjects.forEach((obj, id) => {
+    obj.userData.updateActive(id === props.activeFindingId)
+  })
+  if (props.activeFindingId) {
+    focusFinding(props.activeFindingId)
+  }
+  renderScene()
 }
 
 async function load() {
@@ -386,6 +489,9 @@ async function load() {
     model = undefined
   }
   meshes.clear()
+
+  updateFindings()
+
   if (!props.modelId) {
   progress.value = props.status || t('ui.model.waitingSegmentation')
     renderScene()
@@ -393,32 +499,43 @@ async function load() {
   }
   progress.value = t('ui.model.loadingModel')
   try {
-    const buffer = await viewerApi.loadGlb(props.modelId, controller.signal)
+    let buffer: ArrayBuffer
+    if (props.modelId.startsWith('/') || props.modelId.startsWith('http')) {
+      const resp = await fetch(props.modelId, { signal: controller.signal })
+      if (!resp.ok) throw new Error('加载模型失败: ' + resp.statusText)
+      buffer = await resp.arrayBuffer()
+    } else {
+      buffer = await viewerApi.loadGlb(props.modelId, controller.signal)
+    }
     if (revision !== version) return
+
     const gltf = await new GLTFLoader().parseAsync(buffer, '')
     if (revision !== version) {
-      gltf.scene.traverse(child => {
-        if (!(child instanceof THREE.Mesh)) return
-        child.geometry.dispose()
-        const materials = Array.isArray(child.material) ? child.material : [child.material]
-        materials.forEach(material => material.dispose())
+      gltf.scene.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose()
+          const materials = Array.isArray(child.material) ? child.material : [child.material]
+          materials.forEach((m) => m.dispose())
+        }
       })
       return
     }
+
     model = gltf.scene
     model.traverse((child) => {
-      if (!(child instanceof THREE.Mesh)) return
-      const name = child.name || child.parent?.name || ''
-      if (!name) return
-      child.geometry.computeVertexNormals()
-      styleMesh(child, name)
-      registerMesh(name, child)
+      if (child instanceof THREE.Mesh) {
+        registerMesh(child.name, child)
+        styleMesh(child, child.name)
+      }
     })
-    scene.add(model)
+
     applyVisibility()
+    scene.add(model)
+    updateFindings()
+
     const box = new THREE.Box3().setFromObject(model)
-    const size = box.getSize(new THREE.Vector3())
     const center = box.getCenter(new THREE.Vector3())
+    const size = box.getSize(new THREE.Vector3())
     controls?.target.copy(center)
     camera?.position.copy(center).add(new THREE.Vector3(size.x * 1.8, size.y * 1.15, size.z * 1.8))
     controls?.update()
@@ -448,20 +565,69 @@ function onPointerUp(event: PointerEvent) {
   )
   const raycaster = new THREE.Raycaster()
   raycaster.setFromCamera(pointer, camera)
+
+  if (props.showFindings && findingHitMeshes.length > 0) {
+    const findingHits = raycaster.intersectObjects(findingHitMeshes, false)
+    if (findingHits[0]?.object.userData.finding) {
+      emit('selectFinding', findingHits[0].object.userData.finding)
+      return
+    }
+  }
+
   const objects = [...meshes.values()].flat().filter((mesh) => mesh.visible)
   const hit = raycaster.intersectObjects(objects, false)[0]
   if (hit?.object.userData.labelId != null) emit('selectLabel', Number(hit.object.userData.labelId))
 }
 
+function onPointerMove(event: PointerEvent) {
+  if (!camera || !renderer || !host.value) return
+  if (!props.showFindings || findingHitMeshes.length === 0) {
+    if (hoveredFinding.value) {
+      hoveredFinding.value = null
+      renderer.domElement.style.cursor = 'default'
+    }
+    return
+  }
+
+  const rect = renderer.domElement.getBoundingClientRect()
+  const pointer = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+  )
+  const raycaster = new THREE.Raycaster()
+  raycaster.setFromCamera(pointer, camera)
+  const hits = raycaster.intersectObjects(findingHitMeshes, false)
+  if (hits[0]?.object.userData.finding) {
+    hoveredFinding.value = hits[0].object.userData.finding
+    tooltipPos.value = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    }
+    renderer.domElement.style.cursor = 'pointer'
+  } else if (hoveredFinding.value) {
+    hoveredFinding.value = null
+    renderer.domElement.style.cursor = 'default'
+  }
+}
+
+function onMouseLeave() {
+  if (hoveredFinding.value) {
+    hoveredFinding.value = null
+    if (renderer) renderer.domElement.style.cursor = 'default'
+  }
+}
+
 onMounted(() => {
   if (!host.value) return
   scene = new THREE.Scene()
-  scene.background = new THREE.Color('#0c1418')
+  const isLight = props.theme === 'light' || props.background?.toLowerCase() === '#ffffff'
+  const bgColor = props.background || (isLight ? '#ffffff' : '#0c1418')
+  scene.background = new THREE.Color(bgColor)
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.outputColorSpace = THREE.SRGBColorSpace
   renderer.toneMapping = THREE.ACESFilmicToneMapping
-  renderer.toneMappingExposure = 1.2
+  renderer.toneMappingExposure = isLight ? 1.05 : 1.2
   host.value.appendChild(renderer.domElement)
   renderer.domElement.addEventListener('webglcontextlost', onContextLost)
   renderer.domElement.addEventListener('webglcontextrestored', onContextRestored)
@@ -476,33 +642,45 @@ onMounted(() => {
   pmrem = new THREE.PMREMGenerator(renderer)
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
 
-  // 1. 全向半球漫反射环境光：天顶浅灰蓝，天底深底色，给背光面柔和轮廓
-  scene.add(new THREE.HemisphereLight(0xddeeff, 0x182026, 1.2))
+  if (isLight) {
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd8dc, 1.4))
+    keyLight = new THREE.DirectionalLight(0xffffff, 2.2)
+    keyLight.position.set(0.6, 0.8, 1.4)
+    camera.add(keyLight)
 
-  // 2. 主高光定向光 (Headlight) 挂载到相机：无论视角如何旋转，始终从观察正面立体照明
-  keyLight = new THREE.DirectionalLight(0xfff6ee, 2.6)
-  keyLight.position.set(0.6, 0.8, 1.4)
-  camera.add(keyLight)
+    const cameraFill = new THREE.DirectionalLight(0xe0e7eb, 1.1)
+    cameraFill.position.set(-0.9, -0.5, 1.2)
+    camera.add(cameraFill)
 
-  // 3. 辅助补光灯挂载到相机左下方，柔化暗部阴影
-  const cameraFill = new THREE.DirectionalLight(0x90c5e8, 1.2)
-  cameraFill.position.set(-0.9, -0.5, 1.2)
-  camera.add(cameraFill)
+    const rim = new THREE.DirectionalLight(0x90a4ae, 0.5)
+    rim.position.set(0, 2.0, -3.0)
+    scene.add(rim)
+  } else {
+    scene.add(new THREE.HemisphereLight(0xddeeff, 0x182026, 1.2))
+    keyLight = new THREE.DirectionalLight(0xfff6ee, 2.6)
+    keyLight.position.set(0.6, 0.8, 1.4)
+    camera.add(keyLight)
 
-  // 4. 全局背面轮廓光
-  const rim = new THREE.DirectionalLight(0x5eead4, 0.8)
-  rim.position.set(0, 2.0, -3.0)
-  scene.add(rim)
+    const cameraFill = new THREE.DirectionalLight(0x90c5e8, 1.2)
+    cameraFill.position.set(-0.9, -0.5, 1.2)
+    camera.add(cameraFill)
+
+    const rim = new THREE.DirectionalLight(0x5eead4, 0.8)
+    rim.position.set(0, 2.0, -3.0)
+    scene.add(rim)
+  }
+
   plane = new THREE.Mesh(
     new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({
-      color: planeColors.axial,
+      color: planeColors[props.axis || 'axial'],
       transparent: true,
       opacity: 0.22,
       side: THREE.DoubleSide,
       depthWrite: false,
     }),
   )
+  plane.visible = Boolean(props.showPlane)
   scene.add(plane)
   observer = new ResizeObserver(() => {
     if (!host.value || !renderer || !camera) return
@@ -515,6 +693,8 @@ onMounted(() => {
   observer.observe(host.value)
   renderer.domElement.addEventListener('pointerdown', onPointerDown)
   renderer.domElement.addEventListener('pointerup', onPointerUp)
+  renderer.domElement.addEventListener('pointermove', onPointerMove)
+  renderer.domElement.addEventListener('mouseleave', onMouseLeave)
   renderScene()
   void load()
 })
@@ -524,7 +704,31 @@ watch(() => props.visibleNames.join('|'), applyVisibility)
 watch(() => props.axis, updatePlane)
 watch(() => props.sliceIndex, updatePlane)
 watch(() => props.spacing?.join(','), updatePlane)
-watch(() => props.affine, updatePlane, { deep: true })
+watch(() => props.affine, () => {
+  updatePlane()
+  updateFindings()
+}, { deep: true })
+watch(() => [props.theme, props.background], () => {
+  if (!scene) return
+  const isLight = props.theme === 'light' || props.background?.toLowerCase() === '#ffffff'
+  const bgColor = props.background || (isLight ? '#ffffff' : '#0c1418')
+  scene.background = new THREE.Color(bgColor)
+  renderScene()
+})
+watch(() => props.showPlane, (val) => {
+  if (plane) {
+    plane.visible = Boolean(val)
+    renderScene()
+  }
+})
+watch(() => props.findings, updateFindings, { deep: true })
+watch(() => props.showFindings, (val) => {
+  if (findingsGroup) {
+    findingsGroup.visible = Boolean(val)
+    renderScene()
+  }
+})
+watch(() => props.activeFindingId, applyActiveFinding)
 watch(
   () => props.organMeta,
   () => {
@@ -542,20 +746,29 @@ onBeforeUnmount(() => {
   observer?.disconnect()
   renderer?.domElement.removeEventListener('pointerdown', onPointerDown)
   renderer?.domElement.removeEventListener('pointerup', onPointerUp)
+  renderer?.domElement.removeEventListener('pointermove', onPointerMove)
+  renderer?.domElement.removeEventListener('mouseleave', onMouseLeave)
   renderer?.domElement.removeEventListener('webglcontextlost', onContextLost)
   renderer?.domElement.removeEventListener('webglcontextrestored', onContextRestored)
   controls?.removeEventListener('change', renderScene)
   controls?.dispose()
   if (scene?.environment instanceof THREE.Texture) scene.environment.dispose()
   pmrem?.dispose()
-  if (model) {
-    model.traverse(child => {
-      if (!(child instanceof THREE.Mesh)) return
-      child.geometry.dispose()
-      const materials = Array.isArray(child.material) ? child.material : [child.material]
-      materials.forEach(material => material.dispose())
+  if (scene) {
+    scene.traverse((child) => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
+        child.geometry.dispose()
+        const materials = Array.isArray(child.material) ? child.material : [child.material]
+        materials.forEach((m) => {
+          if ('map' in m && m.map instanceof THREE.Texture) m.map.dispose()
+          m.dispose()
+        })
+      }
     })
   }
+  model = undefined
+  plane = undefined
+  findingsGroup = undefined
   scene?.clear()
   renderer?.dispose()
   renderer?.forceContextLoss()
@@ -564,9 +777,46 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="anatomy-scene">
+  <div :class="['anatomy-scene', { 'light-theme': theme === 'light' || background?.toLowerCase() === '#ffffff' }]">
     <div ref="host" class="canvas" />
     <div v-if="progress" class="status">{{ progress }}</div>
+
+    <!-- 3D 浮动病灶悬浮卡片 -->
+    <div
+      v-if="hoveredFinding && showFindings"
+      class="finding-tooltip"
+      :style="{ left: `${tooltipPos.x + 14}px`, top: `${tooltipPos.y + 14}px` }"
+    >
+      <div class="tooltip-header">
+        <span class="status-badge" :class="hoveredFinding.status || 'pending'">
+          {{
+            hoveredFinding.status === 'confirmed'
+              ? '已确诊'
+              : hoveredFinding.status === 'dismissed'
+              ? '已排除'
+              : hoveredFinding.status === 'modified'
+              ? '已修改'
+              : '待复核'
+          }}
+        </span>
+        <strong class="finding-title">{{ hoveredFinding.label || '结节/肿瘤病灶' }}</strong>
+      </div>
+      <div class="tooltip-body">
+        <div v-if="hoveredFinding.diameterMm" class="tooltip-row">
+          <span class="label">长径:</span>
+          <span class="val">{{ hoveredFinding.diameterMm.toFixed(1) }} mm</span>
+        </div>
+        <div v-if="hoveredFinding.location" class="tooltip-row">
+          <span class="label">解剖部位:</span>
+          <span class="val">{{ hoveredFinding.location }}</span>
+        </div>
+        <div v-if="hoveredFinding.confidence" class="tooltip-row">
+          <span class="label">置信度:</span>
+          <span class="val">{{ (hoveredFinding.confidence * 100).toFixed(0) }}%</span>
+        </div>
+      </div>
+      <div class="tooltip-hint">💡 点击联动 2D 切片中心</div>
+    </div>
   </div>
 </template>
 
@@ -578,6 +828,10 @@ onBeforeUnmount(() => {
   border: 1px solid #1c2c34;
   border-radius: 10px;
   background: #0c1418;
+}
+.anatomy-scene.light-theme {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
 }
 .canvas {
   height: 100%;
@@ -592,5 +846,110 @@ onBeforeUnmount(() => {
   padding: 20px;
   color: #8aa3ab;
   pointer-events: none;
+}
+.anatomy-scene.light-theme .status {
+  color: #64748b;
+}
+
+/* 3D 浮动病灶悬浮卡片样式 */
+.finding-tooltip {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+  min-width: 160px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(16, 24, 32, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid #2a404c;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  color: #e2e8f0;
+  font-size: 11px;
+  transform: translateY(-50%);
+  transition: opacity 0.15s ease;
+}
+.anatomy-scene.light-theme .finding-tooltip {
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  color: #1e293b;
+}
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.anatomy-scene.light-theme .tooltip-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.finding-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+.anatomy-scene.light-theme .finding-title {
+  color: #0f172a;
+}
+.status-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.status-badge.confirmed {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+.status-badge.pending {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+.status-badge.modified {
+  background: rgba(6, 182, 212, 0.2);
+  color: #38bdf8;
+  border: 1px solid rgba(6, 182, 212, 0.4);
+}
+.status-badge.dismissed {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.4);
+}
+.tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tooltip-row .label {
+  color: #94a3b8;
+}
+.tooltip-row .val {
+  font-weight: 500;
+  color: #e2e8f0;
+}
+.anatomy-scene.light-theme .tooltip-row .val {
+  color: #1e293b;
+}
+.tooltip-hint {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  color: #38bdf8;
+  font-size: 10px;
+  text-align: center;
+}
+.anatomy-scene.light-theme .tooltip-hint {
+  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+  color: #0284c7;
 }
 </style>

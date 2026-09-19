@@ -4,7 +4,7 @@
   "users": [
     {
       "username": "admin",
-      "role": "doctor"
+      "role": "admin"
     },
     {
       "username": "demo_doctor",
@@ -15,11 +15,7 @@
       "role": "patient"
     },
     {
-      "username": "demo_patient_2",
-      "role": "patient"
-    },
-    {
-      "username": "demo_patient_3",
+      "username": "test_patient",
       "role": "patient"
     }
   ],
@@ -27,7 +23,7 @@
     {
       "fixture_id": "patient-001",
       "username": "demo_patient",
-      "display_name": "演示患者甲",
+      "display_name": "demo_patient",
       "birth_date": "1980-01-01",
       "gender": "male",
       "height_cm": 170,
@@ -40,27 +36,13 @@
     },
     {
       "fixture_id": "patient-002",
-      "username": "demo_patient_2",
-      "display_name": "演示患者乙",
+      "username": "test_patient",
+      "display_name": "test_patient",
       "birth_date": "1990-04-12",
       "gender": "female",
       "height_cm": 171,
       "weight_kg": 66,
       "blood_type": "O",
-      "doctor_access": [
-        "demo_doctor",
-        "admin"
-      ]
-    },
-    {
-      "fixture_id": "patient-003",
-      "username": "demo_patient_3",
-      "display_name": "演示患者丙",
-      "birth_date": "1972-09-03",
-      "gender": "male",
-      "height_cm": 172,
-      "weight_kg": 67,
-      "blood_type": "B",
       "doctor_access": [
         "demo_doctor",
         "admin"

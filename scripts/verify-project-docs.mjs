@@ -6,9 +6,18 @@ const exists = file => assert.equal(fs.existsSync(file), true, `missing document
 
 const readme = read('README.md')
 const vite = read('vite.config.ts')
+const packageJson = JSON.parse(read('package.json'))
+const startScript = read('scripts/start.mjs')
 assert.match(vite, /127\.0\.0\.1:8080/)
+assert.equal(packageJson.scripts.start, 'node scripts/start.mjs')
+assert.equal(packageJson.scripts['start:demo'], 'node scripts/start.mjs --frontend-only')
+assert.match(startScript, /start-preview\.ps1/)
+assert.match(startScript, /start-services\.sh/)
+assert.match(readme, /pnpm start:demo/)
 assert.match(readme, /VMRB_BACKEND_URL=http:\/\/127\.0\.0\.1:8000/)
-assert.match(readme, /0021_ai_providers_and_invocations/)
+assert.match(readme, /0017_patient_onboarding_and_archives/)
+assert.match(readme, /0018_merge_mri_and_v5/)
+assert.match(readme, /0019_reconcile_access_control/)
 assert.doesNotMatch(readme, /compose\.override\.yaml/)
 for (const file of ['compose.yaml', 'compose.infra.yaml', 'compose.gpu.yaml', 'backend/.env.example']) exists(file)
 const featureMatrix = read('docs/feature-matrix.md')
@@ -17,10 +26,11 @@ for (const mode of ['Synthetic demo', 'Local browser import', 'Real API']) {
 }
 
 const migrations = fs.readdirSync('backend/migrations/versions').filter(file => file.endsWith('.py')).sort()
-assert.equal(migrations.at(-1), '0021_ai_providers_and_invocations.py')
+assert.equal(migrations.at(-1), '0023_ai_providers_and_invocations.py')
 
 console.log(JSON.stringify({ passed: true, checks: [
   'documented development and backend ports match Vite proxy configuration',
+  'pnpm start orchestrates the backend on Windows, macOS, and Linux',
   'documented Compose files and latest migration exist',
   'README distinguishes demo, real API, and production upload capabilities',
 ] }, null, 2))

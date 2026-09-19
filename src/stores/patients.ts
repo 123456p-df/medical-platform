@@ -10,12 +10,12 @@ import { mockExaminations, mockFindings, mockPatients, mockReports } from '@/dat
 import { localPreview } from '@/utils/runtime'
 import { getLocalUploads } from '@/api/localStudyRepository'
 
-const PREVIEW_PATIENTS_KEY = 'pulmolink-preview-patients'
-const PREVIEW_ARCHIVED_PATIENTS_KEY = 'pulmolink-preview-archived-patients'
-const PREVIEW_ARCHIVED_RECORDS_KEY = 'pulmolink-preview-archived-records'
-const PREVIEW_REVIEW_KEY = 'pulmolink-preview-review-status'
-const PREVIEW_REPORTS_KEY = 'pulmolink-preview-reports'
-const PREVIEW_FINDINGS_KEY = 'pulmolink-preview-findings-v1'
+const PREVIEW_PATIENTS_KEY = 'pulmolink-preview-patients-v2'
+const PREVIEW_ARCHIVED_PATIENTS_KEY = 'pulmolink-preview-archived-patients-v2'
+const PREVIEW_ARCHIVED_RECORDS_KEY = 'pulmolink-preview-archived-records-v2'
+const PREVIEW_REVIEW_KEY = 'pulmolink-preview-review-status-v2'
+const PREVIEW_REPORTS_KEY = 'pulmolink-preview-reports-v2'
+const PREVIEW_FINDINGS_KEY = 'pulmolink-preview-findings-v2'
 
 export interface PatientDraft {
   name: string

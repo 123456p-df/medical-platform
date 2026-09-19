@@ -41,8 +41,8 @@ export function capabilityForStudy(study: Examination | null | undefined, role: 
           : available(),
     segmentation: backendUnavailable
       ? unavailable(backendReason)
-      : study.type !== 'CT'
-        ? unavailable('当前分割模型只支持 CT。')
+      : !['CT', 'MRI'].includes(study.type)
+        ? unavailable('当前分割模型支持 CT 与 MRI。')
         : ['eye', 'other'].includes(study.organId || '')
           ? unavailable('当前器官没有可用的分割模型。')
           : role !== 'doctor'
@@ -50,8 +50,8 @@ export function capabilityForStudy(study: Examination | null | undefined, role: 
             : available(),
     reconstruction3d: locallyStored
       ? unavailable('本地影像尚未生成服务端三维模型。')
-      : study.type !== 'CT'
-        ? unavailable('当前三维重建流程只支持 CT。')
+      : !['CT', 'MRI'].includes(study.type)
+        ? unavailable('当前三维重建流程支持 CT 与 MRI。')
         : available(),
   }
 }

@@ -1,27 +1,35 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Box, Layers } from 'lucide-vue-next'
+import { useRoute, useRouter } from 'vue-router'
+import { Box, Layers, ScanLine } from 'lucide-vue-next'
 import { usePatientStore } from '@/stores/patients'
 import { capabilityForStudy } from '@/utils/capabilities'
 import { useAuthStore } from '@/stores/auth'
-import StudyViewerWindow from '@/views/viewer/StudyViewerWindow.vue'
 import { t } from '@/i18n'
 
+const route = useRoute()
+const router = useRouter()
 const store = usePatientStore()
 const auth = useAuthStore()
-const ctStudies = computed(() => store.examinations.filter((item) => item.type === 'CT'))
-const reconstructableStudies = computed(() => ctStudies.value.filter(study => capabilityForStudy(study, auth.portal).reconstruction3d.enabled))
-const unavailableReason = computed(() => ctStudies.value.length
-  ? capabilityForStudy(ctStudies.value[0], auth.portal).reconstruction3d.reason
+const patientId = computed(() => String(route.params.id))
+const volumeStudies = computed(() => store.examinations.filter((item) => ['CT', 'MRI'].includes(item.type)))
+const reconstructableStudies = computed(() => volumeStudies.value.filter(study => capabilityForStudy(study, auth.portal).reconstruction3d.enabled))
+const unavailableReason = computed(() => volumeStudies.value.length
+  ? capabilityForStudy(volumeStudies.value[0], auth.portal).reconstruction3d.reason
   : t('ui.patient3d.noCt'))
 
+async function openViewer() {
+  const exam = reconstructableStudies.value[0]
+  await router.push({
+    name: 'study-viewer',
+    params: { patientId: patientId.value },
+    query: exam ? { image: exam.id } : {},
+  })
+}
 </script>
 
 <template>
-  <section v-if="reconstructableStudies.length" class="embedded-3d">
-    <StudyViewerWindow embedded />
-  </section>
-  <section v-else class="card viewer-launch">
+  <section class="card viewer-launch">
     <div class="launch-icon">
       <Box :size="36" />
     </div>
@@ -39,16 +47,16 @@ const unavailableReason = computed(() => ctStudies.value.length
       </div>
     </div>
     <div class="launch-action">
-      <button type="button" class="btn btn-secondary launch-btn" disabled>{{ unavailableReason }}</button>
+      <button v-if="reconstructableStudies.length" type="button" class="btn btn-primary launch-btn" @click="openViewer">
+        <span>{{ $t('ui.patient3d.openInTab') }}</span>
+        <ScanLine :size="16" />
+      </button>
+      <button v-else type="button" class="btn btn-secondary launch-btn" disabled>{{ unavailableReason }}</button>
     </div>
   </section>
 </template>
 
 <style scoped>
-.embedded-3d {
-  min-height: min(820px, calc(100vh - var(--topbar-height) - 48px));
-}
-
 .viewer-launch {
   display: flex;
   min-height: 220px;

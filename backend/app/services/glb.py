@@ -1,8 +1,13 @@
+import gzip
 import hashlib
 import io
 import json
+import os
 import struct
+import tempfile
+from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 
 import trimesh
 
@@ -56,6 +61,57 @@ def store_model_blob(db, model_id: str, data: bytes) -> OrganModelBlob:
         blob.sha256 = digest
         blob.size_bytes = len(payload)
     return blob
+
+
+_gzip_cache: OrderedDict[str, bytes] = OrderedDict()
+_gzip_lock = Lock()
+_gzip_limit = 96 * 1024 * 1024
+
+
+def gzip_bytes(data: bytes) -> bytes:
+    return gzip.compress(data, compresslevel=6, mtime=0)
+
+
+def gzip_file_sidecar(path: Path) -> Path:
+    target = path.with_name(path.name + ".gz")
+    if not target.is_file() or target.stat().st_mtime_ns < path.stat().st_mtime_ns:
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=path.parent, prefix=".glb-", suffix=".tmp", delete=False
+            ) as output:
+                temporary = Path(output.name)
+                output.write(gzip_bytes(path.read_bytes()))
+            os.replace(temporary, target)
+        finally:
+            if temporary:
+                temporary.unlink(missing_ok=True)
+    return target
+
+
+def gzip_cached(key: str, data: bytes) -> bytes:
+    with _gzip_lock:
+        hit = _gzip_cache.get(key)
+        if hit is not None:
+            _gzip_cache.move_to_end(key)
+            return hit
+        encoded = gzip_bytes(data)
+        while _gzip_cache and sum(len(item) for item in _gzip_cache.values()) + len(encoded) > _gzip_limit:
+            _gzip_cache.popitem(last=False)
+        _gzip_cache[key] = encoded
+        return encoded
+
+
+def glb_wire_for(db, model: OrganModel | None, settings) -> bytes | None:
+    raw = glb_bytes_for(db, model, settings)
+    if raw is None:
+        return None
+    if model and model.file_path:
+        path = stored_path(settings, model.file_path)
+        if path.is_file():
+            return gzip_file_sidecar(path).read_bytes()
+    key = model.id if model else hashlib.sha256(raw).hexdigest()
+    return gzip_cached(key, raw)
 
 
 def glb_bytes_for(db, model: OrganModel | None, settings) -> bytes | None:

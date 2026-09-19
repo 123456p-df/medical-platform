@@ -11,16 +11,15 @@ import {
   type SegmentationBatch,
   type ViewerOrgan,
 } from '@/api/viewer'
-import type { Examination } from '@/types'
+import type { Examination, Finding } from '@/types'
+import { findingApi } from '@/api/findings'
 import type { LabelVolume, SliceAxis, StainStyle } from '@/utils/volumePixels'
-import { sliceCount as axisSliceCount } from '@/utils/sliceAxes'
+import { sliceCount as axisSliceCount, voxelToRas } from '@/utils/sliceAxes'
 import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
 import { VolumeRenderer } from '@/utils/volumeRenderer'
 import { activeMedicalTool } from '@/composables/useViewportGestures'
 import { t } from '@/i18n'
-
-const props = defineProps<{ embedded?: boolean }>()
 
 const ORIENTATION_OPTIONS = [
   { id: 'axial', label: 'ui.viewer3d.axis.axial' },
@@ -67,11 +66,15 @@ const compareBatch = ref<SegmentationBatch | null>(null)
 const candidates = ref<ComparisonCandidate[]>([])
 const labels = ref<LabelVolume | null>(null)
 const compareLabels = ref<LabelVolume | null>(null)
+const findings = ref<Finding[]>([])
+const activeFindingId = ref<string | null>(null)
+const findingsVisible = ref(true)
 const selectedGroups = ref<string[]>([])
 const preset = ref('lung')
 const volumeRenderer = shallowRef<VolumeRenderer | null>(null)
 const compareRenderer = shallowRef<VolumeRenderer | null>(null)
 const volumeProgress = ref(0)
+const atlasAllowed = ref(false)
 const workspace = ref<HTMLElement | null>(null)
 const storedWidth = Number(localStorage.getItem('vmrb-3d-pane-width'))
 const paneWidth = ref(Number.isFinite(storedWidth) && storedWidth >= 320 ? storedWidth : 420)
@@ -80,9 +83,9 @@ const sideBySide = ref(true)
 let resizeStartX = 0, resizeStartWidth = 0, pollTimer: ReturnType<typeof setTimeout> | undefined
 let initialized = false
 
-const ctStudies = computed(() => studies.value.filter((item) => item.type === 'CT'))
-const primary = computed(() => ctStudies.value.find((item) => item.id === imageId.value) || ctStudies.value[0])
-const secondary = computed(() => ctStudies.value.find((item) => item.id === compareId.value) || null)
+const reconstructableStudies = computed(() => studies.value.filter((item) => ['CT', 'MRI'].includes(item.type)))
+const primary = computed(() => reconstructableStudies.value.find((item) => item.id === imageId.value) || reconstructableStudies.value[0])
+const secondary = computed(() => reconstructableStudies.value.find((item) => item.id === compareId.value) || null)
 
 const mprViewports = computed<MprViewportConfig[]>(() => {
   if (!primary.value) return []
@@ -363,7 +366,7 @@ function updateQuery() {
 }
 
 async function loadStudies() {
-  studies.value = (await examinationApi.getExaminationsByPatient(patientId.value)).filter((item) => item.type === 'CT')
+  studies.value = (await examinationApi.getExaminationsByPatient(patientId.value)).filter((item) => ['CT', 'MRI'].includes(item.type))
   if (!imageId.value || !studies.value.some((item) => item.id === imageId.value)) {
     imageId.value = studies.value[0]?.id || ''
   }
@@ -392,18 +395,30 @@ async function loadLabelsFor(study: Examination | null, target: typeof labels) {
   }
 }
 
+async function loadFindings() {
+  if (!primary.value) {
+    findings.value = []
+    return
+  }
+  try {
+    findings.value = await findingApi.getFindingsByExamination(primary.value.id)
+  } catch (err) {
+    console.warn('Failed to load findings for study', err)
+    findings.value = []
+  }
+}
+
 async function refresh() {
   if (!primary.value) return
   error.value = ''
   await Promise.all([
     loadBatch(primary.value.id, batch),
     viewerApi.getCandidates(primary.value.id).then((items) => { candidates.value = items }).catch(() => { candidates.value = [] }),
+    loadFindings(),
   ])
   if (groups.value.length && !selectedGroups.value.length) restoreSelection()
-  await loadLabelsFor(primary.value, labels)
   if (secondary.value) {
     await loadBatch(secondary.value.id, compareBatch)
-    await loadLabelsFor(secondary.value, compareLabels)
   } else {
     compareBatch.value = null
     compareLabels.value = null
@@ -460,7 +475,7 @@ function selectStudy(id: string) {
   imageId.value = id
   if (compareId.value === id) compareId.value = ''
   selectedGroups.value = []
-  const study = ctStudies.value.find((item) => item.id === id)
+  const study = reconstructableStudies.value.find((item) => item.id === id)
   if (study) {
     currentAxis.value = detectPrimaryAxis(study)
   }
@@ -494,7 +509,7 @@ function invertAffine(affine: number[][], ras: number[]): [number, number, numbe
     [(m[1][2] * m[2][0] - m[1][0] * m[2][2]) / det, (m[0][0] * m[2][2] - m[0][2] * m[2][0]) / det, (m[0][2] * m[1][0] - m[0][0] * m[1][2]) / det],
     [(m[1][0] * m[2][1] - m[1][1] * m[2][0]) / det, (m[0][1] * m[2][0] - m[0][0] * m[2][1]) / det, (m[0][0] * m[1][1] - m[0][1] * m[1][0]) / det],
   ]
-  const x = ras[0] - m[0][3], y = ras[1] - m[1][3], z = ras[2] - m[2][3]
+  const x = ras[0] - (m[0]?.[3] || 0), y = ras[1] - (m[1]?.[3] || 0), z = ras[2] - (m[2]?.[3] || 0)
   return [
     inv[0][0] * x + inv[0][1] * y + inv[0][2] * z,
     inv[1][0] * x + inv[1][1] * y + inv[1][2] * z,
@@ -509,7 +524,8 @@ function jumpToOrgan(labelId: number) {
   if (!centroid || !study) return
   const ras = [centroid[0] * 1000, -centroid[2] * 1000, centroid[1] * 1000]
   const affine = affineOf(study)
-  const voxel = affine ? invertAffine(affine, ras) : ras
+  const spacing = spacingOf(study)
+  const voxel = affine ? invertAffine(affine, ras) : [ras[0] / (spacing[0] || 1), ras[1] / (spacing[1] || 1), ras[2] / (spacing[2] || 1)]
   const index =
     axis.value === 'axial'
       ? voxel[2]
@@ -518,6 +534,60 @@ function jumpToOrgan(labelId: number) {
         : voxel[0]
   const count = sliceCount(study)
   position.value = sliceToPosition(Math.round(Math.min(count - 1, Math.max(0, index))), count)
+}
+
+function handleUpdateFindingBox(
+  id: string,
+  centerVoxel: [number, number, number],
+  boxVoxel: [number, number, number, number, number, number],
+  diameterMm: number
+) {
+  const f = findings.value.find((item) => item.id === id)
+  if (f) {
+    f.centerVoxel = centerVoxel
+    f.boxVoxel = boxVoxel
+    f.diameterMm = diameterMm
+  }
+}
+
+function jumpToFinding(target: Finding | string) {
+  const finding = typeof target === 'string' ? findings.value.find((item) => item.id === target) : target
+  if (!finding) return
+  activeFindingId.value = finding.id
+  const study = primary.value
+  if (!study) return
+
+  let ras: [number, number, number] | null = null
+  let voxel: [number, number, number] | null = null
+
+  if (finding.centerVoxel && finding.centerVoxel.length >= 3) {
+    voxel = [finding.centerVoxel[0], finding.centerVoxel[1], finding.centerVoxel[2]]
+    const affine = affineOf(study)
+    if (affine) {
+      ras = voxelToRas(voxel[0], voxel[1], voxel[2], affine)
+    }
+  } else if (finding.centerWorldMm && finding.centerWorldMm.length >= 3) {
+    ras = [finding.centerWorldMm[0], finding.centerWorldMm[1], finding.centerWorldMm[2]]
+    const affine = affineOf(study)
+    if (affine) {
+      voxel = invertAffine(affine, ras)
+    }
+  }
+
+  if (ras) {
+    worldAnchor.value = ras
+  }
+
+  if (voxel) {
+    const index =
+      axis.value === 'axial'
+        ? voxel[2]
+        : axis.value === 'coronal'
+          ? voxel[1]
+          : voxel[0]
+    const count = sliceCount(study)
+    position.value = sliceToPosition(Math.round(Math.min(count - 1, Math.max(0, index))), count)
+  }
 }
 
 function layoutRight() {
@@ -541,6 +611,16 @@ watch(groups, (list) => {
   if (list.length && !selectedGroups.value.length) restoreSelection()
 })
 
+function exitViewer() {
+  void router.push({ name: 'doctor-patient-3d', params: { id: patientId.value } })
+}
+
+function onViewerKeydown(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented) return
+  event.preventDefault()
+  exitViewer()
+}
+
 const volumeVersions = { primary: 0, compare: 0 }
 
 async function loadVolume(study: Examination | null, target: typeof volumeRenderer, slot: 'primary' | 'compare') {
@@ -551,13 +631,21 @@ async function loadVolume(study: Examination | null, target: typeof volumeRender
   const engine = new VolumeRenderer()
   try {
     await engine.load(study.id, shapeOf(study), (value) => { volumeProgress.value = value })
-    if (revision === volumeVersions[slot]) target.value = engine
-    else engine.dispose()
+    if (revision !== volumeVersions[slot]) {
+      engine.dispose()
+      return
+    }
+    target.value = engine
+    if (target === volumeRenderer) await loadLabelsFor(study, labels)
+    else await loadLabelsFor(study, compareLabels)
   } catch {
     engine.dispose()
   }
 }
 
+watch(volumeProgress, (value) => {
+  if (value > 0) atlasAllowed.value = true
+})
 watch(
   () => primary.value?.id,
   (id) => { void loadVolume(primary.value || null, volumeRenderer, 'primary'); void id },
@@ -568,14 +656,13 @@ watch(
 )
 
 onMounted(async () => {
-  if (!props.embedded) {
-    document.title = t('ui.viewer3d.title')
-    document.documentElement.style.overflow = 'hidden'
-    document.documentElement.style.height = '100%'
-    document.body.style.overflow = 'hidden'
-    document.body.style.height = '100%'
-    document.body.style.overscrollBehavior = 'none'
-  }
+  window.addEventListener('keydown', onViewerKeydown)
+  document.title = t('ui.viewer3d.title')
+  document.documentElement.style.overflow = 'hidden'
+  document.documentElement.style.height = '100%'
+  document.body.style.overflow = 'hidden'
+  document.body.style.height = '100%'
+  document.body.style.overscrollBehavior = 'none'
 
   activeMedicalTool.value = 'ww_wl'
   if (localPreview) {
@@ -589,6 +676,7 @@ onMounted(async () => {
     }
     await refresh()
     initialized = true
+    window.setTimeout(() => { atlasAllowed.value = true }, 350)
     schedulePoll()
     layoutRight()
     if (typeof ResizeObserver !== 'undefined' && rightPaneRef.value) {
@@ -609,15 +697,14 @@ onMounted(async () => {
   }
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onViewerKeydown)
   volumeVersions.primary++
   volumeVersions.compare++
-  if (!props.embedded) {
-    document.documentElement.style.overflow = ''
-    document.documentElement.style.height = ''
-    document.body.style.overflow = ''
-    document.body.style.height = ''
-    document.body.style.overscrollBehavior = ''
-  }
+  document.documentElement.style.overflow = ''
+  document.documentElement.style.height = ''
+  document.body.style.overflow = ''
+  document.body.style.height = ''
+  document.body.style.overscrollBehavior = ''
 
   finishResize()
   if (pollTimer) clearTimeout(pollTimer)
@@ -631,13 +718,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="workspace" class="viewer-window" :class="{ resizing, embedded: props.embedded }" :style="workspaceStyle" @wheel.passive.stop>
+  <div ref="workspace" class="viewer-window" :class="{ resizing }" :style="workspaceStyle" @wheel.passive.stop>
     <header class="viewer-toolbar" @wheel.prevent>
       <div class="toolbar-block">
         <strong>{{ $t('ui.viewer3d.title') }}</strong>
         <label>{{ $t('ui.viewer3d.examination') }}
           <select :value="primary?.id" @change="selectStudy(($event.target as HTMLSelectElement).value)">
-            <option v-for="study in ctStudies" :key="study.id" :value="study.id">
+            <option v-for="study in reconstructableStudies" :key="study.id" :value="study.id">
               {{ study.date }} · {{ study.sliceCount }} slices
             </option>
           </select>
@@ -655,6 +742,11 @@ onBeforeUnmount(() => {
             </option>
           </select>
         </label>
+      </div>
+      <div class="toolbar-block">
+        <button type="button" :title="$t('ui.viewer3d.exitHelp')" @click="exitViewer">
+          {{ $t('ui.viewer3d.exit') }} <kbd>{{ $t('ui.viewer3d.escapeKey') }}</kbd>
+        </button>
       </div>
       <div class="toolbar-block">
         <span>{{ $t('ui.viewer3d.viewMode') }}</span>
@@ -718,7 +810,7 @@ onBeforeUnmount(() => {
       <section class="left-pane">
         <div class="scenes" :class="{ compare: Boolean(secondary) }">
           <AnatomyScene
-            v-if="primary"
+            v-if="primary && atlasAllowed"
             :model-id="batch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
@@ -728,10 +820,14 @@ onBeforeUnmount(() => {
             :affine="affineOf(primary)"
             :status="batch ? $t('ui.viewer3d.segmentationStatus', { status: batch.status }) : $t('ui.viewer3d.notSegmented')"
             :organ-meta="organMetaMap"
+            :findings="findings"
+            :active-finding-id="activeFindingId"
+            :show-findings="findingsVisible"
             @select-label="jumpToOrgan"
+            @select-finding="jumpToFinding"
           />
           <AnatomyScene
-            v-if="secondary"
+            v-if="secondary && atlasAllowed"
             :model-id="compareBatch?.atlas_model_id"
             :visible-names="visibleNames"
             :axis="axis"
@@ -743,7 +839,15 @@ onBeforeUnmount(() => {
             @select-label="jumpToOrgan"
           />
         </div>
-        <OrganVisibilityList :groups="groups" :selected="selectedGroups" @toggle="toggleOrgan" @set-all="setAll" />
+        <OrganVisibilityList
+          :groups="groups"
+          :selected="selectedGroups"
+          :findings-count="findings.length"
+          :findings-visible="findingsVisible"
+          @toggle="toggleOrgan"
+          @set-all="setAll"
+          @toggle-findings="findingsVisible = $event"
+        />
       </section>
       <div
         class="pane-resizer"
@@ -785,7 +889,11 @@ onBeforeUnmount(() => {
             :compact="vp.compact"
             :sync-crosshairs="false"
             :show-crosshairs="false"
+            :findings="findingsVisible && vp.study.id === primary?.id ? findings : []"
+            :selected-finding-id="activeFindingId"
             @position-change="onPositionFrom(vp.study, $event, vp.axis)"
+            @select-finding="jumpToFinding"
+            @update-finding-box="handleUpdateFindingBox"
           />
         </template>
         <template v-else>
@@ -804,7 +912,11 @@ onBeforeUnmount(() => {
             :title="secondary ? $t('ui.viewer3d.currentStudy') : undefined"
             :sync-crosshairs="false"
             :show-crosshairs="false"
+            :findings="findingsVisible ? findings : []"
+            :selected-finding-id="activeFindingId"
             @position-change="onPositionFrom(primary, $event, axis)"
+            @select-finding="jumpToFinding"
+            @update-finding-box="handleUpdateFindingBox"
           />
           <SliceViewport
             v-if="secondary"
@@ -843,13 +955,6 @@ onBeforeUnmount(() => {
   background: #0f1b22;
   color: #d7e6e8;
   box-sizing: border-box;
-}
-.viewer-window.embedded {
-  height: min(820px, calc(100vh - var(--topbar-height) - 48px));
-  width: 100%;
-  max-width: 100%;
-  border: 1px solid #263c47;
-  border-radius: 12px;
 }
 .viewer-toolbar {
   display: flex;

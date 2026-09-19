@@ -1,32 +1,119 @@
-param([int]$FrontendPort = 4173, [int]$BackendPort = 8000, [int]$DatabasePort = 55440)
+param(
+  [int]$FrontendPort = 4173,
+  [int]$BackendPort = 8000,
+  [int]$DatabasePort = 15432,
+  [string]$PostgresBin = $env:VMRB_POSTGRES_BIN,
+  [string]$NvSegmentDir = $env:NV_SEGMENT_CT_DIR
+)
 $ErrorActionPreference = 'Stop'
+
+function Test-NativeCommand {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$FilePath,
+    [string[]]$ArgumentList = @()
+  )
+
+  # Windows PowerShell converts redirected native stderr into NativeCommandError.
+  # Dependency and service probes are expected to fail, so inspect their exit
+  # codes without allowing probe output to terminate the launcher.
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'SilentlyContinue'
+    & $FilePath @ArgumentList *> $null
+    return $LASTEXITCODE -eq 0
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $previewRoot = Join-Path $projectRoot '.cache\preview'
 $backendRoot = Join-Path $projectRoot 'backend'
-$frontendRoot = Join-Path $projectRoot 'medical-platform\Medical'
+$frontendRoot = $projectRoot
 $pythonExe = Join-Path $backendRoot '.venv\Scripts\python.exe'
-$pgBin = 'C:\Program Files\PostgreSQL\18\bin'
 $clusterRoot = Join-Path $previewRoot 'postgres'
 New-Item -ItemType Directory -Force -Path $previewRoot | Out-Null
-if (-not (Test-Path -LiteralPath $pythonExe)) { throw 'Install the backend dependencies with uv sync first.' }
-if (-not (Test-Path -LiteralPath (Join-Path $pgBin 'initdb.exe'))) { throw 'PostgreSQL 18 binaries are required. Set pgBin to your installation directory.' }
+$uv = Get-Command uv.exe -ErrorAction SilentlyContinue
+if (-not (Test-Path -LiteralPath $pythonExe)) {
+  if (-not $uv) { throw 'Install uv, then run uv sync --locked --project backend.' }
+  & $uv.Source sync --locked --project $backendRoot
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $pythonExe)) {
+    throw 'Backend dependency installation failed.'
+  }
+}
+$skipNvSegmentSetup = $env:VMRB_SKIP_NV_SEGMENT_SETUP -eq '1'
+if (-not $skipNvSegmentSetup -and -not $NvSegmentDir -and (Test-Path -LiteralPath 'D:\NV-Segment-CTMR')) {
+  $NvSegmentDir = 'D:\NV-Segment-CTMR'
+}
+if (-not $skipNvSegmentSetup -and $NvSegmentDir) {
+  $resolvedNvSegmentDir = (Resolve-Path -LiteralPath $NvSegmentDir -ErrorAction Stop).Path
+  $modelHelper = Join-Path $resolvedNvSegmentDir 'hugging_face_pipeline.py'
+  $modelWeights = Join-Path $resolvedNvSegmentDir 'vista3d_pretrained_model\model.pt'
+  if (-not (Test-Path -LiteralPath $modelHelper) -or -not (Test-Path -LiteralPath $modelWeights)) {
+    throw "NV-Segment-CTMR is incomplete at $resolvedNvSegmentDir; expected hugging_face_pipeline.py and vista3d_pretrained_model/model.pt."
+  }
+  $nvRuntimeReady = Test-NativeCommand -FilePath $pythonExe -ArgumentList @(
+    '-c',
+    'import monai, torch, transformers'
+  )
+  if (-not $nvRuntimeReady) {
+    if (-not $uv) { throw 'Install uv so the NV-Segment-CTMR runtime dependencies can be installed.' }
+    Write-Output 'Installing NV-Segment-CTMR runtime dependencies (first launch only)...'
+    & $uv.Source pip install --python $pythonExe -r (Join-Path $backendRoot 'requirements-nv.txt')
+    if ($LASTEXITCODE -ne 0) { throw 'NV-Segment-CTMR runtime dependency installation failed.' }
+  }
+  $env:NV_SEGMENT_CT_DIR = $resolvedNvSegmentDir
+  $env:NV_SEGMENT_DEVICE = if ($env:NV_SEGMENT_DEVICE) { $env:NV_SEGMENT_DEVICE } else { 'cuda:0' }
+  $env:NV_SEGMENT_ROI_SIZE = if ($env:NV_SEGMENT_ROI_SIZE) { $env:NV_SEGMENT_ROI_SIZE } else { '[192,192,128]' }
+  $env:NV_SEGMENT_OVERLAP = if ($env:NV_SEGMENT_OVERLAP) { $env:NV_SEGMENT_OVERLAP } else { '0.3' }
+  Write-Output "NV-Segment-CTMR connected: $resolvedNvSegmentDir"
+}
+if (-not $PostgresBin) {
+  $initdb = Get-Command initdb.exe -ErrorAction SilentlyContinue
+  if ($initdb) {
+    $PostgresBin = Split-Path -Parent $initdb.Source
+  } else {
+    $postgresRoot = Join-Path $env:ProgramFiles 'PostgreSQL'
+    $installation = Get-ChildItem -LiteralPath $postgresRoot -Directory -ErrorAction SilentlyContinue |
+      Sort-Object Name -Descending |
+      Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'bin\initdb.exe') } |
+      Select-Object -First 1
+    if ($installation) { $PostgresBin = Join-Path $installation.FullName 'bin' }
+  }
+}
+if (-not $PostgresBin -or -not (Test-Path -LiteralPath (Join-Path $PostgresBin 'initdb.exe'))) {
+  throw 'PostgreSQL tools were not found. Add them to PATH or set VMRB_POSTGRES_BIN.'
+}
+$PostgresBin | Set-Content -LiteralPath (Join-Path $previewRoot 'postgres-bin')
 $passwordFile = Join-Path $previewRoot 'db-password'
 if (-not (Test-Path -LiteralPath $passwordFile)) {
   & $pythonExe -c "import secrets,sys; from pathlib import Path; Path(sys.argv[1]).write_text(secrets.token_urlsafe(32))" $passwordFile
   if ($LASTEXITCODE -ne 0) { throw 'Cannot generate preview database password.' }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $clusterRoot 'PG_VERSION'))) {
-  & (Join-Path $pgBin 'initdb.exe') -D $clusterRoot -U vmrb --auth=scram-sha-256 "--pwfile=$passwordFile" --encoding=UTF8 --locale=C
+  & (Join-Path $PostgresBin 'initdb.exe') -D $clusterRoot -U vmrb --auth=scram-sha-256 "--pwfile=$passwordFile" --encoding=UTF8 --locale=C
   if ($LASTEXITCODE -ne 0) { throw 'Preview database initialization failed.' }
 }
-& (Join-Path $pgBin 'pg_ctl.exe') -D $clusterRoot status *> $null
-if ($LASTEXITCODE -ne 0) {
+$postgresRunning = Test-NativeCommand -FilePath (Join-Path $PostgresBin 'pg_ctl.exe') -ArgumentList @(
+  '-D',
+  $clusterRoot,
+  'status'
+)
+if (-not $postgresRunning) {
   $pgArguments = @('-D', ('"' + $clusterRoot + '"'), '-l', ('"' + (Join-Path $previewRoot 'postgres.log') + '"'), '-o', ('"-h 127.0.0.1 -p ' + $DatabasePort + '"'), '-w', 'start')
-  Start-Process -FilePath (Join-Path $pgBin 'pg_ctl.exe') -ArgumentList $pgArguments -WindowStyle Hidden | Out-Null
+  Start-Process -FilePath (Join-Path $PostgresBin 'pg_ctl.exe') -ArgumentList $pgArguments -WindowStyle Hidden | Out-Null
   $databaseReady = $false
   for ($i = 0; $i -lt 40; $i++) {
-    & (Join-Path $pgBin 'pg_isready.exe') -h 127.0.0.1 -p $DatabasePort -U vmrb *> $null
-    if ($LASTEXITCODE -eq 0) { $databaseReady = $true; break }
+    $databaseReady = Test-NativeCommand -FilePath (Join-Path $PostgresBin 'pg_isready.exe') -ArgumentList @(
+      '-h',
+      '127.0.0.1',
+      '-p',
+      [string]$DatabasePort,
+      '-U',
+      'vmrb'
+    )
+    if ($databaseReady) { break }
     Start-Sleep -Milliseconds 250
   }
   if (-not $databaseReady) { throw 'Preview database did not become ready; inspect .cache/preview/postgres.log.' }
@@ -37,11 +124,11 @@ $env:DATABASE_URL = 'postgresql+psycopg://vmrb:' + $previewPassword + '@127.0.0.
 if ($LASTEXITCODE -ne 0) { throw 'Cannot create preview database.' }
 $env:DATABASE_URL = 'postgresql+psycopg://vmrb:' + $previewPassword + '@127.0.0.1:' + $DatabasePort + '/vmrb_preview'
 $env:STORAGE_ROOT = Join-Path $previewRoot 'medical-data'
-$env:VMRB_DEMO_SEED = '1'
 Push-Location $backendRoot
 try {
   & $pythonExe -m alembic upgrade head
   if ($LASTEXITCODE -ne 0) { throw 'Migration failed.' }
+  $env:VMRB_DEMO_SEED = '1'
   & $pythonExe -m app.demo
   if ($LASTEXITCODE -ne 0) { throw 'Preview data creation failed.' }
 } finally { Pop-Location }
@@ -56,6 +143,7 @@ foreach ($entry in @(@($backendPidPath, $BackendPort), @($frontendPidPath, $Fron
 $backendArgs = @('-m', 'uvicorn', 'app.main:create_app', '--factory', '--host', '127.0.0.1', '--port', $BackendPort, '--workers', '1', '--no-access-log')
 $backendProcess = Start-Process -FilePath $pythonExe -ArgumentList $backendArgs -WorkingDirectory $backendRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $previewRoot 'backend.log') -RedirectStandardError (Join-Path $previewRoot 'backend-error.log')
 $backendProcess.Id | Set-Content -LiteralPath $backendPidPath
+$env:VITE_LOCAL_PREVIEW = 'false'
 $env:VITE_PREVIEW = 'true'
 $env:VMRB_BACKEND_URL = 'http://127.0.0.1:' + $BackendPort
 $nodeExe = (Get-Command node.exe).Source
@@ -72,5 +160,7 @@ for ($i = 0; $i -lt 40; $i++) {
 if (-not $previewReady) { throw 'Preview startup failed; inspect logs in .cache/preview and run stop-preview.ps1.' }
 Write-Output "Preview starting: http://127.0.0.1:$FrontendPort"
 Write-Output "Backend docs: http://127.0.0.1:$BackendPort/docs"
-Write-Output 'Demo doctor: demo_doctor / DemoDoctor123!'
-Write-Output 'Demo patient: demo_patient / DemoPatient123!'
+Write-Output 'Demo accounts: admin, demo_doctor, demo_patient, test_patient / 123456'
+if (-not $env:VMRB_DEMO_SCAN_DIR) {
+  Write-Output 'No demo scans were configured; upload a CT or set VMRB_DEMO_SCAN_DIR for seeded imaging.'
+}

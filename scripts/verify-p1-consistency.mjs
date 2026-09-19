@@ -37,13 +37,22 @@ const remoteCapabilities = await sourceModule('src/utils/capabilities.ts', [
 const remoteCt = remoteCapabilities.capabilityForStudy({ source: 'remote', type: 'CT', organId: 'lung' }, 'doctor')
 assert.equal(remoteCt.lungAnalysis.enabled, true)
 assert.equal(remoteCt.segmentation.enabled, true)
+const remoteMri = remoteCapabilities.capabilityForStudy({ source: 'remote', type: 'MRI', organId: 'brain' }, 'doctor')
+assert.equal(remoteMri.segmentation.enabled, true)
+assert.equal(remoteMri.reconstruction3d.enabled, true)
 const localCt = remoteCapabilities.capabilityForStudy({ source: 'local-upload', type: 'CT', organId: 'lung' }, 'doctor')
 assert.equal(localCt.reconstruction3d.enabled, false)
 
 const authSource = fs.readFileSync('src/stores/auth.ts', 'utf8')
 assert.match(authSource, /await api\('\/auth\/logout'/)
 assert.match(authSource, /writeSession\(JSON\.stringify\(session\.value\), remember\)/)
+assert.match(authSource, /tokenIsExpired\(value\.accessToken\)/)
 assert.match(authSource, /role !== 'patient'/)
+const mainSource = fs.readFileSync('src/main.ts', 'utf8')
+assert.match(mainSource, /if \(!inheritSessionFromOpener\(\)\) prepareSessionForAppBoot\(\)/)
+const clientSource = fs.readFileSync('src/api/client.ts', 'utf8')
+assert.match(clientSource, /sessionBoot !== __VMRB_AUTH_BOOT_ID__/)
+assert.match(clientSource, /storage\.setItem\(SESSION_BOOT_KEY, __VMRB_AUTH_BOOT_ID__\)/)
 
 const draftSource = fs.readFileSync('src/stores/reportDrafts.ts', 'utf8')
 assert.match(draftSource, /patientId}::\${examinationId}/)
@@ -74,8 +83,8 @@ console.log(JSON.stringify({
   checks: [
     'calendar dates reject impossible dates and stay on the local calendar day',
     'blood type and unknown review states preserve clinical meaning',
-    'study capabilities block model actions in preview and local-upload modes',
-    'logout, session persistence, registration roles, and report draft recovery use one contract',
+    'study capabilities support remote CT/MRI and block model actions in preview and local-upload modes',
+    'logout, fresh-launch authentication, registration roles, and report draft recovery use one contract',
     'IndexedDB metadata and image blobs use separate indexed stores',
     'review state updates are unified and examination reports require exact linkage',
     'unknown routes render a dedicated not-found page',

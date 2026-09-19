@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "vite --host 127.0.0.1 --port 4173",
-    "build": "vue-tsc -b && vite build",
+    "start": "node scripts/start.mjs",
+    "start:demo": "node scripts/start.mjs --frontend-only",
+    "build": "vue-tsc -b && vite build && node scripts/gzip-static.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "serve": "vite preview --host 127.0.0.1 --port 4173",
     "typecheck": "vue-tsc -b",
@@ -28,6 +29,7 @@
     "test:performance": "node scripts/measure-performance.mjs",
     "test:migrations": "node scripts/verify-migrations.mjs",
     "test:deployment": "node scripts/verify-deployment.mjs",
+    "test:backend": "uv run --project backend pytest backend/tests -q",
     "contract:generate": "node scripts/generate-contract.mjs",
     "test:contract": "node scripts/verify-contract.mjs && node scripts/verify-mappers.mjs"
   },

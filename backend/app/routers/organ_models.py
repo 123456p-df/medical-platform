@@ -7,7 +7,7 @@ from app.models import OrganModel
 from app.organs import ORGANS
 from app.schemas import LabelColorOut, ModelOut
 from app.services.geometry_engine import overlay_style
-from app.services.glb import glb_bytes_for, model_available
+from app.services.glb import glb_wire_for, model_available
 from app.services.label_catalog import LabelCatalog, display_name
 
 router = APIRouter(tags=["Organ Model"])
@@ -56,13 +56,18 @@ def model_file(model_id: str, db: DB, user: CurrentUser, settings: Config):
     model = accessible_model(db, user, model_id)
     if model is None:
         raise APIError(404, 40408, "Default organ asset is not installed")
-    data = glb_bytes_for(db, model, settings)
+    data = glb_wire_for(db, model, settings)
     if not data:
         raise APIError(404, 40407, "Organ model file not found")
     return Response(
         content=data,
         media_type="model/gltf-binary",
-        headers={"Content-Disposition": f'inline; filename="{model.id}.glb"'},
+        headers={
+            "Content-Disposition": f'inline; filename="{model.id}.glb"',
+            "Content-Encoding": "gzip",
+            "Vary": "Accept-Encoding",
+            "Cache-Control": "private, max-age=86400",
+        },
     )
 
 

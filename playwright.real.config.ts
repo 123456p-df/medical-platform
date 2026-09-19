@@ -9,7 +9,6 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4192',
     ...devices['Desktop Chrome'],
-    channel: process.env.CI ? undefined : 'chrome',
     headless: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -22,10 +21,10 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'VITE_LOCAL_PREVIEW=false VMRB_BACKEND_URL=http://127.0.0.1:8001 pnpm exec vite --host 127.0.0.1 --port 4192 --strictPort',
+      command: 'node e2e/support/start-frontend.mjs --real-api',
       url: 'http://127.0.0.1:4192/login',
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 120_000,
     },
   ],
 })

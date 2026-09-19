@@ -20,13 +20,19 @@ def test_volume_stream_is_canonical_scoped_and_revocable(app_env, people, nifti_
     assert client.get(url, headers=people["doctor_b"]).status_code == 403
     response = client.get(url, headers=people["patient_a"])
     assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["cache-control"].startswith("private")
     assert response.headers["x-image-orientation"] == "RAS"
-    data = np.load(io.BytesIO(response.content), allow_pickle=False)
-    np.testing.assert_array_equal(
-        data, nib.as_closest_canonical(nib.load(nifti_file)).get_fdata(dtype=np.float32)
-    )
-    assert data.dtype == np.dtype("<f4")
+    assert response.headers["x-volume-encoding"] == "gzip"
+    canonical = nib.as_closest_canonical(nib.load(nifti_file)).get_fdata(dtype=np.float32)
+    payload = __import__("gzip").decompress(response.content)
+    if response.headers.get("x-voxel-dtype") == "int16":
+        from app.services.imaging import unshuffle_i16
+
+        data = unshuffle_i16(payload, tuple(int(size) for size in canonical.shape))
+        np.testing.assert_array_equal(data, np.rint(canonical).astype(np.int16))
+    else:
+        data = np.frombuffer(payload, dtype="<f4").reshape(canonical.shape)
+        np.testing.assert_array_equal(data, canonical)
     assert data.flags.c_contiguous or data.flags.f_contiguous
     pid = people["patient_a_pid"]
     assert (
