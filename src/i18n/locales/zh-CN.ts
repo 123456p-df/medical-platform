@@ -892,6 +892,8 @@ export const zhCN: Record<string, string> = {
   'ui.sidebar.adminUsers': '账号管理',
   'ui.sidebar.patientAccess': '患者授权',
   'ui.sidebar.adminStats': '运营看板',
+  'ui.sidebar.adminWorkspace': '平台管理',
+  'ui.sidebar.adminNav': '管理员导航',
   'ui.admin.eyebrow': '平台管理',
   'ui.admin.refresh': '刷新',
   'ui.adminUsers.title': '账号与人员管理',

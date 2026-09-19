@@ -774,6 +774,8 @@ export const enUS: Record<string, string> = {
   'ui.sidebar.adminUsers': 'Account management',
   'ui.sidebar.patientAccess': 'Patient access',
   'ui.sidebar.adminStats': 'Operations dashboard',
+  'ui.sidebar.adminWorkspace': 'Platform administration',
+  'ui.sidebar.adminNav': 'Administration navigation',
   'ui.admin.eyebrow': 'Administration',
   'ui.admin.refresh': 'Refresh',
   'ui.adminUsers.title': 'Account management',

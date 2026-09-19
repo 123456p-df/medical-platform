@@ -43,6 +43,7 @@ const clinicalExpanded = ref(localStorage.getItem('pulmolink-nav-clinical') !== 
 const routePatientId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const currentPatientId = computed(() => routePatientId.value || patients.selectedPatientId || '')
 const currentPatient = computed(() => patients.patients.find(patient => patient.id === currentPatientId.value))
+const isAdmin = computed(() => auth.session?.accountRole === 'admin')
 const clinicalItems = computed(() => currentPatientId.value ? [
   { label: 'ui.sidebar.patientOverview', name: 'doctor-patient-overview', icon: ClipboardList },
   { label: 'Medical Imaging', name: 'doctor-patient-imaging', icon: ScanLine },
@@ -100,9 +101,9 @@ async function logout() {
       <PanelLeftClose v-else :size="15" />
     </button>
 
-    <div class="sidebar-label">{{ $t(auth.portal === 'doctor' ? 'Clinical Workspace' : 'Personal Health') }}</div>
+    <div class="sidebar-label">{{ $t(auth.portal === 'doctor' ? (isAdmin ? 'ui.sidebar.adminWorkspace' : 'Clinical Workspace') : 'Personal Health') }}</div>
 
-    <nav v-if="auth.portal === 'doctor'" class="nav doctor-tree" :aria-label="$t('ui.sidebar.doctorNav')">
+    <nav v-if="auth.portal === 'doctor' && !isAdmin" class="nav doctor-tree" :aria-label="$t('ui.sidebar.doctorNav')">
       <section class="tree-group">
         <button class="tree-toggle" type="button" :aria-expanded="managementExpanded" :title="$t('ui.sidebar.patientManagement')" @click="toggleGroup('management')">
           <UsersRound :size="18" />
@@ -116,18 +117,6 @@ async function logout() {
           </RouterLink>
           <RouterLink to="/doctor/report-templates" class="tree-item" active-class="is-active" @click="emit('close')">
             <ClipboardList :size="16" /><span>{{ $t('ui.sidebar.reportTemplates') }}</span>
-          </RouterLink>
-          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/archived" class="tree-item" active-class="is-active" @click="emit('close')">
-            <ArchiveRestore :size="16" /><span>{{ $t('ui.sidebar.archivedPatients') }}</span>
-          </RouterLink>
-          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/admin/users" class="tree-item" active-class="is-active" @click="emit('close')">
-            <UsersRound :size="16" /><span>{{ $t('ui.sidebar.adminUsers') }}</span>
-          </RouterLink>
-          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/admin/access" class="tree-item" active-class="is-active" @click="emit('close')">
-            <ClipboardList :size="16" /><span>{{ $t('ui.sidebar.patientAccess') }}</span>
-          </RouterLink>
-          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/admin/stats" class="tree-item" active-class="is-active" @click="emit('close')">
-            <Activity :size="16" /><span>{{ $t('ui.sidebar.adminStats') }}</span>
           </RouterLink>
         </div>
       </section>
@@ -163,6 +152,21 @@ async function logout() {
           </template>
         </div>
       </section>
+    </nav>
+
+    <nav v-else-if="auth.portal === 'doctor' && isAdmin" class="nav admin-nav" :aria-label="$t('ui.sidebar.adminNav')">
+      <RouterLink to="/doctor/admin/users" class="nav-item" active-class="is-active" @click="emit('close')">
+        <UsersRound :size="18" /><span>{{ $t('ui.sidebar.adminUsers') }}</span>
+      </RouterLink>
+      <RouterLink to="/doctor/admin/access" class="nav-item" active-class="is-active" @click="emit('close')">
+        <ClipboardList :size="18" /><span>{{ $t('ui.sidebar.patientAccess') }}</span>
+      </RouterLink>
+      <RouterLink to="/doctor/archived" class="nav-item" active-class="is-active" @click="emit('close')">
+        <ArchiveRestore :size="18" /><span>{{ $t('ui.sidebar.archivedPatients') }}</span>
+      </RouterLink>
+      <RouterLink to="/doctor/admin/stats" class="nav-item" active-class="is-active" @click="emit('close')">
+        <Activity :size="18" /><span>{{ $t('ui.sidebar.adminStats') }}</span>
+      </RouterLink>
     </nav>
 
     <nav v-else class="nav" :aria-label="$t('ui.sidebar.patientNav')">
