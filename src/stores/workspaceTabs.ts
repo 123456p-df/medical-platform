@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { readSession } from '@/api/client'
+import { stableWorkspaceTabId } from '@/utils/workspaceTabKeys'
 import type { PortalRole } from '@/types'
 
 export interface WorkspaceTab {
@@ -11,10 +13,32 @@ export interface WorkspaceTab {
 
 const STORAGE_KEY = 'pulmolink-workspace-tabs-v1'
 
+function accountScope(): string {
+  try {
+    const session = JSON.parse(readSession() || 'null')
+    return session?.id && session?.role ? `${session.role}:${session.id}` : 'anonymous'
+  } catch {
+    return 'anonymous'
+  }
+}
+
 function storedTabs(): WorkspaceTab[] {
   try {
     const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]')
-    return Array.isArray(value) ? value.slice(0, 12) : []
+    if (!Array.isArray(value)) return []
+    const unique = new Map<string, WorkspaceTab>()
+    for (const raw of value.slice(0, 20)) {
+      if (!raw || typeof raw !== 'object' || typeof raw.path !== 'string' || typeof raw.portal !== 'string') continue
+      const portal: PortalRole = raw.portal === 'patient' ? 'patient' : 'doctor'
+      const tab = {
+        id: stableWorkspaceTabId(raw.path, portal, accountScope()),
+        path: String(raw.path),
+        title: typeof raw.title === 'string' ? raw.title : '',
+        portal,
+      }
+      unique.set(tab.id, tab)
+    }
+    return [...unique.values()].slice(0, 12)
   } catch {
     return []
   }
@@ -28,10 +52,12 @@ export const useWorkspaceTabsStore = defineStore('workspace-tabs', () => {
   }
 
   function openTab(tab: WorkspaceTab) {
-    const existing = tabs.value.find(item => item.id === tab.id)
-    if (existing) Object.assign(existing, tab)
+    const id = stableWorkspaceTabId(tab.path, tab.portal, accountScope())
+    const normalized = { ...tab, id }
+    const existing = tabs.value.find(item => item.id === id)
+    if (existing) Object.assign(existing, normalized)
     else {
-      tabs.value.push(tab)
+      tabs.value.push(normalized)
       if (tabs.value.length > 12) tabs.value.shift()
     }
     persist()

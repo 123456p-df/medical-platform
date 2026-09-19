@@ -1,8 +1,8 @@
 # V5 剩余修改任务与 API 代理执行计划
 
-> 工作副本：`medical/V5-optimization-workcopy-20260913`
-> 只读基线：`medical/V4-github-sync`
-> 盘点日期：2026-09-14
+> 工作副本：`medical/V5-optimization-workcopy-20260913`  
+> 只读基线：`medical/V4-github-sync`  
+> 盘点日期：2026-09-14  
 > 规则：只修改工作副本；不删除文件；每完成一项同时更新 `IMPLEMENTATION-STATUS.md`、根目录任务清单和 `cleaning-log.md`。
 
 > 执行结果：2026-09-14 已完成任务 28、31、34、35、36、41、45、47；任务 16 的代码与合成联调完成，

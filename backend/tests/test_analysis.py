@@ -63,6 +63,11 @@ def test_lung_nodule_analysis_and_review(app_env, people, nifti_file):
     np.testing.assert_allclose(finding["center_voxel"], [5.0, 6.0, 7.0])
     np.testing.assert_allclose(finding["box_voxel"], [5.0, 6.0, 7.0, 4.0, 3.0, 3.0])
     assert finding["diameter_mm"] == 12.0 and finding["confidence"] == 0.93
+    assert finding["box_extent_mm"] == 12.0
+    assert finding["measurement_mm"] is None
+    assert finding["measurement_method"] == "box_extent_max"
+    assert finding["measurement_status"] == "candidate"
+    assert finding["side_evidence"] == "coordinate_sign"
     patient_findings = client.get(
         f"/api/v1/patients/{people['patient_a_pid']}/findings",
         headers=people["doctor_a"],
@@ -77,11 +82,20 @@ def test_lung_nodule_analysis_and_review(app_env, people, nifti_file):
     reviewed = client.patch(
         review_route,
         headers=people["doctor_a"],
-        json={"status": "modified", "description": "医生核对后的测试描述"},
+        json={
+            "status": "modified",
+            "description": "医生核对后的测试描述",
+            "measurement_mm": 9.5,
+            "measurement_method": "manual",
+            "measurement_status": "manual",
+            "side_evidence": "lobe_mask",
+        },
     )
     assert reviewed.status_code == 200
     assert reviewed.json()["data"]["status"] == "modified"
     assert reviewed.json()["data"]["description"] == "医生核对后的测试描述"
+    assert reviewed.json()["data"]["measurement_mm"] == 9.5
+    assert reviewed.json()["data"]["measurement_method"] == "manual"
 
     second_id, second = start_analysis(client, people["doctor_a"], image_id, 0.95)
     assert second["result"]["findings_count"] == 0

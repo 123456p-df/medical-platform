@@ -32,6 +32,10 @@ function openImaging(examination: Examination) {
   })
 }
 
+function openAIAssistant() {
+  window.dispatchEvent(new CustomEvent('pulmolink-open-ai'))
+}
+
 async function updateFinding(finding: Finding, status: Finding['status']) {
   await store.updateFindingStatus(finding.id, status)
 }
@@ -61,7 +65,7 @@ async function updateFinding(finding: Finding, status: Finding['status']) {
           <button
             type="button"
             class="btn btn-sm btn-secondary"
-            @click="router.push({ name: 'doctor-patient-ai', params: { id: patientId } })"
+            @click="openAIAssistant"
           >
             {{ $t('Review all') }}
           </button>

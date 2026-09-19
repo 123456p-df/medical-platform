@@ -30,7 +30,7 @@ export function capabilityForStudy(study: Examination | null | undefined, role: 
   return {
     view: available(),
     aiAssistant: localPreview
-      ? unavailable('演示环境仅展示已有合成结果；病历问答需要真实后端。')
+      ? available()
       : available(),
     lungAnalysis: backendUnavailable
       ? unavailable(backendReason)

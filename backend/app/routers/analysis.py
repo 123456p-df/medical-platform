@@ -33,6 +33,11 @@ def finding_out(finding, task):
         "description": finding.description,
         "confidence": finding.confidence,
         "diameter_mm": finding.diameter_mm,
+        "box_extent_mm": finding.box_extent_mm,
+        "measurement_mm": finding.measurement_mm,
+        "measurement_method": finding.measurement_method,
+        "measurement_status": finding.measurement_status,
+        "side_evidence": finding.side_evidence,
         "coordinate_system": finding.coordinate_system,
         "box_mode": finding.box_mode,
         "center_world_mm": finding.center_world_mm,
@@ -219,6 +224,11 @@ def update_finding(finding_id: str, body: FindingPatch, db: DB, user: CurrentUse
         "status": finding.status,
         "label": finding.label,
         "diameter_mm": finding.diameter_mm,
+        "box_extent_mm": finding.box_extent_mm,
+        "measurement_mm": finding.measurement_mm,
+        "measurement_method": finding.measurement_method,
+        "measurement_status": finding.measurement_status,
+        "side_evidence": finding.side_evidence,
         "center_world_mm": finding.center_world_mm,
         "box_world_mm": finding.box_world_mm,
         "center_voxel": finding.center_voxel,
@@ -227,12 +237,17 @@ def update_finding(finding_id: str, body: FindingPatch, db: DB, user: CurrentUse
     }
     values = body.model_dump(exclude_unset=True)
     for field in (
-        "label", "description", "status", "diameter_mm", "center_world_mm",
-        "box_world_mm", "center_voxel", "box_voxel",
+        "label", "description", "status", "diameter_mm", "measurement_mm",
+        "measurement_method", "measurement_status", "side_evidence",
+        "center_world_mm", "box_world_mm", "center_voxel", "box_voxel",
     ):
         if field in values:
             setattr(finding, field, values[field])
-    changed_fields = {"label", "description", "diameter_mm", "center_world_mm", "box_world_mm", "center_voxel", "box_voxel"}
+    changed_fields = {
+        "label", "description", "diameter_mm", "measurement_mm", "measurement_method",
+        "measurement_status", "side_evidence", "center_world_mm", "box_world_mm",
+        "center_voxel", "box_voxel",
+    }
     if "status" not in values and (changed_fields & values.keys()):
         finding.status = "modified"
     if finding.status == "pending":
@@ -255,6 +270,11 @@ def update_finding(finding_id: str, body: FindingPatch, db: DB, user: CurrentUse
             "status": finding.status,
             "label": finding.label,
             "diameter_mm": finding.diameter_mm,
+            "box_extent_mm": finding.box_extent_mm,
+            "measurement_mm": finding.measurement_mm,
+            "measurement_method": finding.measurement_method,
+            "measurement_status": finding.measurement_status,
+            "side_evidence": finding.side_evidence,
             "center_world_mm": finding.center_world_mm,
             "box_world_mm": finding.box_world_mm,
             "center_voxel": finding.center_voxel,

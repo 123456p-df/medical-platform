@@ -26,7 +26,7 @@ for (const mode of ['Synthetic demo', 'Local browser import', 'Real API']) {
 }
 
 const migrations = fs.readdirSync('backend/migrations/versions').filter(file => file.endsWith('.py')).sort()
-assert.equal(migrations.at(-1), '0019_reconcile_access_control.py')
+assert.equal(migrations.at(-1), '0023_ai_providers_and_invocations.py')
 
 console.log(JSON.stringify({ passed: true, checks: [
   'documented development and backend ports match Vite proxy configuration',

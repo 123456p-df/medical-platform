@@ -1,6 +1,7 @@
 import dicomParser from 'dicom-parser'
 import type { ExaminationType } from '@/types'
 import { normalizeDicomDate } from './dates'
+import { isNiftiFile } from './fileFormats'
 
 const dicomModalityMap: Record<string, ExaminationType> = {
   CT: 'CT', MR: 'MRI', MRI: 'MRI', XA: 'X-Ray', CR: 'X-Ray', DX: 'X-Ray', RG: 'X-Ray',
@@ -11,7 +12,7 @@ export function isRasterFile(file: File) {
 }
 
 export function isSupportedFile(file: File) {
-  return isRasterFile(file) || /\.dcm$/i.test(file.name) || file.type === 'application/dicom' || !file.name.includes('.')
+  return isNiftiFile(file) || isRasterFile(file) || /\.dcm$/i.test(file.name) || file.type === 'application/dicom' || !file.name.includes('.')
 }
 
 function modalityFromName(name: string): ExaminationType | null {
@@ -200,7 +201,8 @@ export async function detectModalityFromFiles(files: File[]): Promise<Examinatio
   const detected = new Set<ExaminationType>()
   for (const file of files) {
     let modality: ExaminationType | null = null
-    if (!isRasterFile(file)) modality = (await readDicomMetadata(file)).modality
+    if (isNiftiFile(file)) modality = modalityFromName(file.name)
+    else if (!isRasterFile(file)) modality = (await readDicomMetadata(file)).modality
     else modality = modalityFromName(file.name)
     if (modality) detected.add(modality)
   }

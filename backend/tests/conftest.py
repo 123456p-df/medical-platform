@@ -15,7 +15,7 @@ from app.db import Base, make_engine
 from app.main import create_app
 from app.models import Doctor, User
 from app.security import hash_password
-from app.services.ai import AIAnswer
+from app.services.ai import AIAnswer, ReportCandidate, ReportFieldCandidate
 
 
 class SyntheticAdapter:
@@ -86,6 +86,37 @@ class CapturingAI:
         self.calls.append((context, question, role))
         ids = [r["record_id"] for r in context["records"]]
         return AIAnswer(answer="测试用病历总结，不是真实医疗回答。", used_record_ids=ids)
+
+    def answer_with_tools(
+        self,
+        context,
+        question,
+        role,
+        *,
+        tool_dispatcher=None,
+        max_rounds=None,
+        max_tool_calls=None,
+    ):
+        return self.answer(context, question, role)
+
+    def generate_report(self, context, doctor_notes, role):
+        ids = [r["record_id"] for r in context["records"]]
+        return ReportCandidate(
+            findings=[
+                ReportFieldCandidate(
+                    text="测试用影像所见候选",
+                    evidence_ids=ids[:1],
+                )
+            ],
+            impression=[
+                ReportFieldCandidate(
+                    text="测试用印象候选",
+                    evidence_ids=ids[:1],
+                )
+            ],
+            missing_information=["需要医生核对测量值"],
+            used_record_ids=ids[:1],
+        )
 
 
 @pytest.fixture

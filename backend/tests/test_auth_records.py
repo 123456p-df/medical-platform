@@ -11,10 +11,11 @@ from app.models import (
     DoctorPatientAccess,
     MedicalRecord,
     Patient,
+    ReportTask,
     User,
     utcnow,
 )
-from tests.conftest import record
+from tests.conftest import record, upload
 
 
 def test_admin_clinical_identity_can_receive_patient_access(app_env, people):
@@ -181,6 +182,116 @@ def test_patient_receives_report_only_after_doctor_signs(app_env, people):
         item["record_id"]
         for item in client.get(collection, headers=people["patient_a"]).json()["data"]["items"]
     }
+
+
+def test_report_workflow_tracks_revision_events_and_examination_tasks(app_env, people, nifti_file):
+    app, client, _, _ = app_env
+    patient_id = people["patient_a_pid"]
+    image_id = upload(client, people, nifti_file)
+    record_id = record(
+        client,
+        people,
+        examination_id=image_id,
+        diagnosis="待审核诊断",
+        description="待审核影像所见",
+        recommendation="三个月后复查",
+        reviewed=False,
+    )
+    route = f"/api/v1/medical-records/{record_id}"
+
+    draft = client.get(route, headers=people["doctor_a"]).json()["data"]
+    assert draft["status"] == "draft"
+    assert draft["revision"] == 1
+    assert draft["reviewed"] is False
+
+    tasks = client.get(
+        f"/api/v1/patients/{patient_id}/report-tasks",
+        headers=people["doctor_a"],
+    ).json()["data"]
+    assert tasks["total"] == 1
+    assert tasks["items"][0]["examination_id"] == image_id
+    assert tasks["items"][0]["status"] == "drafting"
+    assert tasks["items"][0]["primary_record_id"] == record_id
+
+    stale = client.post(
+        f"{route}/transition",
+        headers=people["doctor_a"],
+        json={"action": "submit", "expected_revision": 99},
+    )
+    assert stale.status_code == 409
+
+    submitted = client.post(
+        f"{route}/transition",
+        headers=people["doctor_a"],
+        json={"action": "submit", "expected_revision": 1},
+    )
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["data"]["status"] == "pending_review"
+    assert submitted.json()["data"]["revision"] == 2
+
+    reopened = client.post(
+        f"{route}/transition",
+        headers=people["doctor_a"],
+        json={"action": "reopen", "expected_revision": 2},
+    )
+    assert reopened.status_code == 200
+    assert reopened.json()["data"]["status"] == "draft"
+
+    signed = client.post(
+        f"{route}/transition",
+        headers=people["doctor_a"],
+        json={"action": "sign", "expected_revision": 3},
+    )
+    assert signed.status_code == 200, signed.text
+    assert signed.json()["data"]["status"] == "signed"
+    assert signed.json()["data"]["signed_at"] is not None
+    assert client.get(route, headers=people["patient_a"]).status_code == 200
+
+    events = client.get(f"{route}/events", headers=people["doctor_a"]).json()["data"]
+    assert [event["action"] for event in events] == ["created", "submitted", "reopened", "signed"]
+    assert [event["revision"] for event in events] == [1, 2, 3, 4]
+
+    with app.state.session_factory() as db:
+        task = db.scalar(
+            select(ReportTask).where(ReportTask.examination_id == image_id)
+        )
+        assert task.status == "signed"
+        assert task.primary_record_id == record_id
+
+
+def test_apply_ai_candidate_checks_revision_and_preserves_draft(app_env, people):
+    _, client, _, _ = app_env
+    record_id = record(
+        client,
+        people,
+        diagnosis="原始诊断",
+        description="原始所见",
+        reviewed=False,
+    )
+    route = f"/api/v1/medical-records/{record_id}/apply-ai-candidate"
+    stale = client.post(
+        route,
+        headers=people["doctor_a"],
+        json={
+            "expected_revision": 99,
+            "candidate_fields": {"description": "AI 候选"},
+        },
+    )
+    assert stale.status_code == 409
+
+    applied = client.post(
+        route,
+        headers=people["doctor_a"],
+        json={
+            "expected_revision": 1,
+            "candidate_fields": {"description": "AI 候选补充"},
+            "replace": False,
+        },
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["data"]["revision"] == 2
+    assert "原始所见" in applied.json()["data"]["description"]
+    assert "AI 候选补充" in applied.json()["data"]["description"]
 
 
 @pytest.mark.parametrize("suffix", ["overview", "organs/lung", "organs/lung/records"])

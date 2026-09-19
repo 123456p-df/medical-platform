@@ -3,10 +3,12 @@ import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw } from 'lucide-vue-next'
 import { getLocalUploadFiles } from '@/api/localStudyRepository'
 import { isRasterFile } from '@/utils/studyLoader'
+import { isNiftiFile } from '@/utils/fileFormats'
 import type { Examination } from '@/types'
 import { t } from '@/i18n'
 
 const CornerstoneViewer = defineAsyncComponent(() => import('./CornerstoneViewer.vue'))
+const NiftiViewer = defineAsyncComponent(() => import('./NiftiViewer.vue'))
 const props = defineProps<{ examination: Examination }>()
 const files = ref<File[]>([])
 const urls = ref<string[]>([])
@@ -17,6 +19,8 @@ const error = ref('')
 let loadVersion = 0
 
 const isRaster = computed(() => files.value.length > 0 && files.value.every(isRasterFile))
+const isNifti = computed(() => files.value.length === 1 && isNiftiFile(files.value[0]))
+const frameCount = computed(() => isNifti.value ? props.examination.sliceCount : files.value.length || props.examination.sliceCount)
 
 function revokeUrls() {
   urls.value.forEach(url => URL.revokeObjectURL(url))
@@ -65,10 +69,11 @@ onBeforeUnmount(() => { loadVersion += 1; revokeUrls() })
     <div class="uploaded-heading">
       <strong>{{ examination.type }}</strong>
       <span>{{ $t('ui.viewer.localImport') }}</span>
-      <span>{{ $t('ui.viewer.frameCount', { count: files.length || examination.sliceCount }) }}</span>
+      <span>{{ $t('ui.viewer.frameCount', { count: frameCount }) }}</span>
     </div>
     <div v-if="loading" class="empty-state dark">{{ $t('ui.viewer.localLoading') }}</div>
     <div v-else-if="error" class="empty-state dark error" role="alert">{{ error }}</div>
+    <NiftiViewer v-else-if="isNifti" :file="files[0]" />
     <template v-else-if="isRaster">
       <div class="image-tools">
         <button type="button" class="icon-btn" :aria-label="$t('ui.viewer.previousImage')" :disabled="slice === 0" @click="changeSlice(-1)"><ChevronLeft :size="17" /></button>

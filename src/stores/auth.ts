@@ -77,6 +77,10 @@ function stored(): UserSession | null {
       clearStoredSession()
       return null
     }
+    if (value.accessToken === 'local-preview' && !localPreview) {
+      clearStoredSession()
+      return null
+    }
     return { ...value, role } as UserSession
   }
   catch {

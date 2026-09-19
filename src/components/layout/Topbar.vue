@@ -57,7 +57,6 @@ const pageTitles: Record<string, string> = {
   'doctor-patients': 'Patient Workspace',
   'doctor-patient-overview': 'Patient Record',
   'doctor-patient-imaging': 'Medical Imaging',
-  'doctor-patient-ai': 'ui.sidebar.aiDiagnosis',
   'doctor-patient-report': 'Doctor Report',
   'doctor-patient-3d': 'Digital Human',
   'patient-dashboard': 'My Health',
@@ -66,7 +65,6 @@ const pageTitles: Record<string, string> = {
   'patient-examination-detail': 'Examination Detail',
   'patient-reports': 'My Reports',
   'patient-body': 'My Body',
-  'patient-ai': 'AI Assistant',
 }
 
 const title = computed(() => route.path.endsWith('/profile') ? 'ui.profile.title' : pageTitles[String(route.name)] ?? 'PulmoLink')

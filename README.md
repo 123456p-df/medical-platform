@@ -114,6 +114,8 @@ uv run uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
 
 启动后用 `curl -fsS http://127.0.0.1:8000/health` 验证数据库连接。更新前先备份数据库与存储目录；回滚时使用与目标应用版本匹配的数据库备份和镜像，不直接覆盖患者文件。
 
+发布前本地可复核 `pnpm test:deployment`，完整外部环境验收项见 [`docs/release-checklist.md`](docs/release-checklist.md)。
+
 ## 肺结节辅助检测
 
 网站现已提供肺部 CT 肺结节候选检测任务、结果查询和医生审核接口。模型服务的请求/响应格式、环境变量和联调步骤见 [`docs/lung-nodule-model-api.md`](docs/lung-nodule-model-api.md)。肺结节候选检测与 NV-Segment-CTMR 器官分割是两个独立模型流程。
@@ -131,7 +133,7 @@ uv run alembic upgrade head
 
 ## 报告同步与工作区标签
 
-医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。`0018_merge_mri_and_v5` 安全汇合 MRI 与 V5 两条既有迁移分支，`0019_reconcile_access_control` 修复旧版本可能缺失的账号状态与 JWT 撤销表。本地演示模式使用按账号隔离的浏览器持久化存储。
+医生报告支持草稿、提交审核、退回草稿、签署和取消；草稿只对医生可见，签署后患者才可见。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`；`0018_merge_mri_and_v5` 汇合 MRI 与 V5 迁移分支，`0019_reconcile_access_control` 修复访问控制；AI 会话检查作用域、报告工作流、候选框范围与测量来源、多厂商 AI 配置与 Invocation 审计由后续迁移提供。本地演示模式使用按账号隔离的浏览器持久化存储。
 
 医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断、报告和 3D 影像；这些页面会作为工作区标签保留，可快速切换或单独关闭。
 

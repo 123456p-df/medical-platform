@@ -12,6 +12,11 @@ interface FindingDTO {
   description: string
   confidence: number
   diameter_mm: number
+  box_extent_mm: number | null
+  measurement_mm: number | null
+  measurement_method: string | null
+  measurement_status: 'candidate' | 'manual' | 'reviewed' | 'rejected'
+  side_evidence: string | null
   coordinate_system: 'RAS'
   box_mode: 'cccwhd'
   center_world_mm: [number, number, number]
@@ -38,6 +43,11 @@ function mapFinding(item: FindingDTO): Finding {
     severity: 'Unknown',
     confidence: item.confidence,
     diameterMm: item.diameter_mm,
+    boxExtentMm: item.box_extent_mm,
+    measurementMm: item.measurement_mm,
+    measurementMethod: item.measurement_method,
+    measurementStatus: item.measurement_status,
+    sideEvidence: item.side_evidence,
     modelName: item.model_name,
     modelLabel: item.model_label,
     coordinateSystem: item.coordinate_system,

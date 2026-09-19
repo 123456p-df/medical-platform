@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { CheckCircle2, Clock3, FileText, Printer } from 'lucide-vue-next'
 import { organNames } from '@/api/mappers'
 import type { Report } from '@/types'
 import { locale } from '@/i18n'
 
-defineProps<{
+const props = defineProps<{
   report: Report
   patientFacing?: boolean
   patientName?: string
 }>()
 const printing = ref(false)
+const reportStatus = computed(() => props.report.status || (props.report.reviewed ? 'signed' : 'draft'))
 
 function formatDate(value: string) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value)
@@ -46,10 +47,10 @@ async function printReport() {
         <strong>{{ $t("Final Diagnosis") }}</strong>
         <span>{{ formatDate(report.date) }}</span>
       </div>
-      <span :class="['review-state', { reviewed: report.reviewed }]">
-        <CheckCircle2 v-if="report.reviewed" :size="14" />
+      <span :class="['review-state', { reviewed: reportStatus === 'signed', pending: reportStatus === 'pending_review', cancelled: reportStatus === 'cancelled' }]">
+        <CheckCircle2 v-if="reportStatus === 'signed'" :size="14" />
         <Clock3 v-else :size="14" />
-        {{ $t(report.reviewed ? 'Doctor Reviewed' : 'Pending Review') }}
+        {{ $t(reportStatus === 'signed' ? 'Doctor Reviewed' : reportStatus === 'pending_review' ? 'ui.report.pendingReview' : reportStatus === 'cancelled' ? 'ui.report.cancelledStatus' : 'Pending Review') }}
       </span>
       <button v-if="patientFacing && report.reviewed" type="button" class="print-action" :aria-label="$t('ui.report.printLabel')" @click="printReport"><Printer :size="14" /> {{ $t('ui.report.print') }}</button>
     </div>
@@ -137,6 +138,16 @@ async function printReport() {
 .review-state.reviewed {
   background: #e6f1eb;
   color: #2f6a4c;
+}
+
+.review-state.pending {
+  background: #eef3f8;
+  color: #3e5d79;
+}
+
+.review-state.cancelled {
+  background: #f1f0f4;
+  color: #71657d;
 }
 
 .report-card h4 {

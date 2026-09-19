@@ -95,7 +95,7 @@ def get_style_for_label(raw_name: str):
     name = raw_name.lower().replace(" ", "_")
     category = "other"
     style = COLOR_PALETTE["bone"]
-
+    
     if any(k in name for k in ["rib", "vertebrae", "sternum", "scapula", "hip", "femur", "bone"]):
         category = "skeletal"
         style = COLOR_PALETTE["bone"]
@@ -134,7 +134,7 @@ def get_style_for_label(raw_name: str):
     elif any(k in name for k in ["autochthon", "iliopsoas", "gluteus", "muscle"]):
         category = "muscular"
         style = COLOR_PALETTE["muscle"]
-
+        
     return category, style
 
 scene = trimesh.Scene()
@@ -169,59 +169,59 @@ for label_id in valid_labels:
     raw_name = ct_labels.get(str(label_id), f"label_{label_id}")
     safe_name = raw_name.replace(" ", "_").replace("/", "_")
     category, (color, roughness, alpha_mode) = get_style_for_label(raw_name)
-
+    
     mask = (mask_data == label_id).astype(np.int32)
     bbox = ndi.find_objects(mask)[0]
     if bbox is None:
         continue
-
+        
     sl = [slice(max(0, s.start - 2), min(dim, s.stop + 2)) for s, dim in zip(bbox, mask_data.shape)]
     starts = [s.start for s in sl]
     cropped = mask[tuple(sl)]
-
+    
     # 3D Morphological hole fill to ensure internal solidness
     filled = ndi.binary_fill_holes(cropped > 0)
-
+    
     # 0.75mm Isotropic Resampling
     resampled = ndi.zoom(filled.astype(np.float32), zoom_factors, order=1)
-
+    
     # 6-directional zero-padding ensures 100% Watertight sealed caps across CT boundaries
     padded = np.pad(resampled, 2, mode="constant", constant_values=0)
-
+    
     # Sub-voxel Gaussian field smoothing (sigma=0.8)
     smoothed = ndi.gaussian_filter(padded, sigma=0.8)
-
+    
     try:
         verts, faces, normals, _ = marching_cubes(smoothed, level=0.5, spacing=target_spacing)
     except Exception as e:
         print(f"  [!] Marching cubes error on {safe_name}: {e}")
         continue
-
+        
     if len(verts) == 0:
         continue
-
+        
     # Map back from padded 0.75mm grid to original voxel space
     vx = (verts[:, 0] / target_spacing[0] - 2.0) / zoom_factors[0] + starts[0]
     vy = (verts[:, 1] / target_spacing[1] - 2.0) / zoom_factors[1] + starts[1]
     vz = (verts[:, 2] / target_spacing[2] - 2.0) / zoom_factors[2] + starts[2]
-
+    
     # Map to Patient RAS (mm)
     pts = np.column_stack([vx, vy, vz, np.ones(len(verts))])
     ras = (affine @ pts.T).T[:, :3]
-
+    
     # Correct coordinate transformation:
     # RAS: X is Right, Y is Anterior, Z is Superior (Head)
     # GLTF: X is Right, Y is Superior (Up), Z is -Anterior (Front is +Z in navigation)
     vx_gltf = ras[:, 0]
     vy_gltf = ras[:, 2]   # Superior is UP!
     vz_gltf = -ras[:, 1]  # Anterior is -Z!
-
+    
     # Map to Digital Human Navigation meter coordinates inside body_shell
     x_nav = -(vx_gltf - (-267.4)) * 0.001
     y_nav = (vy_gltf - 130.0) * 0.001 + 0.60
     z_nav = -(vz_gltf - 280.0) * 0.001
     nav_verts = np.column_stack([x_nav, y_nav, z_nav])
-
+    
     # Simplify mesh to maintain smooth 60 FPS in browser
     if category in ["digestive", "respiratory", "cardiovascular"] and len(faces) > 20000:
         target_f = 16000
@@ -231,18 +231,18 @@ for label_id in valid_labels:
         target_f = 10000
     else:
         target_f = max(3000, int(len(faces) * 0.6))
-
+        
     if len(faces) > target_f:
         reduction = 1.0 - (target_f / len(faces))
         try:
             nav_verts, faces = fast_simplification.simplify(nav_verts, faces, target_reduction=reduction)
         except Exception:
             pass
-
+            
     mesh = trimesh.Trimesh(vertices=nav_verts, faces=faces, process=True)
     mesh.fix_normals()
     trimesh.smoothing.filter_taubin(mesh, iterations=6)
-
+    
     # Standard PBR Material with Normalized Float Colors
     mat = PBRMaterial(
         name=safe_name,
@@ -256,12 +256,12 @@ for label_id in valid_labels:
     mesh.metadata["category"] = category
     mesh.metadata["label_id"] = int(label_id)
     mesh.metadata["display_name"] = raw_name
-
+    
     scene.add_geometry(mesh, node_name=safe_name, geom_name=safe_name)
     processed_count += 1
     total_vertices += len(mesh.vertices)
     total_faces += len(mesh.faces)
-
+    
     if processed_count % 10 == 0 or processed_count == len(valid_labels):
         print(f"  [{processed_count:2d}/{len(valid_labels)}] {safe_name:28s} ({category}) | 面数: {len(mesh.faces):6d}")
 
