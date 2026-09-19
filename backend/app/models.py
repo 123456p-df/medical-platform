@@ -160,6 +160,7 @@ class MedicalRecord(CreatedMixin, Base):
     __table_args__ = (
         Index("ix_records_patient_organ_date", "patient_id", "organ_id", "record_date"),
         Index("ix_records_doctor_id", "doctor_id"),
+        Index("ix_medical_records_examination", "examination_id"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
@@ -261,7 +262,7 @@ class MedicalImage(CreatedMixin, Base):
     sequence_confidence: Mapped[str] = mapped_column(
         String(16), default="auto", server_default=text("'auto'")
     )
-    acquisition: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
+    acquisition: Mapped[dict] = mapped_column(JSON, nullable=True, default=dict, server_default=text("'{}'"))
 
 
 class DicomStudy(CreatedMixin, Base):
@@ -382,6 +383,7 @@ class SegmentationBatch(CreatedMixin, Base):
             sqlite_where=text("status IN ('queued', 'running')"),
         ),
         Index("ix_batches_image_created", "image_id", "created_at"),
+        Index("ix_segmentation_batches_image_id", "image_id"),
     )
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     image_id: Mapped[str] = mapped_column(ForeignKey("medical_images.id"))
