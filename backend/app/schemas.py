@@ -40,6 +40,84 @@ class DoctorProvisionInput(Credentials):
     department: str = Field(default="", max_length=100)
 
 
+class AdminUserOut(BaseModel):
+    user_id: int
+    username: str
+    role: Literal["admin", "doctor", "patient"]
+    is_active: bool
+    department: str = ""
+    last_login_at: datetime | None = None
+    created_at: datetime
+    deleted_at: datetime | None = None
+
+
+class AdminUserPage(BaseModel):
+    items: list[AdminUserOut]
+    page: int
+    page_size: int
+    total: int
+
+
+class UserStatusInput(Input):
+    is_active: bool
+
+
+class PasswordResetInput(Input):
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class PatientAccessInput(Input):
+    doctor_user_id: int
+    patient_id: int
+    status: Literal["active", "revoked"] = "active"
+
+
+class PatientAccessOut(BaseModel):
+    doctor_user_id: int
+    doctor_username: str
+    doctor_name: str
+    patient_id: int
+    patient_name: str | None
+    status: Literal["active", "revoked"]
+    created_at: datetime
+
+
+class PatientAccessPage(BaseModel):
+    items: list[PatientAccessOut]
+    total: int
+
+
+class DailyMetric(BaseModel):
+    date: date
+    count: int
+
+
+class DoctorActivityMetric(BaseModel):
+    user_id: int
+    username: str
+    display_name: str
+    signed_reports: int
+    images_uploaded: int
+    audit_actions: int
+
+
+class AdminStatsOut(BaseModel):
+    days: int
+    new_patients: list[DailyMetric]
+    image_uploads: list[DailyMetric]
+    ai_tasks: list[DailyMetric]
+    signed_reports: list[DailyMetric]
+    doctor_activity: list[DoctorActivityMetric]
+
+
+class TemplateUsageOut(BaseModel):
+    template_id: str | None = None
+    template_name: str
+    doctor_user_id: int
+    doctor_name: str
+    report_count: int
+
+
 class BreakGlassInput(Input):
     reason: str = Field(min_length=3, max_length=500)
     duration_minutes: int = Field(default=15, ge=1, le=60)
@@ -228,6 +306,7 @@ class ReportTemplatePatch(Input):
     organ_id: str | None = Field(default=None, max_length=64)
     fields: list[ReportTemplateField] | None = Field(default=None, min_length=1, max_length=100)
     is_active: bool | None = None
+    is_default: bool | None = None
 
 
 class ReportTemplateOut(BaseModel):
@@ -237,9 +316,23 @@ class ReportTemplateOut(BaseModel):
     organ_id: str | None = None
     version: int
     is_active: bool
+    is_default: bool = False
     fields: list[ReportTemplateField]
     created_at: datetime
     updated_at: datetime
+
+
+class ReportTemplateVersionOut(BaseModel):
+    version_id: int
+    template_id: str
+    version: int
+    name: str
+    modality: Literal["CT", "MRI", "X-Ray"] | None = None
+    organ_id: str | None = None
+    fields: list[ReportTemplateField]
+    is_active: bool
+    is_default: bool
+    created_at: datetime
 
 
 class StructuredReportOut(BaseModel):

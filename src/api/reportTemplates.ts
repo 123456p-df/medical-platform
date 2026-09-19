@@ -8,6 +8,7 @@ interface ReportTemplateDTO {
   organ_id: string | null
   version: number
   is_active: boolean
+  is_default: boolean
   fields: ReportTemplateField[]
   created_at: string
   updated_at: string
@@ -21,6 +22,7 @@ function mapTemplate(item: ReportTemplateDTO): ReportTemplate {
     organId: item.organ_id,
     version: item.version,
     isActive: item.is_active,
+    isDefault: item.is_default,
     fields: item.fields,
     createdAt: item.created_at,
     updatedAt: item.updated_at,
@@ -50,7 +52,7 @@ export const reportTemplatesApi = {
       }),
     }))
   },
-  async update(id: string, input: Partial<{ name: string; modality: ReportTemplate['modality']; organId: string | null; fields: ReportTemplateField[]; isActive: boolean }>): Promise<ReportTemplate> {
+  async update(id: string, input: Partial<{ name: string; modality: ReportTemplate['modality']; organId: string | null; fields: ReportTemplateField[]; isActive: boolean; isDefault: boolean }>): Promise<ReportTemplate> {
     return mapTemplate(await api<ReportTemplateDTO>('/report-templates/' + id, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -59,7 +61,25 @@ export const reportTemplatesApi = {
         organ_id: input.organId,
         fields: input.fields,
         is_active: input.isActive,
+        is_default: input.isDefault,
       }),
     }))
+  },
+  async versions(id: string) {
+    return api<Array<{
+      version_id: number
+      template_id: string
+      version: number
+      name: string
+      modality: 'CT' | 'MRI' | 'X-Ray' | null
+      organ_id: string | null
+      fields: ReportTemplateField[]
+      is_active: boolean
+      is_default: boolean
+      created_at: string
+    }>>('/report-templates/' + id + '/versions')
+  },
+  async restoreVersion(id: string, version: number) {
+    return mapTemplate(await api<ReportTemplateDTO>(`/report-templates/${id}/versions/${version}/restore`, { method: 'POST' }))
   },
 }

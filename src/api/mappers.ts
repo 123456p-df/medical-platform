@@ -41,6 +41,7 @@ function mapReportTemplate(item: components['schemas']['ReportTemplateOut']): Re
     organId: item.organ_id ?? null,
     version: item.version,
     isActive: item.is_active,
+    isDefault: item.is_default,
     fields: item.fields,
     createdAt: item.created_at,
     updatedAt: item.updated_at,

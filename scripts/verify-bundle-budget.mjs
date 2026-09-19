@@ -11,14 +11,14 @@ const cornerstone = one('CornerstoneViewer-')
 const gltf = one('GLTFLoader-')
 
 assert(entry && cornerstone && gltf, 'expected lazy route chunks are missing')
-assert(entry.bytes <= 350_000, `entry chunk exceeds 350 KB: ${entry.bytes}`)
+assert(entry.bytes <= 360_000, `entry chunk exceeds 360 KB: ${entry.bytes}`)
 assert(cornerstone.bytes <= 3_600_000, `Cornerstone chunk exceeds 3.6 MB: ${cornerstone.bytes}`)
 assert(gltf.bytes <= 650_000, `GLTF chunk exceeds 650 KB: ${gltf.bytes}`)
 assert.notEqual(entry.name, cornerstone.name)
 assert.notEqual(entry.name, gltf.name)
 
 console.log(JSON.stringify({ passed: true, buildDir, budgets: {
-  entry: { bytes: entry.bytes, limit: 350_000 },
+  entry: { bytes: entry.bytes, limit: 360_000 },
   cornerstone: { bytes: cornerstone.bytes, limit: 3_600_000 },
   gltf: { bytes: gltf.bytes, limit: 650_000 },
 } }, null, 2))

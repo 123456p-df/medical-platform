@@ -38,6 +38,24 @@ const router = createRouter({
           component: () => import('@/views/doctor/ReportTemplatesView.vue'),
         },
         {
+          path: 'admin/users',
+          name: 'doctor-admin-users',
+          component: () => import('@/views/doctor/AdminUsersView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
+          path: 'admin/access',
+          name: 'doctor-admin-access',
+          component: () => import('@/views/doctor/PatientAccessView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
+          path: 'admin/stats',
+          name: 'doctor-admin-stats',
+          component: () => import('@/views/doctor/AdminStatsView.vue'),
+          meta: { requiresAdmin: true },
+        },
+        {
           path: 'archived',
           name: 'doctor-archived',
           component: () => import('@/views/doctor/ArchivedPatientsView.vue'),
@@ -173,6 +191,10 @@ router.beforeEach((to) => {
     return auth.portal === 'doctor'
       ? { name: 'doctor-dashboard' }
       : { name: 'patient-dashboard' }
+  }
+
+  if (to.meta.requiresAdmin && auth.session?.accountRole !== 'admin') {
+    return { name: 'doctor-dashboard' }
   }
 
   if (

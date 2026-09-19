@@ -17,6 +17,7 @@ from app.errors import APIError, success
 from app.report_templates import seed_default_report_templates
 from app.routers import (
     ai,
+    admin,
     analysis,
     auth,
     catalog,
@@ -266,6 +267,7 @@ def create_app(
         analysis.router,
         organ_models.router,
         ai.router,
+        admin.router,
     ]:
         app.include_router(router, prefix="/api/v1")
 

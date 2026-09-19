@@ -33,6 +33,9 @@ class User(CreatedMixin, Base):
     role: Mapped[str] = mapped_column(String(16))
     profile: Mapped[dict] = mapped_column(JSON, default=dict, server_default=text("'{}'"))
     is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_version: Mapped[int] = mapped_column(default=1, server_default=text("1"))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ReportTemplate(CreatedMixin, Base):
@@ -47,9 +50,28 @@ class ReportTemplate(CreatedMixin, Base):
     organ_id: Mapped[str | None] = mapped_column(String(64))
     version: Mapped[int] = mapped_column(default=1)
     is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    is_default: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     fields: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReportTemplateVersion(Base):
+    __tablename__ = "report_template_versions"
+    __table_args__ = (
+        Index("ix_report_template_versions_template", "template_id", "version"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[str] = mapped_column(ForeignKey("report_templates.id", ondelete="CASCADE"))
+    version: Mapped[int]
+    name: Mapped[str] = mapped_column(String(160))
+    modality: Mapped[str | None] = mapped_column(String(16))
+    organ_id: Mapped[str | None] = mapped_column(String(64))
+    fields: Mapped[list] = mapped_column(JSON, default=list)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    is_default: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Patient(CreatedMixin, Base):

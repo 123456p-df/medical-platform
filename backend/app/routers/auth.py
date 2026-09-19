@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from app.audit import audit
 from app.deps import DB, Config, CurrentUser, require_admin
 from app.errors import APIError, Envelope, success
-from app.models import Doctor, JwtRevocation, Patient, User
+from app.models import Doctor, JwtRevocation, Patient, User, utcnow
 from app.schemas import Credentials, DoctorProvisionInput, RegisterInput, TokenOut, UserOut
 from app.security import create_token, dummy_hash, hash_password, password_hasher, verify_password
 
@@ -19,6 +19,9 @@ def user_out(user: User):
         "role": user.role,
         "account_role": user.role,
         "profile_completed": False,
+        "is_active": user.is_active,
+        "last_login_at": user.last_login_at,
+        "deleted_at": user.deleted_at,
     }
 
 
@@ -50,11 +53,12 @@ def logout(request: Request, db: DB, user: CurrentUser):
 def login(body: Credentials, db: DB, settings: Config):
     user = db.scalar(select(User).where(User.username == body.username))
     valid = verify_password(body.password, user.password_hash if user else dummy_hash)
-    if user is None or not valid:
+    if user is None or not valid or not user.is_active or user.deleted_at is not None:
         raise APIError(401, 40103, "Invalid username or password")
+    user.last_login_at = utcnow()
     if password_hasher.check_needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
-        db.commit()
+    db.commit()
     return success(
         {
             "access_token": create_token(user, settings),

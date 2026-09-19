@@ -120,6 +120,15 @@ async function logout() {
           <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/archived" class="tree-item" active-class="is-active" @click="emit('close')">
             <ArchiveRestore :size="16" /><span>{{ $t('ui.sidebar.archivedPatients') }}</span>
           </RouterLink>
+          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/admin/users" class="tree-item" active-class="is-active" @click="emit('close')">
+            <UsersRound :size="16" /><span>{{ $t('ui.sidebar.adminUsers') }}</span>
+          </RouterLink>
+          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/admin/access" class="tree-item" active-class="is-active" @click="emit('close')">
+            <ClipboardList :size="16" /><span>{{ $t('ui.sidebar.patientAccess') }}</span>
+          </RouterLink>
+          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/admin/stats" class="tree-item" active-class="is-active" @click="emit('close')">
+            <Activity :size="16" /><span>{{ $t('ui.sidebar.adminStats') }}</span>
+          </RouterLink>
         </div>
       </section>
 

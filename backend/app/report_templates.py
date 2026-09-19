@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.errors import APIError
-from app.models import ReportTemplate, utcnow
+from app.models import ReportTemplate, ReportTemplateVersion, utcnow
 
 
 DEFAULT_REPORT_TEMPLATES = [
@@ -213,10 +213,42 @@ def template_out(template: ReportTemplate) -> dict:
         "organ_id": template.organ_id,
         "version": template.version,
         "is_active": template.is_active,
+        "is_default": template.is_default,
         "fields": template.fields,
         "created_at": template.created_at,
         "updated_at": template.updated_at,
     }
+
+
+def version_out(version: ReportTemplateVersion) -> dict:
+    return {
+        "version_id": version.id,
+        "template_id": version.template_id,
+        "version": version.version,
+        "name": version.name,
+        "modality": version.modality,
+        "organ_id": version.organ_id,
+        "fields": version.fields,
+        "is_active": version.is_active,
+        "is_default": version.is_default,
+        "created_at": version.created_at,
+    }
+
+
+def snapshot_template(db, template: ReportTemplate, user_id: int | None) -> None:
+    db.add(
+        ReportTemplateVersion(
+            template_id=template.id,
+            version=template.version,
+            name=template.name,
+            modality=template.modality,
+            organ_id=template.organ_id,
+            fields=template.fields,
+            is_active=template.is_active,
+            is_default=template.is_default,
+            created_by_user_id=user_id,
+        )
+    )
 
 
 def normalize_template_fields(fields: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -285,17 +317,18 @@ def seed_default_report_templates(session_factory) -> None:
         for item in DEFAULT_REPORT_TEMPLATES:
             if item["id"] in existing_ids:
                 continue
-            db.add(
-                ReportTemplate(
-                    id=item["id"],
-                    name=item["name"],
-                    modality=item["modality"],
-                    organ_id=item["organ_id"],
-                    fields=item["fields"],
-                    created_by_user_id=None,
-                    updated_at=now,
-                )
+            template = ReportTemplate(
+                id=item["id"],
+                name=item["name"],
+                modality=item["modality"],
+                organ_id=item["organ_id"],
+                fields=item["fields"],
+                created_by_user_id=None,
+                updated_at=now,
             )
+            db.add(template)
+            db.flush()
+            snapshot_template(db, template, None)
             added = True
         if added:
             db.commit()
