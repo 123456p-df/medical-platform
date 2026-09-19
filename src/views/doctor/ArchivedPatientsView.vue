@@ -79,8 +79,8 @@ function displayReason(reason: string) {
 
 <style scoped>
 .archived-panel { padding: 24px; }
-.archive-search { margin-top: 20px; }
-.archive-table-wrap { overflow-x: auto; margin-top: 24px; }
+.archive-search { margin-top: 22px; }
+.archive-table-wrap { overflow-x: auto; margin-top: 34px; }
 .archive-table { width: 100%; min-width: 760px; border-collapse: collapse; }
 .archive-table th, .archive-table td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
 .archive-table th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
