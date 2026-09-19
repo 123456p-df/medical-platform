@@ -727,6 +727,11 @@ export const enUS: Record<string, string> = {
   'ui.ai.ask': 'Ask assistant',
   'ui.ai.evidence': 'Evidence & context',
   'ui.ai.evidenceHelp': 'Only authorized records for the selected organ are included. The assistant receives record text and imaging metadata.',
+  'ui.patientDashboard.studyPeriod': 'Study period:',
+  'ui.patientDashboard.examinations': 'My Examinations',
+  'ui.patientDashboard.reports': 'My Reports',
+  'ui.anatomy.linkHint': '💡 Click to link the 2D slice center',
+  'ui.organVisibility.tumorNodule': 'Tumor / nodule lesions',
   'Signed report linked to this examination.': 'Signed report linked to this examination.',
 }
 export default enUS

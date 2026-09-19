@@ -845,6 +845,11 @@ export const zhCN: Record<string, string> = {
   'ui.ai.ask': 'Ask assistant',
   'ui.ai.evidence': 'Evidence & context',
   'ui.ai.evidenceHelp': 'Only authorized records for the selected organ are included. The assistant receives record text and imaging metadata.',
+  'ui.patientDashboard.studyPeriod': '检查时期：',
+  'ui.patientDashboard.examinations': '我的检查',
+  'ui.patientDashboard.reports': '我的报告',
+  'ui.anatomy.linkHint': '💡 点击联动 2D 切片中心',
+  'ui.organVisibility.tumorNodule': '肿瘤 / 结节病灶',
   'Signed report linked to this examination.': '此检查关联的已签署报告。',
 }
 

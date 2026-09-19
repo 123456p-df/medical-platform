@@ -1000,23 +1000,6 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/patients/{patient_id}/dicom-images": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Upload Dicom Images */
-        post: operations["upload_dicom_images_api_v1_patients__patient_id__dicom_images_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/patients/{patient_id}/findings": {
         parameters: {
             query?: never;
@@ -1598,20 +1581,6 @@ export type components = {
         Body_upload_avatar_api_v1_auth_profile_avatar_post: {
             /** File */
             file: string;
-        };
-        /** Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_post */
-        Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_post: {
-            /** Files */
-            files: string[];
-            /**
-             * Image Type
-             * @enum {string}
-             */
-            image_type: Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_postImage_type;
-            /** Organ Id */
-            organ_id: string;
-            /** Study Date */
-            study_date?: string | null;
         };
         /** Body_upload_file_api_v1_auth_profile_files_post */
         Body_upload_file_api_v1_auth_profile_files_post: {
@@ -11062,6 +11031,7 @@ export interface operations {
                 window_center?: number | null;
                 window_width?: number | null;
                 axis?: PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryAxis;
+                format?: PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryFormat;
             };
             header?: never;
             path: {
@@ -11079,6 +11049,7 @@ export interface operations {
                 };
                 content: {
                     "image/png": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Error envelope */
@@ -13673,162 +13644,6 @@ export interface operations {
             };
         };
     };
-    upload_dicom_images_api_v1_patients__patient_id__dicom_images_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                patient_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Envelope_ImageOut_"];
-                };
-            };
-            /** @description Error envelope */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-            /** @description Error envelope */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        code: number;
-                        data: null;
-                        message: string;
-                    };
-                };
-            };
-        };
-    };
     patient_findings_api_v1_patients__patient_id__findings_get: {
         parameters: {
             query?: never;
@@ -15551,6 +15366,10 @@ export enum PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryAxi
     coronal = "coronal",
     sagittal = "sagittal"
 }
+export enum PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryFormat {
+    webp = "webp",
+    png = "png"
+}
 export enum AICapabilityOutPurpose {
     record_summary = "record_summary",
     report_draft = "report_draft",
@@ -15616,10 +15435,6 @@ export enum BatchItemOutStatus {
     running = "running",
     completed = "completed",
     failed = "failed"
-}
-export enum Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_postImage_type {
-    CT = "CT",
-    MRI = "MRI"
 }
 export enum Body_upload_image_api_v1_patients__patient_id__medical_images_postImage_type {
     CT = "CT",

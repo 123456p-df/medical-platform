@@ -238,7 +238,7 @@ onMounted(async () => {
       <template #actions>
         <div class="header-actions">
           <div v-if="studies.length > 1" class="study-selector">
-            <label for="study-select">检查时期：</label>
+            <label for="study-select">{{ $t('ui.patientDashboard.studyPeriod') }}</label>
             <select id="study-select" v-model="selectedStudyId">
               <option v-for="s in studies" :key="s.id" :value="s.id">
                 {{ s.date }} · {{ s.organ }} · {{ s.sliceCount }} 层
@@ -246,10 +246,10 @@ onMounted(async () => {
             </select>
           </div>
           <button type="button" class="btn btn-secondary btn-sm" @click="router.push({ name: 'patient-examinations' })">
-            <Stethoscope :size="15" /> 我的检查
+            <Stethoscope :size="15" /> {{ $t('ui.patientDashboard.examinations') }}
           </button>
           <button type="button" class="btn btn-secondary btn-sm" @click="router.push({ name: 'patient-reports' })">
-            <FileText :size="15" /> 我的报告
+            <FileText :size="15" /> {{ $t('ui.patientDashboard.reports') }}
           </button>
         </div>
       </template>

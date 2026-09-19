@@ -1317,50 +1317,6 @@
         "title": "Body_upload_avatar_api_v1_auth_profile_avatar_post",
         "type": "object"
       },
-      "Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_post": {
-        "properties": {
-          "files": {
-            "items": {
-              "contentMediaType": "application/octet-stream",
-              "type": "string"
-            },
-            "title": "Files",
-            "type": "array"
-          },
-          "image_type": {
-            "enum": [
-              "CT",
-              "MRI"
-            ],
-            "title": "Image Type",
-            "type": "string"
-          },
-          "organ_id": {
-            "maxLength": 64,
-            "title": "Organ Id",
-            "type": "string"
-          },
-          "study_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Study Date"
-          }
-        },
-        "required": [
-          "files",
-          "organ_id",
-          "image_type"
-        ],
-        "title": "Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_post",
-        "type": "object"
-      },
       "Body_upload_file_api_v1_auth_profile_files_post": {
         "properties": {
           "file": {
@@ -20889,12 +20845,27 @@
               "title": "Axis",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "webp",
+              "enum": [
+                "webp",
+                "png"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "image/png": {}
+              "image/png": {},
+              "image/webp": {}
             },
             "description": "Successful Response"
           },
@@ -26044,313 +26015,6 @@
         "summary": "Delete Patient",
         "tags": [
           "Patient / Organ"
-        ]
-      }
-    },
-    "/api/v1/patients/{patient_id}/dicom-images": {
-      "post": {
-        "operationId": "upload_dicom_images_api_v1_patients__patient_id__dicom_images_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "patient_id",
-            "required": true,
-            "schema": {
-              "title": "Patient Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_upload_dicom_images_api_v1_patients__patient_id__dicom_images_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Envelope_ImageOut_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "502": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "code": {
-                      "type": "integer"
-                    },
-                    "data": {
-                      "type": "null"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "code",
-                    "message",
-                    "data"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Error envelope"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Upload Dicom Images",
-        "tags": [
-          "Medical Image"
         ]
       }
     },

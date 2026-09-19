@@ -1,13 +1,13 @@
 """Separate detection box extent from clinical measurements.
 
-Revision ID: 0020_finding_measurement_provenance
-Revises: 0019_report_workflow
+Revision ID: 0022_finding_provenance
+Revises: 0021_report_workflow
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0022_finding_measurement_provenance"
+revision = "0022_finding_provenance"
 down_revision = "0021_report_workflow"
 branch_labels = None
 depends_on = None

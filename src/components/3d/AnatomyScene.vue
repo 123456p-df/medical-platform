@@ -815,7 +815,7 @@ onBeforeUnmount(() => {
           <span class="val">{{ (hoveredFinding.confidence * 100).toFixed(0) }}%</span>
         </div>
       </div>
-      <div class="tooltip-hint">💡 点击联动 2D 切片中心</div>
+      <div class="tooltip-hint">{{ $t('ui.anatomy.linkHint') }}</div>
     </div>
   </div>
 </template>

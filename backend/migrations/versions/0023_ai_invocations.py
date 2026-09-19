@@ -1,14 +1,14 @@
 """Add multi-provider AI configuration and invocation audit trail.
 
-Revision ID: 0021_ai_providers_and_invocations
-Revises: 0020_finding_measurement_provenance
+Revision ID: 0023_ai_invocations
+Revises: 0022_finding_provenance
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0023_ai_providers_and_invocations"
-down_revision = "0022_finding_measurement_provenance"
+revision = "0023_ai_invocations"
+down_revision = "0022_finding_provenance"
 branch_labels = None
 depends_on = None
 
