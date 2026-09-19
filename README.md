@@ -76,7 +76,7 @@ pnpm build
 pnpm serve
 ```
 
-当前构建预算以路由懒加载为前提：入口脚本不超过 350 KB，Cornerstone 独立块不超过 3.6 MB，GLTF 加载块不超过 650 KB。构建后运行 `pnpm test:bundle-budget` 可复核；首次 DICOM 解码仍需下载对应 Worker/WASM，生产发布前应在目标网络记录冷启动和热启动首帧时间。
+当前构建预算以路由懒加载为前提：入口脚本不超过 360 KB，Cornerstone 独立块不超过 3.6 MB，GLTF 加载块不超过 650 KB。构建后运行 `pnpm test:bundle-budget` 可复核；首次 DICOM 解码仍需下载对应 Worker/WASM，生产发布前应在目标网络记录冷启动和热启动首帧时间。
 
 ## 三种运行模式
 
@@ -131,7 +131,7 @@ uv run alembic upgrade head
 
 ## 报告同步与工作区标签
 
-医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。`0018_merge_mri_and_v5` 安全汇合 MRI 与 V5 两条既有迁移分支，`0019_reconcile_access_control` 修复旧版本可能缺失的账号状态与 JWT 撤销表。本地演示模式使用按账号隔离的浏览器持久化存储。
+医生报告支持保存草稿和签署。草稿只对医生可见；签署后，患者可在“我的报告”、健康首页和对应检查详情中查看同一份报告。报告投递字段来自 `0008_report_delivery`，草稿默认值来自 `0014_record_draft_default`；DICOM 业务关联来自 `0016_dicom_business_links`；患者建档邀请、账号绑定和全局归档审计来自 `0017_patient_onboarding_and_archives`。`0018_merge_mri_and_v5` 安全汇合 MRI 与 V5 两条既有迁移分支，`0019_reconcile_access_control` 修复旧版本可能缺失的账号状态与 JWT 撤销表。`0020_structured_reporting` 增加结构化报告模板，并在报告中保存结构化字段。`0021_admin_console` 增加账号状态、强制下线、模板历史版本和运营统计支持。本地演示模式使用按账号隔离的浏览器持久化存储。
 
 医生侧栏按“患者管理 / 临床工作流”组织为可展开树。打开患者后，可从树中进入概览、影像、AI 辅助诊断、报告和 3D 影像；这些页面会作为工作区标签保留，可快速切换或单独关闭。
 

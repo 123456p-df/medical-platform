@@ -9,6 +9,7 @@ import AppTopbar from './Topbar.vue'
 import AIAssistant from './AIAssistant.vue'
 import WorkspaceTabs from './WorkspaceTabs.vue'
 import { localPreview } from '@/utils/runtime'
+import { t } from '@/i18n'
 
 const auth = useAuthStore()
 const patients = usePatientStore()
@@ -26,6 +27,11 @@ const tabTitles: Record<string, string> = {
   'doctor-patient-report': 'ui.sidebar.clinicalReport',
   'doctor-patient-3d': 'ui.sidebar.organ3d',
   'doctor-patient-simulation': 'Simulation',
+  'doctor-report-templates': 'ui.reportTemplates.title',
+  'doctor-admin-users': 'ui.adminUsers.title',
+  'doctor-admin-access': 'ui.patientAccess.title',
+  'doctor-admin-stats': 'ui.adminStats.title',
+  'doctor-archived': 'ui.archive.title',
   'patient-dashboard': 'My Health',
   'patient-examinations': 'My Examinations',
   'patient-examination-detail': 'Examination Detail',
@@ -48,6 +54,10 @@ const currentTabTitle = computed(() => {
 watch(sidebarCollapsed, (collapsed) => {
   localStorage.setItem('pulmolink-sidebar-collapsed', String(collapsed))
 })
+
+watch(currentTabTitle, (title) => {
+  document.title = `${t(title)} · PulmoLink`
+}, { immediate: true })
 
 watch(
   [() => route.fullPath, currentTabTitle, () => auth.portal],

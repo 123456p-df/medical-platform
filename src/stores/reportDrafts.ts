@@ -6,6 +6,8 @@ export interface ReportDraftFields {
   diagnosis: string
   description: string
   recommendation: string
+  reportTemplateId?: string
+  structuredData?: Record<string, unknown>
 }
 
 export interface StoredReportDraft {

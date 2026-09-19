@@ -36,13 +36,15 @@ def current_user(
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise APIError(401, 40101, "Authentication required")
     try:
-        user_id, jti, expires_at = decode_token(credentials.credentials, settings)
+        user_id, jti, expires_at, token_version = decode_token(credentials.credentials, settings)
     except (InvalidTokenError, ValueError, TypeError, OverflowError):
         raise APIError(401, 40102, "Invalid or expired token") from None
     if db.get(JwtRevocation, jti) is not None:
         raise APIError(401, 40102, "Invalid or expired token")
     user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or user.deleted_at is not None:
+        raise APIError(401, 40102, "Invalid or expired token")
+    if token_version != user.token_version:
         raise APIError(401, 40102, "Invalid or expired token")
     request.state.jwt_jti = jti
     request.state.jwt_expires_at = expires_at

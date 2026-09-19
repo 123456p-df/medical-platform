@@ -37,3 +37,10 @@ def upgrade():
         """
     )
 
+
+def downgrade():
+    op.execute("DROP TRIGGER IF EXISTS trg_medical_records_immutable ON medical_records")
+    op.execute("DROP FUNCTION IF EXISTS prevent_signed_record_mutation()")
+    op.drop_index("ix_record_addenda_author_user_id", table_name="record_addenda")
+    op.drop_index("ix_record_addenda_record_id", table_name="record_addenda")
+    op.drop_table("record_addenda")

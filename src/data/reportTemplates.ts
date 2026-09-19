@@ -1,0 +1,57 @@
+import type { ReportTemplate } from '@/types'
+
+export const DEFAULT_REPORT_TEMPLATES: ReportTemplate[] = [
+  {
+    id: 'template_chest_ct',
+    name: 'Chest CT Structured Report',
+    modality: 'CT',
+    organId: 'lung',
+    version: 1,
+    isActive: true,
+    fields: [
+      { key: 'technique', label: 'ui.reportTemplate.technique', section: 'ui.reportTemplate.section.technique', type: 'select', required: true, options: ['ui.reportTemplate.technique.nonContrast', 'ui.reportTemplate.technique.contrast', 'ui.reportTemplate.technique.cta'] },
+      { key: 'comparison', label: 'ui.reportTemplate.comparison', section: 'ui.reportTemplate.section.clinical', type: 'text', required: false },
+      { key: 'lung_findings', label: 'ui.reportTemplate.lungFindings', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: true },
+      { key: 'mediastinum', label: 'ui.reportTemplate.mediastinum', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: false },
+      { key: 'pleura', label: 'ui.reportTemplate.pleura', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: false },
+      { key: 'nodule_location', label: 'ui.reportTemplate.noduleLocation', section: 'ui.reportTemplate.section.measurement', type: 'text', required: false },
+      { key: 'nodule_long_axis_mm', label: 'ui.reportTemplate.noduleLongAxisMm', section: 'ui.reportTemplate.section.measurement', type: 'number', required: false, unit: 'mm' },
+      { key: 'nodule_short_axis_mm', label: 'ui.reportTemplate.noduleShortAxisMm', section: 'ui.reportTemplate.section.measurement', type: 'number', required: false, unit: 'mm' },
+      { key: 'nodule_density', label: 'ui.reportTemplate.noduleDensity', section: 'ui.reportTemplate.section.measurement', type: 'select', required: false, options: ['ui.reportTemplate.density.solid', 'ui.reportTemplate.density.partSolid', 'ui.reportTemplate.density.groundGlass', 'ui.reportTemplate.density.calcified'] },
+      { key: 'impression', label: 'ui.reportTemplate.impression', section: 'ui.reportTemplate.section.impression', type: 'textarea', required: true },
+      { key: 'follow_up', label: 'ui.reportTemplate.followUp', section: 'ui.reportTemplate.section.impression', type: 'textarea', required: false },
+    ],
+  },
+  {
+    id: 'template_brain_mri',
+    name: 'Brain MRI Structured Report',
+    modality: 'MRI',
+    organId: 'brain',
+    version: 1,
+    isActive: true,
+    fields: [
+      { key: 'technique', label: 'ui.reportTemplate.technique', section: 'ui.reportTemplate.section.technique', type: 'select', required: true, options: ['ui.reportTemplate.technique.nonContrast', 'ui.reportTemplate.technique.contrast'] },
+      { key: 'brain_parenchyma', label: 'ui.reportTemplate.brainParenchyma', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: true },
+      { key: 'ventricles', label: 'ui.reportTemplate.ventricles', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: false },
+      { key: 'vessels', label: 'ui.reportTemplate.vessels', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: false },
+      { key: 'extra_axial', label: 'ui.reportTemplate.extraAxial', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: false },
+      { key: 'impression', label: 'ui.reportTemplate.impression', section: 'ui.reportTemplate.section.impression', type: 'textarea', required: true },
+    ],
+  },
+  {
+    id: 'template_chest_xray',
+    name: 'Chest X-Ray Structured Report',
+    modality: 'X-Ray',
+    organId: 'lung',
+    version: 1,
+    isActive: true,
+    fields: [
+      { key: 'projection', label: 'ui.reportTemplate.projection', section: 'ui.reportTemplate.section.technique', type: 'select', required: true, options: ['ui.reportTemplate.projection.pa', 'ui.reportTemplate.projection.ap', 'ui.reportTemplate.projection.lateral'] },
+      { key: 'technique_quality', label: 'ui.reportTemplate.techniqueQuality', section: 'ui.reportTemplate.section.technique', type: 'textarea', required: false },
+      { key: 'lungs', label: 'ui.reportTemplate.lungs', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: true },
+      { key: 'heart_mediastinum', label: 'ui.reportTemplate.heartMediastinum', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: false },
+      { key: 'bones_soft_tissue', label: 'ui.reportTemplate.bonesSoftTissue', section: 'ui.reportTemplate.section.findings', type: 'textarea', required: false },
+      { key: 'impression', label: 'ui.reportTemplate.impression', section: 'ui.reportTemplate.section.impression', type: 'textarea', required: true },
+    ],
+  },
+]
