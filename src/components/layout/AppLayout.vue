@@ -25,6 +25,7 @@ const tabTitles: Record<string, string> = {
   'doctor-patient-ai': 'ui.sidebar.aiDiagnosis',
   'doctor-patient-report': 'ui.sidebar.clinicalReport',
   'doctor-patient-3d': 'ui.sidebar.organ3d',
+  'doctor-patient-simulation': 'Simulation',
   'patient-dashboard': 'My Health',
   'patient-examinations': 'My Examinations',
   'patient-examination-detail': 'Examination Detail',

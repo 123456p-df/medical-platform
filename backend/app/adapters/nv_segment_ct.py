@@ -120,6 +120,27 @@ class NVSegmentCT:
                 overlap=self.settings.nv_segment_overlap,
                 device=device,
             )
+            # The upstream checkpoint stores MONAI network keys such as
+            # ``image_encoder...`` while the Hugging Face wrapper owns that
+            # module under ``network``. Newer transformers versions therefore
+            # treat the whole safetensors file as mismatched and leave a random
+            # network behind. Load the official raw network checkpoint into the
+            # wrapped MONAI module explicitly and strictly before inference.
+            wrapped_model = getattr(self.pipeline, "model", None)
+            network = getattr(wrapped_model, "network", None)
+            checkpoint = folder / "vista3d_pretrained_model" / "model.pt"
+            if network is None:
+                raise RuntimeError("NV-Segment-CTMR pipeline does not expose its MONAI network")
+            state_dict = torch.load(
+                str(checkpoint),
+                map_location="cpu",
+                weights_only=True,
+                mmap=True,
+            )
+            network.load_state_dict(state_dict, strict=True)
+            del state_dict
+            network.eval()
+            logger.info("Loaded NV-Segment-CTMR model.pt into the wrapped MONAI network")
 
     def run_batch(
         self,

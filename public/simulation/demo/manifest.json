@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0",
+  "id": "teaching-human-demo",
+  "caseId": "teaching-human-demo",
+  "name": "Interactive Human Anatomy Teaching Demo",
+  "coordinateSystem": "GLTF_Y_UP",
+  "units": "meter",
+  "metadata": {
+    "purpose": "research-and-teaching-only",
+    "source": "synthetic procedural anatomy fixture",
+    "disclaimer": "Not for clinical diagnosis or surgical planning"
+  },
+  "structures": [
+    {
+      "id": "body", "name": "Body / Skin", "type": "body",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["body_shell"], "deformable": true, "visible": true,
+      "physicsMode": "KINEMATIC",
+      "material": { "color": "#d9ab92", "opacity": 1.0, "roughness": 0.66, "doubleSided": true },
+      "metadata": { "role": "incision-surface", "visualResolution": "high", "cuttableThicknessMm": 18 }
+    },
+    {
+      "id": "liver", "name": "Liver", "type": "organ",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["liver"], "deformable": true, "visible": true,
+      "physicsMode": "KINEMATIC",
+      "material": { "color": "#843b32", "roughness": 0.36 }, "metadata": { "cuttableThicknessMm": 35 }
+    },
+    {
+      "id": "lungs", "name": "Lungs", "type": "organ",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["lung"], "deformable": true, "visible": true,
+      "physicsMode": "KINEMATIC",
+      "material": { "color": "#bd8f94", "opacity": 0.88, "roughness": 0.55 }, "metadata": {}
+    },
+    {
+      "id": "kidneys", "name": "Kidneys", "type": "organ",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["kidney"], "deformable": true, "visible": true,
+      "physicsMode": "KINEMATIC",
+      "material": { "color": "#763333", "roughness": 0.4 }, "metadata": {}
+    },
+    {
+      "id": "spleen", "name": "Spleen", "type": "organ",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["spleen"], "deformable": true, "visible": true,
+      "physicsMode": "KINEMATIC",
+      "material": { "color": "#67304e", "roughness": 0.38 }, "metadata": {}
+    },
+    {
+      "id": "stomach", "name": "Stomach", "type": "organ",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["stomach"], "deformable": true, "visible": true,
+      "physicsMode": "KINEMATIC",
+      "material": { "color": "#c17f75", "roughness": 0.4 }, "metadata": {}
+    },
+    {
+      "id": "heart", "name": "Heart", "type": "organ",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["heart"], "deformable": true, "visible": true,
+      "physicsMode": "KINEMATIC",
+      "material": { "color": "#9a3036", "roughness": 0.32 }, "metadata": {}
+    },
+    {
+      "id": "spine", "name": "Spine", "type": "bone",
+      "visualMesh": "/models/anatomy-navigation.glb", "physicsMesh": null,
+      "nodeNames": ["spine"], "deformable": false, "visible": true,
+      "physicsMode": "STATIC",
+      "material": { "color": "#ddd5c3", "roughness": 0.75 }, "metadata": { "static": true }
+    }
+  ]
+}

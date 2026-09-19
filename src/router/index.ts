@@ -76,6 +76,11 @@ const router = createRouter({
               component: () => import('@/views/doctor/Patient3DView.vue'),
             },
             {
+              path: 'simulation',
+              name: 'doctor-patient-simulation',
+              component: () => import('@/views/doctor/SurgerySimulation.vue'),
+            },
+            {
               path: 'viewer',
               name: 'doctor-patient-study-viewer',
               redirect: (to) => ({

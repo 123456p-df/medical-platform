@@ -60,6 +60,7 @@ const pageTitles: Record<string, string> = {
   'doctor-patient-ai': 'ui.sidebar.aiDiagnosis',
   'doctor-patient-report': 'Doctor Report',
   'doctor-patient-3d': 'Digital Human',
+  'doctor-patient-simulation': 'Surgery Simulation',
   'patient-dashboard': 'My Health',
   'patient-onboarding': 'ui.onboarding.title',
   'patient-examinations': 'My Examinations',
