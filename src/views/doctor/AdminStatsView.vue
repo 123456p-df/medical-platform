@@ -18,6 +18,25 @@ const totals = computed(() => ({
   reports: stats.value?.signedReports.reduce((sum, item) => sum + item.count, 0) || 0,
 }))
 
+const dailyRows = computed(() => {
+  if (!stats.value) return []
+  const dates = new Set([
+    ...stats.value.newPatients.map(item => item.date),
+    ...stats.value.imageUploads.map(item => item.date),
+    ...stats.value.aiTasks.map(item => item.date),
+    ...stats.value.signedReports.map(item => item.date),
+  ])
+  const count = (items: { date: string; count: number }[], date: string) =>
+    items.find(item => item.date === date)?.count || 0
+  return [...dates].sort().map(date => ({
+    date,
+    patients: count(stats.value!.newPatients, date),
+    images: count(stats.value!.imageUploads, date),
+    aiTasks: count(stats.value!.aiTasks, date),
+    reports: count(stats.value!.signedReports, date),
+  }))
+})
+
 function localStats(): AdminStats {
   const today = new Date()
   const series = (base: number) => Array.from({ length: 7 }, (_, index) => {
@@ -83,6 +102,13 @@ onMounted(loadStats)
         <h3><FileCheck2 :size="17" /> {{ $t('ui.adminStats.templateUsage') }}</h3>
         <table><thead><tr><th>{{ $t('ui.adminStats.template') }}</th><th>{{ $t('ui.adminUsers.user') }}</th><th>{{ $t('ui.adminStats.reports') }}</th></tr></thead><tbody><tr v-for="item in usage" :key="`${item.templateId}:${item.doctorUserId}`"><td>{{ item.templateName }}</td><td>{{ item.doctorName }}</td><td>{{ item.reportCount }}</td></tr></tbody></table>
       </article>
+    </section>
+    <section class="card table-card">
+      <h3><Activity :size="17" /> {{ $t('ui.adminStats.dailyBreakdown') }}</h3>
+      <table>
+        <thead><tr><th>{{ $t('ui.adminStats.date') }}</th><th>{{ $t('ui.adminStats.newPatients') }}</th><th>{{ $t('ui.adminStats.images') }}</th><th>{{ $t('ui.adminStats.aiTasks') }}</th><th>{{ $t('ui.adminStats.signedReports') }}</th></tr></thead>
+        <tbody><tr v-for="row in dailyRows" :key="row.date"><td>{{ row.date }}</td><td>{{ row.patients }}</td><td>{{ row.images }}</td><td>{{ row.aiTasks }}</td><td>{{ row.reports }}</td></tr></tbody>
+      </table>
     </section>
   </div>
 </template>
