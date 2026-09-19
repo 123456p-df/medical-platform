@@ -31,13 +31,22 @@ async function restore(id: string) {
   catch (reason) { error.value = reason instanceof Error ? reason.message : t('ui.archive.restoreFailed') }
   finally { busy.value = null }
 }
+
+function displayReason(reason: string) {
+  const known: Record<string, string> = {
+    'Legacy archive request': 'ui.archive.reasonLegacy',
+    'legacy-archive': 'ui.archive.reasonLegacy',
+    'workspace-removal': 'ui.archive.reasonWorkspaceRemoval',
+  }
+  return known[reason] ? t(known[reason]) : reason
+}
 </script>
 
 <template>
   <div class="page">
     <PageHeader
-      title="Archived Patients"
-      subtitle="Review global patient archives and restore records when authorized."
+      title="ui.archive.title"
+      subtitle="ui.archive.subtitle"
     />
     <section class="card archived-panel">
       <div class="card-header">
@@ -47,7 +56,7 @@ async function restore(id: string) {
         </div>
         <span class="patient-count">{{ $t('ui.archive.count', { count: filtered.length }) }}</span>
       </div>
-      <SearchBar v-model="search" :placeholder="$t('ui.archive.searchPlaceholder')" />
+      <SearchBar v-model="search" class="archive-search" :placeholder="$t('ui.archive.searchPlaceholder')" />
       <p v-if="error" role="alert">{{ error }}</p>
       <StatePanel v-if="!filtered.length" kind="empty" :message="$t('ui.archive.empty')" />
       <div v-else class="archive-table-wrap">
@@ -57,7 +66,7 @@ async function restore(id: string) {
             <tr v-for="item in filtered" :key="item.patientId">
               <td><strong>{{ item.name }}</strong></td>
               <td class="mono">{{ item.patientId }}</td>
-              <td>{{ item.reason }}</td>
+              <td>{{ displayReason(item.reason) }}</td>
               <td>{{ new Date(item.archivedAt).toLocaleString() }}</td>
               <td><button type="button" class="btn btn-secondary btn-sm" :disabled="busy === item.patientId" @click="restore(item.patientId)"><RotateCcw v-if="busy === item.patientId" :size="14" /><ArchiveRestore v-else :size="14" />{{ $t('ui.archive.restore') }}</button></td>
             </tr>
@@ -70,7 +79,8 @@ async function restore(id: string) {
 
 <style scoped>
 .archived-panel { padding: 24px; }
-.archive-table-wrap { overflow-x: auto; margin-top: 14px; }
+.archive-search { margin-top: 20px; }
+.archive-table-wrap { overflow-x: auto; margin-top: 24px; }
 .archive-table { width: 100%; min-width: 760px; border-collapse: collapse; }
 .archive-table th, .archive-table td { padding: 12px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
 .archive-table th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; }

@@ -201,6 +201,8 @@ export const enUS: Record<string, string> = {
   'ui.archive.reason': 'Archive reason',
   'ui.archive.archivedAt': 'Archived at',
   'ui.archive.restore': 'Restore',
+  'ui.archive.reasonLegacy': 'Legacy archive request',
+  'ui.archive.reasonWorkspaceRemoval': 'Removed from workspace',
   'ui.onboarding.eyebrow': 'Complete patient profile',
   'ui.onboarding.title': 'Finish your patient profile',
   'ui.onboarding.subtitle': 'New patient accounts must complete identity onboarding or use a one-time invitation from a doctor to link an existing hospital record.',

@@ -319,6 +319,8 @@ export const zhCN: Record<string, string> = {
   'ui.archive.reason': '归档原因',
   'ui.archive.archivedAt': '归档时间',
   'ui.archive.restore': '恢复',
+  'ui.archive.reasonLegacy': '旧版归档请求',
+  'ui.archive.reasonWorkspaceRemoval': '从工作台移除',
   'ui.onboarding.eyebrow': '完成患者建档',
   'ui.onboarding.title': '补齐您的个人档案',
   'ui.onboarding.subtitle': '新患者账号需要先完成身份建档，或使用医生提供的一次性邀请代码绑定医院已有档案。',
