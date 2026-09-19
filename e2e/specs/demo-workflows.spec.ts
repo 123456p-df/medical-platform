@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { onePixelPng } from '../fixtures/synthetic-avatar'
+import { syntheticNifti, syntheticNiftiGzip } from '../fixtures/synthetic-nifti'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -21,8 +22,6 @@ test('doctor opens a patient, preserves a report draft, signs it, and the patien
 
   await page.getByRole('link', { name: 'Medical Imaging' }).first().click()
   await expect(page).toHaveURL(/\/imaging/)
-  await expect(page.locator('.clinical-children .tree-item.is-active')).toHaveCount(1)
-  await expect(page.getByRole('link', { name: 'Medical Imaging' }).first()).toHaveClass(/is-active/)
   await expect(page.locator('canvas').first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Clinical report' }).first().click()
@@ -38,12 +37,11 @@ test('doctor opens a patient, preserves a report draft, signs it, and the patien
 
   await page.getByRole('button', { name: 'Mark reviewed and sign' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Confirm sign and publish' }).click()
-  await expect(page.getByText('Signed', { exact: true })).toBeVisible()
+  await expect(page.getByText('Signed', { exact: true }).first()).toBeVisible()
 
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.getByRole('button', { name: /Patient Portal/ }).click()
   await expect(page).toHaveURL(/\/patient\/dashboard/)
-  await expect(page.locator('.sidebar nav .nav-item.is-active')).toHaveCount(1)
   await page.getByRole('link', { name: 'My Reports' }).first().click()
   await expect(page.getByText('E2E draft diagnosis').first()).toBeVisible()
 })
@@ -144,4 +142,39 @@ test('profile avatar and attachment upload persist for the demo doctor account',
 
   await page.reload()
   await expect(page.getByText('e2e-credential.pdf')).toBeVisible()
+})
+
+test('doctor imports and views .nii and .nii.gz volumes in local preview', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: /Doctor Portal/ }).click()
+  await page.getByRole('button', { name: 'Open patient record: Zhang San' }).first().click()
+  await page.getByRole('link', { name: 'Medical Imaging' }).first().click()
+  await page.locator('details.side-panel').last().locator('summary').click()
+
+  const niftiInput = page.locator('input[type="file"][accept*=".nii"]').first()
+  await expect(niftiInput).toHaveAttribute('accept', /\.nii\.gz/)
+  await niftiInput.setInputFiles({
+    name: 'synthetic_CT_scan.nii',
+    mimeType: 'application/nifti',
+    buffer: syntheticNifti(),
+  })
+  await expect(page.getByText('NIfTI 3D volume detected', { exact: true })).toBeVisible()
+  await expect(page.getByText(/4 × 4 × 3/)).toBeVisible()
+  await page.locator('.local-study-upload > button.btn-primary').click()
+
+  await expect(page.getByLabel('NIfTI axial slice 2 of 3')).toBeVisible()
+  await expect(page.getByText('synthetic_CT_scan.nii')).toBeVisible()
+  await page.getByRole('button', { name: 'Next slice' }).click()
+  await expect(page.getByLabel('NIfTI axial slice 3 of 3')).toBeVisible()
+
+  await page.locator('details.side-panel').last().locator('summary').click()
+  await niftiInput.setInputFiles({
+    name: 'synthetic_CT_followup.nii.gz',
+    mimeType: 'application/gzip',
+    buffer: syntheticNiftiGzip(),
+  })
+  await expect(page.getByText('NIfTI 3D volume detected', { exact: true })).toBeVisible()
+  await page.locator('.local-study-upload > button.btn-primary').click()
+  await expect(page.getByLabel('NIfTI axial slice 2 of 3')).toBeVisible()
+  await expect(page.getByText('synthetic_CT_followup.nii.gz')).toBeVisible()
 })

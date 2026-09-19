@@ -4,15 +4,18 @@ import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs'
+import { useStudyWorkspaceStore, type StudyViewerMode } from '@/stores/studyWorkspace'
 import AppSidebar from './Sidebar.vue'
 import AppTopbar from './Topbar.vue'
 import AIAssistant from './AIAssistant.vue'
 import WorkspaceTabs from './WorkspaceTabs.vue'
 import { localPreview } from '@/utils/runtime'
+import { buildId } from '@/utils/buildInfo'
 
 const auth = useAuthStore()
 const patients = usePatientStore()
 const workspaceTabs = useWorkspaceTabsStore()
+const studyWorkspace = useStudyWorkspaceStore()
 const route = useRoute()
 const sidebarOpen = ref(false)
 const sidebarCollapsed = ref(localStorage.getItem('pulmolink-sidebar-collapsed') === 'true')
@@ -22,7 +25,6 @@ const tabTitles: Record<string, string> = {
   'doctor-dashboard': 'ui.sidebar.patientWorkspace',
   'doctor-patient-overview': 'ui.sidebar.patientOverview',
   'doctor-patient-imaging': 'Medical Imaging',
-  'doctor-patient-ai': 'ui.sidebar.aiDiagnosis',
   'doctor-patient-report': 'ui.sidebar.clinicalReport',
   'doctor-patient-3d': 'ui.sidebar.organ3d',
   'patient-dashboard': 'My Health',
@@ -30,7 +32,6 @@ const tabTitles: Record<string, string> = {
   'patient-examination-detail': 'Examination Detail',
   'patient-reports': 'My Reports',
   'patient-body': 'My Body',
-  'patient-ai': 'AI Assistant',
 }
 const currentPatientName = computed(() => {
   const id = typeof route.params.id === 'string' ? route.params.id : ''
@@ -43,6 +44,58 @@ const currentTabTitle = computed(() => {
     ? `${currentPatientName.value} · ${base}`
     : base
 })
+
+const contextPatientId = computed(() => {
+  if (auth.portal === 'patient') return auth.session?.id || ''
+  return typeof route.params.id === 'string' ? route.params.id : ''
+})
+
+const contextExaminationId = computed(() => {
+  const fromQuery = typeof route.query.exam === 'string' && route.query.exam
+  if (fromQuery) return fromQuery
+  return route.name === 'patient-examination-detail' && typeof route.params.id === 'string'
+    ? route.params.id
+    : ''
+})
+
+const contextSeriesId = computed(() =>
+  typeof route.query.series === 'string' ? route.query.series : '',
+)
+
+const contextMode = computed<StudyViewerMode | null>(() => {
+  const value = route.query.mode
+  return value === 'compare' || value === 'mpr' || value === 'projection' || value === '3d'
+    ? value
+    : null
+})
+
+function bindStudyContext() {
+  const patientId = contextPatientId.value
+  const examinationId = contextExaminationId.value
+  const studyPage = [
+    'doctor-patient-imaging',
+    'doctor-patient-report',
+    'doctor-patient-3d',
+    'patient-examination-detail',
+  ].includes(String(route.name))
+  const current = studyWorkspace.context
+  const preservedExamination = studyPage && !examinationId && current.patientId === patientId
+    ? current.examinationId
+    : examinationId
+
+  studyWorkspace.bindContext({
+    patientId: patientId || null,
+    examinationId: preservedExamination || null,
+    seriesId: contextSeriesId.value || null,
+    mode: contextMode.value,
+  })
+}
+
+watch(
+  [() => route.fullPath, () => auth.session?.id],
+  bindStudyContext,
+  { immediate: true },
+)
 
 watch(sidebarCollapsed, (collapsed) => {
   localStorage.setItem('pulmolink-sidebar-collapsed', String(collapsed))
@@ -64,7 +117,10 @@ watch(
 </script>
 
 <template>
-  <div :class="['app-shell', shellClass, { 'sidebar-collapsed': sidebarCollapsed }]">
+  <div
+    :class="['app-shell', shellClass, { 'sidebar-collapsed': sidebarCollapsed }]"
+    :data-build-id="buildId"
+  >
     <a class="skip-link" href="#main-content">{{ $t('ui.a11y.skip') }}</a>
     <AIAssistant />
     <AppSidebar

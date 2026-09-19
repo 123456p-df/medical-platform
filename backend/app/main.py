@@ -253,6 +253,7 @@ def create_app(
         analysis.router,
         organ_models.router,
         ai.router,
+        ai.admin_router,
     ]:
         app.include_router(router, prefix="/api/v1")
 

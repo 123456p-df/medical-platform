@@ -20,6 +20,8 @@ import { VolumeRenderer } from '@/utils/volumeRenderer'
 import { activeMedicalTool } from '@/composables/useViewportGestures'
 import { t } from '@/i18n'
 
+const props = defineProps<{ embedded?: boolean }>()
+
 const ORIENTATION_OPTIONS = [
   { id: 'axial', label: 'ui.viewer3d.axis.axial' },
   { id: 'sagittal', label: 'ui.viewer3d.axis.sagittal' },
@@ -566,12 +568,14 @@ watch(
 )
 
 onMounted(async () => {
-  document.title = t('ui.viewer3d.title')
-  document.documentElement.style.overflow = 'hidden'
-  document.documentElement.style.height = '100%'
-  document.body.style.overflow = 'hidden'
-  document.body.style.height = '100%'
-  document.body.style.overscrollBehavior = 'none'
+  if (!props.embedded) {
+    document.title = t('ui.viewer3d.title')
+    document.documentElement.style.overflow = 'hidden'
+    document.documentElement.style.height = '100%'
+    document.body.style.overflow = 'hidden'
+    document.body.style.height = '100%'
+    document.body.style.overscrollBehavior = 'none'
+  }
 
   activeMedicalTool.value = 'ww_wl'
   if (localPreview) {
@@ -607,11 +611,13 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   volumeVersions.primary++
   volumeVersions.compare++
-  document.documentElement.style.overflow = ''
-  document.documentElement.style.height = ''
-  document.body.style.overflow = ''
-  document.body.style.height = ''
-  document.body.style.overscrollBehavior = ''
+  if (!props.embedded) {
+    document.documentElement.style.overflow = ''
+    document.documentElement.style.height = ''
+    document.body.style.overflow = ''
+    document.body.style.height = ''
+    document.body.style.overscrollBehavior = ''
+  }
 
   finishResize()
   if (pollTimer) clearTimeout(pollTimer)
@@ -625,7 +631,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="workspace" class="viewer-window" :class="{ resizing }" :style="workspaceStyle" @wheel.passive.stop>
+  <div ref="workspace" class="viewer-window" :class="{ resizing, embedded: props.embedded }" :style="workspaceStyle" @wheel.passive.stop>
     <header class="viewer-toolbar" @wheel.prevent>
       <div class="toolbar-block">
         <strong>{{ $t('ui.viewer3d.title') }}</strong>
@@ -837,6 +843,13 @@ onBeforeUnmount(() => {
   background: #0f1b22;
   color: #d7e6e8;
   box-sizing: border-box;
+}
+.viewer-window.embedded {
+  height: min(820px, calc(100vh - var(--topbar-height) - 48px));
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid #263c47;
+  border-radius: 12px;
 }
 .viewer-toolbar {
   display: flex;

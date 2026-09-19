@@ -1,8 +1,12 @@
-from datetime import date
+import io
 import logging
+from datetime import date
 from typing import Literal
 from uuid import uuid4
 
+import nibabel as nib
+import numpy as np
+import pydicom
 from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
@@ -10,10 +14,11 @@ from sqlalchemy import select
 from app.audit import audit
 from app.deps import DB, Config, CurrentUser, check_patient_access
 from app.errors import APIError, Envelope, success
-from app.models import MedicalImage, OrganModel, SegmentationBatch
+from app.models import MedicalImage, OrganModel, ReportTask, SegmentationBatch
 from app.organs import require_organ
 from app.schemas import ComparisonCandidateOut, ImageOut
 from app.services.comparison import compare_studies
+from app.services.dicom_import import dicom_series_to_volume
 from app.services.imaging import (
     acquisition_from_volume,
     canonical_labels,
@@ -25,6 +30,7 @@ from app.services.imaging import (
     slice_png,
 )
 from app.services.storage import relative_path, stored_path
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Medical Image"])
@@ -144,6 +150,14 @@ def upload_image(
             acquisition=acquisition_from_volume(volume, data),
         )
         db.add(record)
+        db.flush()
+        db.add(
+            ReportTask(
+                patient_id=patient_id,
+                examination_id=image_id,
+                status="pending_draft",
+            )
+        )
         audit(db, user.id, patient_id, "image.upload", "medical_image", image_id)
         db.commit()
     except Exception:
@@ -153,6 +167,85 @@ def upload_image(
         raise
     finally:
         file.file.close()
+    try:
+        batch_id = request.app.state.segmentation_runner.enqueue_batch_for_image(image_id, user.id)
+    except Exception as exc:
+        logger.error("Unable to enqueue segmentation batch (%s)", type(exc).__name__)
+        batch_id = None
+    return success(image_out(record, db, batch_id))
+
+
+@router.post(
+    "/patients/{patient_id}/dicom-images",
+    status_code=201,
+    response_model=Envelope[ImageOut],
+)
+async def upload_dicom_images(
+    request: Request,
+    patient_id: int,
+    db: DB,
+    user: CurrentUser,
+    settings: Config,
+    files: list[UploadFile] = File(...),
+    organ_id: str = Form(max_length=64),
+    image_type: Literal["CT", "MRI"] = Form(),
+    study_date: date | None = Form(None),
+):
+    check_patient_access(db, user, patient_id, write=user.role in {"doctor", "admin"})
+    require_organ(organ_id)
+    if study_date and study_date > date.today():
+        raise APIError(400, 40010, "Study date cannot be in the future")
+    if not files:
+        raise APIError(400, 40004, "Select one or more DICOM slice files")
+
+    datasets = []
+    total_size = 0
+    for upload in files:
+        raw = await upload.read()
+        total_size += len(raw)
+        if total_size > settings.max_upload_bytes:
+            raise APIError(413, 41301, "Upload exceeds limit")
+        if not raw:
+            continue
+        try:
+            datasets.append(pydicom.dcmread(io.BytesIO(raw), force=True))
+        except Exception:
+            raise APIError(400, 40004, "Invalid DICOM file") from None
+        finally:
+            await upload.close()
+    if not datasets:
+        raise APIError(400, 40004, "Select one or more DICOM slice files")
+
+    modality = getattr(datasets[0], "Modality", "")
+    if modality not in {"CT", "MRI"} or modality != image_type:
+        raise APIError(400, 40012, "Only CT and MRI DICOM series are supported")
+    if any(getattr(item, "Modality", "") != modality for item in datasets):
+        raise APIError(400, 40012, "All DICOM slices must share the same modality")
+
+    volume_data, affine, spacing, dicom_study_date = dicom_series_to_volume(datasets)
+    image_id = f"dcm_{uuid4().hex}"
+    path = stored_path(settings, f"medical-images/{image_id}.nii.gz")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    nib.save(nib.Nifti1Image(volume_data.astype(np.int16), affine), path)
+    volume, data = load_volume(path, settings)
+    canonical = prepare_slice_cache(path, volume, data)
+    record = MedicalImage(
+        id=image_id,
+        patient_id=patient_id,
+        organ_id=organ_id,
+        image_type=image_type,
+        file_path=relative_path(settings, path),
+        shape=list(canonical.shape),
+        size_bytes=path.stat().st_size,
+        spacing=spacing,
+        study_date=study_date or dicom_study_date,
+        acquisition=acquisition_from_volume(volume, data),
+    )
+    db.add(record)
+    db.flush()
+    db.add(ReportTask(patient_id=patient_id, examination_id=image_id, status="pending_draft"))
+    audit(db, user.id, patient_id, "image.dicom.upload", "medical_image", image_id)
+    db.commit()
     try:
         batch_id = request.app.state.segmentation_runner.enqueue_batch_for_image(image_id, user.id)
     except Exception as exc:

@@ -9,6 +9,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -141,6 +142,10 @@ class BreakGlassGrant(CreatedMixin, Base):
 class MedicalRecord(CreatedMixin, Base):
     __tablename__ = "medical_records"
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'pending_review', 'signed', 'cancelled')",
+            name="ck_medical_record_status",
+        ),
         Index("ix_records_patient_organ_date", "patient_id", "organ_id", "record_date"),
         Index("ix_records_doctor_id", "doctor_id"),
     )
@@ -154,6 +159,9 @@ class MedicalRecord(CreatedMixin, Base):
     recommendation: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
     reviewed: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
     signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(24), default="draft", server_default=text("'draft'"))
+    revision: Mapped[int] = mapped_column(default=1, server_default=text("1"))
+    signed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     record_date: Mapped[date]
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -182,6 +190,57 @@ class MedicalRecord(CreatedMixin, Base):
     def has_organ(cls, organ_id):
         # The primary field keeps old imports/clients compatible; EXISTS avoids duplicate rows.
         return (cls.organ_id == organ_id) | cls.organ_links.any(RecordOrgan.organ_id == organ_id)
+
+
+class ReportTask(CreatedMixin, Base):
+    __tablename__ = "report_tasks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_draft', 'drafting', 'in_review', 'signed', 'cancelled')",
+            name="ck_report_task_status",
+        ),
+        UniqueConstraint(
+            "patient_id",
+            "examination_id",
+            name="uq_report_task_examination",
+        ),
+        Index("ix_report_tasks_patient_status", "patient_id", "status"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
+    examination_id: Mapped[str] = mapped_column(ForeignKey("medical_images.id"))
+    status: Mapped[str] = mapped_column(String(24), default="pending_draft")
+    assigned_doctor_id: Mapped[int | None] = mapped_column(ForeignKey("doctors.id"))
+    primary_record_id: Mapped[int | None] = mapped_column(ForeignKey("medical_records.id"))
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class ReportRevisionEvent(CreatedMixin, Base):
+    __tablename__ = "report_revision_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('created', 'draft_saved', 'submitted', 'signed', 'reopened', 'cancelled')",
+            name="ck_report_event_action",
+        ),
+        Index("ix_report_events_record_revision", "record_id", "revision"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    record_id: Mapped[int] = mapped_column(ForeignKey("medical_records.id"))
+    revision: Mapped[int]
+    action: Mapped[str] = mapped_column(String(32))
+    from_status: Mapped[str | None] = mapped_column(String(24))
+    to_status: Mapped[str | None] = mapped_column(String(24))
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str | None] = mapped_column(String(500))
+    event_metadata: Mapped[dict] = mapped_column(
+        "metadata",
+        JSON,
+        default=dict,
+        server_default=text("'{}'"),
+    )
 
 
 class RecordOrgan(Base):
@@ -431,6 +490,10 @@ class Finding(CreatedMixin, Base):
         ),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_finding_confidence"),
         CheckConstraint("diameter_mm > 0", name="ck_finding_diameter"),
+        CheckConstraint(
+            "measurement_mm IS NULL OR measurement_mm > 0",
+            name="ck_finding_measurement",
+        ),
         CheckConstraint("coordinate_system = 'RAS'", name="ck_finding_coordinate_system"),
         CheckConstraint("box_mode = 'cccwhd'", name="ck_finding_box_mode"),
         Index("ix_findings_image_status", "image_id", "status"),
@@ -446,6 +509,13 @@ class Finding(CreatedMixin, Base):
     description: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float]
     diameter_mm: Mapped[float]
+    box_extent_mm: Mapped[float | None]
+    measurement_mm: Mapped[float | None]
+    measurement_method: Mapped[str | None] = mapped_column(String(64))
+    measurement_status: Mapped[str] = mapped_column(
+        String(24), default="candidate", server_default=text("'candidate'")
+    )
+    side_evidence: Mapped[str | None] = mapped_column(String(64))
     coordinate_system: Mapped[str] = mapped_column(String(8), default="RAS")
     box_mode: Mapped[str] = mapped_column(String(16), default="cccwhd")
     center_world_mm: Mapped[list] = mapped_column(JSON)
@@ -465,6 +535,9 @@ class AIConversation(CreatedMixin, Base):
     __tablename__ = "ai_conversations"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
+    examination_id: Mapped[str | None] = mapped_column(
+        ForeignKey("medical_images.id"), nullable=True, index=True
+    )
     organ_id: Mapped[str] = mapped_column(String(64))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
 
@@ -477,6 +550,86 @@ class AIMessage(CreatedMixin, Base):
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
     references: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class AIProviderConfig(CreatedMixin, Base):
+    __tablename__ = "ai_provider_configs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('configured', 'connected', 'accepted', 'disabled')",
+            name="ck_ai_provider_status",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider_id: Mapped[str] = mapped_column(String(64), unique=True)
+    display_name: Mapped[str] = mapped_column(String(120))
+    protocol: Mapped[str] = mapped_column(String(32), default="chat_completions")
+    base_url: Mapped[str] = mapped_column(String(500))
+    api_key_env: Mapped[str | None] = mapped_column(String(120))
+    model_id: Mapped[str] = mapped_column(String(160))
+    capabilities: Mapped[list] = mapped_column(JSON, default=list)
+    modalities: Mapped[list] = mapped_column(JSON, default=list)
+    organs: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(24), default="configured")
+    data_scope: Mapped[dict] = mapped_column(JSON, default=dict)
+    timeout_seconds: Mapped[int] = mapped_column(default=60)
+    max_input_chars: Mapped[int] = mapped_column(default=30000)
+    max_output_chars: Mapped[int] = mapped_column(default=16000)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AIInvocation(CreatedMixin, Base):
+    __tablename__ = "ai_invocations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'completed', 'failed', 'cancelled')",
+            name="ck_ai_invocation_status",
+        ),
+        Index("ix_ai_invocations_patient_status", "patient_id", "status"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"))
+    examination_id: Mapped[str | None] = mapped_column(ForeignKey("medical_images.id"))
+    organ_id: Mapped[str] = mapped_column(String(64))
+    purpose: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), default="queued")
+    provider_id: Mapped[str | None] = mapped_column(String(64))
+    model_id: Mapped[str | None] = mapped_column(String(160))
+    base_revision: Mapped[int | None]
+    input_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    result: Mapped[dict | None] = mapped_column(JSON)
+    error_code: Mapped[int | None]
+    error_message: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), unique=True)
+    lease_owner: Mapped[str | None] = mapped_column(String(128))
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class AIInvocationAttempt(CreatedMixin, Base):
+    __tablename__ = "ai_invocation_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'completed', 'failed', 'cancelled')",
+            name="ck_ai_attempt_status",
+        ),
+        Index("ix_ai_attempts_invocation", "invocation_id", "attempt_number"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invocation_id: Mapped[str] = mapped_column(ForeignKey("ai_invocations.id"))
+    attempt_number: Mapped[int]
+    status: Mapped[str] = mapped_column(String(24))
+    provider_id: Mapped[str | None] = mapped_column(String(64))
+    model_id: Mapped[str | None] = mapped_column(String(160))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[int | None]
+    error_message: Mapped[str | None] = mapped_column(Text)
+    usage: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class AuditEvent(CreatedMixin, Base):

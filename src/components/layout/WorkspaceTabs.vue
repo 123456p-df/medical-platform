@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { isNavigationFailure, useRoute, useRouter } from 'vue-router'
 import { X } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspaceTabsStore } from '@/stores/workspaceTabs'
@@ -13,6 +13,7 @@ const router = useRouter()
 const workspace = useWorkspaceTabsStore()
 const drafts = useReportDraftStore()
 const visibleTabs = computed(() => workspace.tabs.filter(tab => tab.portal === auth.portal))
+const activeTab = computed(() => visibleTabs.value.find(tab => tab.path === route.fullPath))
 const tabButtons = ref<HTMLButtonElement[]>([])
 const legacyTitles: Record<string, string> = {
   '患者工作台': 'Patient Workspace',
@@ -57,14 +58,29 @@ function onTabKeydown(event: KeyboardEvent, index: number) {
 }
 
 async function closeTab(id: string) {
-  const active = route.fullPath === id
-  const index = workspace.closeTab(id)
-  if (!active) return
-  const remaining = visibleTabs.value
-  const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)]
-  await router.push(next?.path || (auth.portal === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard'))
+  const tab = visibleTabs.value.find(item => item.id === id)
+  const active = tab?.path === route.fullPath
+  const index = visibleTabs.value.findIndex(tab => tab.id === id)
+  const next = active
+    ? visibleTabs.value.find(tab => tab.id !== id)?.path
+      || (auth.portal === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard')
+    : undefined
+
+  if (!active && tab && drafts.hasDirtyPath(tab.path) && !window.confirm(t('ui.shell.closeDirtyConfirm'))) {
+    return
+  }
+
+  if (next) {
+    const navigation = await router.push(next)
+    if (isNavigationFailure(navigation)) {
+      focusTab(Math.max(index, 0))
+      return
+    }
+  }
+
+  const closedIndex = workspace.closeTab(id)
   await nextTick()
-  focusTab(Math.min(Math.max(index, 0), remaining.length - 1))
+  focusTab(Math.min(Math.max(closedIndex, 0), visibleTabs.value.length - 1))
 }
 </script>
 
@@ -74,10 +90,10 @@ async function closeTab(id: string) {
       v-for="tab in visibleTabs"
       :key="tab.id"
       class="workspace-tab"
-      :class="{ active: route.fullPath === tab.id, dirty: drafts.hasDirtyPath(tab.path) }"
+      :class="{ active: activeTab?.id === tab.id, dirty: drafts.hasDirtyPath(tab.path) }"
       :title="displayTitle(tab.title)"
     >
-      <button :ref="element => setTabButton(element, visibleTabs.findIndex(item => item.id === tab.id))" class="tab-main" type="button" :tabindex="route.fullPath === tab.id ? 0 : -1" :aria-current="route.fullPath === tab.id ? 'page' : undefined" @keydown="onTabKeydown($event, visibleTabs.findIndex(item => item.id === tab.id))" @click="router.push(tab.path)">
+      <button :ref="element => setTabButton(element, visibleTabs.findIndex(item => item.id === tab.id))" class="tab-main" type="button" :tabindex="activeTab?.id === tab.id ? 0 : -1" :aria-current="activeTab?.id === tab.id ? 'page' : undefined" @keydown="onTabKeydown($event, visibleTabs.findIndex(item => item.id === tab.id))" @click="router.push(tab.path)">
         <span>{{ displayTitle(tab.title) }}<i v-if="drafts.hasDirtyPath(tab.path)" :aria-label="$t('ui.shell.unsavedDraft')">●</i></span>
       </button>
       <button class="tab-close" type="button" :aria-label="$t('ui.shell.closeTab', { title: displayTitle(tab.title) })" @click="closeTab(tab.id)">

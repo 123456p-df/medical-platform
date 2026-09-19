@@ -61,11 +61,6 @@ const router = createRouter({
               component: () => import('@/views/doctor/PatientImagingView.vue'),
             },
             {
-              path: 'ai',
-              name: 'doctor-patient-ai',
-              component: () => import('@/views/doctor/PatientAIView.vue'),
-            },
-            {
               path: 'report',
               name: 'doctor-patient-report',
               component: () => import('@/views/doctor/PatientReportView.vue'),
@@ -133,11 +128,6 @@ const router = createRouter({
           path: 'body',
           name: 'patient-body',
           component: () => import('@/views/patient/BodyView.vue'),
-        },
-        {
-          path: 'assistant',
-          name: 'patient-ai',
-          component: () => import('@/views/doctor/PatientAIView.vue'),
         },
       ],
     },

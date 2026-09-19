@@ -1,4 +1,4 @@
-import type { Examination, Patient, Report, ReportAddendum } from '@/types'
+import type { Examination, Patient, Report, ReportAddendum, ReportEvent, ReportTask } from '@/types'
 import { reviewStatus } from '@/utils/clinicalValues'
 import type { components } from './generated/schema'
 export const organNames: Record<string, string> = {
@@ -9,6 +9,8 @@ export type ImageDTO = components['schemas']['ImageOut']
 export type PatientDTO = components['schemas']['PatientRosterItem']
 export type RecordDTO = components['schemas']['RecordOut']
 export type AddendumDTO = components['schemas']['AddendumOut']
+export type ReportEventDTO = components['schemas']['ReportEventOut']
+export type ReportTaskDTO = components['schemas']['ReportTaskOut']
 export function mapPatient(p: PatientDTO): Patient {
   let age: number | null = null
   if (p.birth_date) {
@@ -33,10 +35,40 @@ export function mapRecord(r: RecordDTO): Report {
   return { organIds: r.organ_ids, id: String(r.record_id), patientId: String(r.patient_id), organId: r.organ_id,
     examinationId: r.examination_id || '', diagnosis: r.diagnosis, description: r.description, recommendation: r.recommendation,
     doctor: r.doctor_name, date: r.record_date, reviewed: r.reviewed, signedAt: r.signed_at || null,
+    status: r.status, revision: r.revision, signedByUserId: r.signed_by_user_id === null ? null : String(r.signed_by_user_id),
+    signedByUsername: r.signed_by_username || null,
     createdAt: r.created_at, updatedAt: r.updated_at, addenda: (r.addenda || []).map(mapAddendum) }
 }
 
 export function mapAddendum(item: AddendumDTO): ReportAddendum {
   return { id: String(item.addendum_id), reportId: String(item.record_id), authorUserId: String(item.author_user_id),
     authorName: item.author_name, reason: item.reason, content: item.content, createdAt: item.created_at }
+}
+
+export function mapReportEvent(item: ReportEventDTO): ReportEvent {
+  return {
+    eventId: String(item.event_id),
+    reportId: String(item.record_id),
+    revision: item.revision,
+    action: item.action,
+    fromStatus: item.from_status as ReportEvent['fromStatus'],
+    toStatus: item.to_status as ReportEvent['toStatus'],
+    actorUserId: item.actor_user_id === null ? null : String(item.actor_user_id),
+    reason: item.reason,
+    metadata: item.metadata,
+    createdAt: item.created_at,
+  }
+}
+
+export function mapReportTask(item: ReportTaskDTO): ReportTask {
+  return {
+    id: String(item.task_id),
+    patientId: String(item.patient_id),
+    examinationId: item.examination_id,
+    status: item.status,
+    primaryRecordId: item.primary_record_id === null ? null : String(item.primary_record_id),
+    assignedDoctorId: item.assigned_doctor_id === null ? null : String(item.assigned_doctor_id),
+    updatedAt: item.updated_at,
+    createdAt: item.created_at,
+  }
 }

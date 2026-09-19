@@ -1,23 +1,22 @@
 import importlib
+import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy.exc import IntegrityError
 import nibabel as nib
 import numpy as np
 import trimesh
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 
 from app.adapters.nv_segment_ct import NVSegmentCT
 from app.audit import audit
 from app.deps import check_patient_access
 from app.errors import APIError
-from app.models import (
-    MedicalImage, OrganModel, SegmentationBatch, SegmentationTask, User, utcnow
-)
+from app.models import MedicalImage, OrganModel, SegmentationBatch, SegmentationTask, User, utcnow
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
 from app.services.glb import (
     build_atlas_glb,
@@ -140,23 +139,11 @@ class SegmentationRunner:
         days = getattr(self.settings, "segmentation_label_map_retention_days", 0)
         if not days:
             return
-        from datetime import timedelta
-
-        cutoff = utcnow() - timedelta(days=days)
-        with self.sessions() as db:
-            stale = list(
-                db.scalars(
-                    select(SegmentationBatch).where(SegmentationBatch.updated_at < cutoff)
-                )
-            )
-            for batch in stale:
-                for relative in (batch.label_map_path, batch.native_label_map_path):
-                    if not relative:
-                        continue
-                    try:
-                        stored_path(self.settings, relative).unlink(missing_ok=True)
-                    except Exception:
-                        logger.exception("Unable to remove stale label map %s", relative)
+        logger.info(
+            "Skipping segmentation label-map cleanup; retention=%s days. "
+            "Files are preserved per project deletion policy.",
+            days,
+        )
 
     def close(self):
         self.executor.shutdown(wait=True)
@@ -212,9 +199,6 @@ class SegmentationRunner:
             model_path = stored_path(self.settings, f"organ-models/{model_id}.glb")
             model_path.parent.mkdir(parents=True, exist_ok=True)
             mask_to_glb(mask_path, image_path, model_path, self.settings, organ_id=task.organ_id)
-            highres_glb = mask_path.parent / "highres_surface.glb"
-            if highres_glb != model_path:
-                highres_glb.unlink(missing_ok=True)
             glb_data = model_path.read_bytes()
             with self.sessions() as db:
                 task = db.get(SegmentationTask, task_id)
@@ -234,7 +218,6 @@ class SegmentationRunner:
                 )
                 db.flush()
                 store_model_blob(db, model_id, glb_data)
-                model_path.unlink(missing_ok=True)
                 task.status, task.progress, task.result_model_id = "completed", 100, model_id
                 task.updated_at = utcnow()
                 audit(
@@ -249,8 +232,6 @@ class SegmentationRunner:
         except Exception as exc:
             # No exception text or traceback: providers can put image paths and patient data in them.
             logger.error("Segmentation task %s failed (%s)", task_id, type(exc).__name__)
-            if model_path:
-                model_path.unlink(missing_ok=True)
             with self.sessions() as db:
                 db.execute(
                     update(SegmentationTask)
@@ -374,6 +355,15 @@ class SegmentationRunner:
             )
             label_path = self._inside(Path(result["label_map_1mm"]), output_dir)
             native_path = self._inside(Path(result["label_map_native"]), output_dir)
+            if result.get("manifest"):
+                manifest_path = self._inside(Path(result["manifest"]), output_dir)
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if (
+                    not isinstance(manifest, dict)
+                    or manifest.get("schema_version") != 1
+                    or set(manifest.get("files", {})) != {"label_map_1mm", "label_map_native"}
+                ):
+                    raise ValueError("Batch adapter returned an invalid output manifest")
             label_image = nib.load(str(label_path))
             label_values = np.asarray(label_image.dataobj)
             label_ids = sorted(set(int(value) for value in result.get("labels", [])))

@@ -12,7 +12,7 @@ def test_core_and_portal_apis_and_uniform_errors(app_env):
         if path.startswith("/api/v1")
         for method in methods
     ]
-    assert len(operations) == 65  # Core APIs plus onboarding, archive, and DICOM conversion.
+    assert len(operations) == 79  # Core APIs plus DICOM upload and AI provider management.
     assert client.get("/missing").json() == {
         "code": 40401,
         "message": "Resource not found",

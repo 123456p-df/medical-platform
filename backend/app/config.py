@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
     api_docs_enabled: bool = True
     max_upload_bytes: int = Field(default=512 * 1024 * 1024, ge=1024)
-    max_volume_voxels: int = Field(default=64_000_000, ge=8)
-    max_uncompressed_bytes: int = Field(default=768 * 1024 * 1024, ge=1024)
+    max_volume_voxels: int = Field(default=240_000_000, ge=8)
+    max_uncompressed_bytes: int = Field(default=1536 * 1024 * 1024, ge=1024)
     segmentation_callable: str | None = None
     segmentation_image_types: list[str] = ["CT"]
     nv_segment_ct_dir: Path | None = None
@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     ai_api_key: SecretStr | None = None
     ai_external_deidentify: bool = True
     ai_model: str | None = None
+    ai_tools_enabled: bool = True
+    ai_max_tool_rounds: int = Field(default=4, ge=1, le=10)
+    ai_max_tool_calls: int = Field(default=8, ge=1, le=32)
     ai_timeout_seconds: float = Field(default=60, gt=0, le=300)
     ai_max_context_records: int = Field(default=30, ge=1, le=100)
     ai_max_context_chars: int = Field(default=30000, ge=1000, le=100000)

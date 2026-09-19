@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, type Component } from 'vue'
 import {
   Activity,
   Box,
@@ -14,7 +14,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ScanLine,
-  Sparkles,
   Stethoscope,
   UsersRound,
   X,
@@ -22,6 +21,19 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
+import { navigationKeyFromRoute, type NavigationKey } from '@/utils/navigation'
+
+interface PortalNavItem {
+  key: string
+  navKey: NavigationKey
+  label: string
+  icon: Component
+  name?: string
+  to?: string
+  external?: boolean
+  adminOnly?: boolean
+  highlight?: boolean
+}
 
 const props = defineProps<{
   open: boolean
@@ -42,21 +54,30 @@ const clinicalExpanded = ref(localStorage.getItem('pulmolink-nav-clinical') !== 
 const routePatientId = computed(() => typeof route.params.id === 'string' ? route.params.id : '')
 const currentPatientId = computed(() => routePatientId.value || patients.selectedPatientId || '')
 const currentPatient = computed(() => patients.patients.find(patient => patient.id === currentPatientId.value))
-const clinicalItems = computed(() => currentPatientId.value ? [
-  { label: 'ui.sidebar.patientOverview', name: 'doctor-patient-overview', icon: ClipboardList },
-  { label: 'Medical Imaging', name: 'doctor-patient-imaging', icon: ScanLine },
-  { label: 'ui.sidebar.aiDiagnosis', name: 'doctor-patient-ai', icon: Sparkles },
-  { label: 'ui.sidebar.clinicalReport', name: 'doctor-patient-report', icon: FileText },
-  { label: 'ui.sidebar.organ3d', name: 'doctor-patient-3d', icon: Box, external: true },
-] : [])
+const activeNavKey = computed(() => navigationKeyFromRoute(route))
 
-const patientNav = computed(() => [
-  { label: 'My Health', to: '/patient/dashboard', icon: HeartPulse },
-  { label: 'My Examinations', to: '/patient/examinations', icon: Stethoscope },
-  { label: 'My Reports', to: '/patient/reports', icon: FileText },
-  { label: 'My Body', to: '/patient/body', icon: Box },
-  { label: 'AI Assistant', to: '/patient/assistant', icon: Sparkles },
-])
+const managementItems: PortalNavItem[] = [
+  { key: 'patients', navKey: 'patients', label: 'ui.sidebar.patientWorkspace', name: 'doctor-dashboard', icon: LayoutDashboard },
+  { key: 'archive', navKey: 'archive', label: 'ui.sidebar.archivedPatients', name: 'doctor-archived', icon: ArchiveRestore, adminOnly: true },
+]
+
+const clinicalItems: PortalNavItem[] = [
+  { key: 'overview', navKey: 'overview', label: 'ui.sidebar.patientOverview', name: 'doctor-patient-overview', icon: ClipboardList },
+  { key: 'imaging', navKey: 'imaging', label: 'Medical Imaging', name: 'doctor-patient-imaging', icon: ScanLine },
+  { key: 'report', navKey: 'report', label: 'ui.sidebar.clinicalReport', name: 'doctor-patient-report', icon: FileText },
+  { key: 'organ-3d', navKey: 'imaging', label: 'ui.sidebar.organ3d', name: 'doctor-patient-3d', icon: Box, highlight: false },
+]
+
+const patientNav: PortalNavItem[] = [
+  { key: 'health', navKey: 'overview', label: 'My Health', to: '/patient/dashboard', icon: HeartPulse },
+  { key: 'examinations', navKey: 'examinations', label: 'My Examinations', to: '/patient/examinations', icon: Stethoscope },
+  { key: 'reports', navKey: 'reports', label: 'My Reports', to: '/patient/reports', icon: FileText },
+  { key: 'body', navKey: 'body', label: 'My Body', to: '/patient/body', icon: Box },
+]
+
+function isActive(item: PortalNavItem) {
+  return item.highlight !== false && item.navKey === activeNavKey.value
+}
 
 watch(managementExpanded, value => localStorage.setItem('pulmolink-nav-patients', String(value)))
 watch(clinicalExpanded, value => localStorage.setItem('pulmolink-nav-clinical', String(value)))
@@ -109,11 +130,17 @@ async function logout() {
           <ChevronRight v-else class="tree-chevron" :size="15" />
         </button>
         <div v-if="managementExpanded" class="tree-children">
-          <RouterLink to="/doctor/dashboard" class="tree-item" exact-active-class="is-active" @click="emit('close')">
-            <LayoutDashboard :size="16" /><span>{{ $t('ui.sidebar.patientWorkspace') }}</span>
-          </RouterLink>
-          <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/archived" class="tree-item" exact-active-class="is-active" @click="emit('close')">
-            <ArchiveRestore :size="16" /><span>{{ $t('ui.sidebar.archivedPatients') }}</span>
+          <RouterLink
+            v-for="item in managementItems.filter(item => !item.adminOnly || auth.session?.accountRole === 'admin')"
+            :key="item.key"
+            :to="{ name: item.name }"
+            class="tree-item"
+            :class="{ 'is-active': isActive(item) }"
+            :aria-current="isActive(item) ? 'page' : undefined"
+            @click="emit('close')"
+          >
+            <component :is="item.icon" :size="16" />
+            <span>{{ $t(item.label) }}</span>
           </RouterLink>
         </div>
       </section>
@@ -136,12 +163,13 @@ async function logout() {
           <ChevronRight v-else class="tree-chevron" :size="15" />
         </button>
         <div v-if="clinicalExpanded && currentPatientId" class="tree-children clinical-children">
-          <template v-for="item in clinicalItems" :key="item.name">
+          <template v-for="item in clinicalItems" :key="item.key">
             <a
               v-if="item.external"
               :href="router.resolve({ name: 'study-viewer', params: { patientId: currentPatientId } }).href"
               target="_blank"
               class="tree-item"
+              :class="{ 'is-active': false }"
               @click="emit('close')"
             >
               <component :is="item.icon" :size="16" />
@@ -151,7 +179,8 @@ async function logout() {
               v-else
               :to="{ name: item.name, params: { id: currentPatientId } }"
               class="tree-item"
-              exact-active-class="is-active"
+              :class="{ 'is-active': isActive(item) }"
+              :aria-current="isActive(item) ? 'page' : undefined"
               @click="emit('close')"
             >
               <component :is="item.icon" :size="16" />
@@ -163,7 +192,15 @@ async function logout() {
     </nav>
 
     <nav v-else class="nav" :aria-label="$t('ui.sidebar.patientNav')">
-      <RouterLink v-for="item in patientNav" :key="item.label" :to="item.to" class="nav-item" exact-active-class="is-active" @click="emit('close')">
+      <RouterLink
+        v-for="item in patientNav"
+        :key="item.key"
+        :to="item.to || '/'"
+        class="nav-item"
+        :class="{ 'is-active': isActive(item) }"
+        :aria-current="isActive(item) ? 'page' : undefined"
+        @click="emit('close')"
+      >
         <component :is="item.icon" :size="18" />
         <span>{{ $t(item.label) }}</span>
       </RouterLink>
@@ -320,6 +357,13 @@ async function logout() {
 .tree-toggle:hover,
 .tree-item:hover {
   background: var(--surface-3);
+}
+
+.tree-toggle:focus-visible,
+.tree-item:focus-visible,
+.nav-item:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
 }
 
 .tree-toggle.disabled {

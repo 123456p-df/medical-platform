@@ -4,6 +4,8 @@ import { CalendarDays, FileImage, FolderOpen, Images, Upload, X } from 'lucide-v
 import { organNames } from '@/api/mappers'
 import { estimateLocalStorage, saveLocalUpload } from '@/api/localStudyRepository'
 import { analyzeDicomFiles, detectModalityFromFiles, isRasterFile, isSupportedFile, type DicomSeriesGroup } from '@/utils/studyLoader'
+import { isNiftiFile } from '@/utils/fileFormats'
+import { readNiftiMetadata, type NiftiMetadata } from '@/utils/nifti'
 import type { Examination, ExaminationType } from '@/types'
 import { localCalendarDate } from '@/utils/dates'
 import { t } from '@/i18n'
@@ -24,6 +26,7 @@ const organ = ref('lung')
 const manualModality = ref<'auto' | ExaminationType>('auto')
 const detectedModality = ref<ExaminationType | null>(null)
 const dicomGroups = ref<DicomSeriesGroup[]>([])
+const niftiMetadata = ref<NiftiMetadata | null>(null)
 const confirmPatientAssociation = ref(false)
 const today = localCalendarDate()
 const studyDate = ref(today)
@@ -46,7 +49,11 @@ const mismatchedPatientIds = computed(() => [...new Set(dicomGroups.value
   .filter(patientId => patientId && patientId !== props.patientId))])
 
 const totalSize = computed(() => files.value.reduce((sum, file) => sum + file.size, 0))
-const fileKind = computed(() => files.value.length && files.value.every(isRasterFile) ? t('ui.upload.rasterSeries') : t('ui.upload.dicomSeries'))
+const fileKind = computed(() => files.value.some(isNiftiFile)
+  ? t('ui.upload.niftiVolume')
+  : files.value.length && files.value.every(isRasterFile)
+    ? t('ui.upload.rasterSeries')
+    : t('ui.upload.dicomSeries'))
 const naturalOrder = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 
 function fileKey(file: File) {
@@ -65,16 +72,23 @@ async function validateAndDetect() {
   error.value = ''
   detectedModality.value = null
   dicomGroups.value = []
+  niftiMetadata.value = null
   confirmPatientAssociation.value = false
   if (!files.value.length) return
   const hasRaster = files.value.some(isRasterFile)
-  const hasDicom = files.value.some(file => !isRasterFile(file))
-  if (hasRaster && hasDicom) {
+  const hasNifti = files.value.some(isNiftiFile)
+  const hasDicom = files.value.some(file => !isRasterFile(file) && !isNiftiFile(file))
+  if ([hasRaster, hasNifti, hasDicom].filter(Boolean).length > 1) {
     error.value = t('ui.upload.mixedKinds')
+    return
+  }
+  if (hasNifti && files.value.length !== 1) {
+    error.value = t('ui.upload.oneNiftiPerStudy')
     return
   }
   detecting.value = true
   try {
+    if (hasNifti) niftiMetadata.value = await readNiftiMetadata(files.value[0])
     const groups = hasDicom ? await analyzeDicomFiles(files.value) : []
     const modality = hasDicom
       ? (() => {
@@ -137,6 +151,7 @@ function clearFiles(force = false) {
   detecting.value = false
   detectedModality.value = null
   dicomGroups.value = []
+  niftiMetadata.value = null
   confirmPatientAssociation.value = false
   manualModality.value = 'auto'
   error.value = ''
@@ -170,6 +185,7 @@ async function importStudy() {
     for (const group of sourceGroups) {
       const dicomGroup = 'seriesInstanceUID' in group ? group : null
       const groupFiles = group.files
+      const nifti = groupFiles.length === 1 && isNiftiFile(groupFiles[0]) ? niftiMetadata.value : null
       const modality = group.modality || effectiveModality.value
       const firstFile = groupFiles[0]
       const examination: Examination = {
@@ -181,13 +197,21 @@ async function importStudy() {
         bodyPart: organNames[organ.value] || organ.value,
         date: dicomGroup?.studyDate || studyDate.value,
         status: 'Pending Review',
-        description: dicomGroup?.seriesDescription
+        description: nifti
+          ? t('ui.upload.niftiDescription', { name: firstFile.name, datatype: nifti.datatype })
+          : dicomGroup?.seriesDescription
           ? t('ui.upload.dicomDescription', { description: dicomGroup.seriesDescription, frames: dicomGroup.totalFrames })
           : t('ui.upload.localDescription', { name: firstFile.name, count: groupFiles.length }),
-        sliceCount: dicomGroup?.totalFrames || groupFiles.length,
-        shape: dicomGroup?.columns && dicomGroup.rows ? [dicomGroup.columns, dicomGroup.rows, dicomGroup.totalFrames] : undefined,
-        spacing: dicomGroup?.pixelSpacing ? [dicomGroup.pixelSpacing[1], dicomGroup.pixelSpacing[0], dicomGroup.sliceSpacing || 1] : undefined,
-        acquisition: dicomGroup ? {
+        sliceCount: nifti?.shape[2] || dicomGroup?.totalFrames || groupFiles.length,
+        shape: nifti ? [...nifti.shape] : (dicomGroup?.columns && dicomGroup.rows ? [dicomGroup.columns, dicomGroup.rows, dicomGroup.totalFrames] : undefined),
+        spacing: nifti ? [...nifti.spacing] : (dicomGroup?.pixelSpacing ? [dicomGroup.pixelSpacing[1], dicomGroup.pixelSpacing[0], dicomGroup.sliceSpacing || 1] : undefined),
+        acquisition: nifti ? {
+          affine: nifti.affine.map(row => [...row]),
+          spacing_mm: [...nifti.spacing],
+          orientation: nifti.orientation,
+          format: 'NIfTI',
+          datatype: nifti.datatype,
+        } : dicomGroup ? {
           studyInstanceUID: dicomGroup.studyInstanceUID,
           seriesInstanceUID: dicomGroup.seriesInstanceUID,
           dicomPatientId: dicomGroup.patientId,
@@ -257,7 +281,7 @@ async function importStudy() {
         <button type="button" class="btn btn-secondary btn-sm" :disabled="busy" @click="fileInput?.click()"><FileImage :size="14" /> {{ $t('Choose files') }}</button>
         <button type="button" class="btn btn-secondary btn-sm" :disabled="busy" @click="folderInput?.click()"><FolderOpen :size="14" /> {{ $t('ui.upload.chooseFolder') }}</button>
       </div>
-      <input ref="fileInput" class="hidden-file-input" type="file" accept=".dcm,application/dicom,image/png,image/jpeg,image/webp,image/bmp" multiple :disabled="busy" @change="selectFiles" />
+      <input ref="fileInput" class="hidden-file-input" type="file" accept=".nii,.nii.gz,application/nifti,application/x-nifti,.dcm,application/dicom,image/png,image/jpeg,image/webp,image/bmp" multiple :disabled="busy" @change="selectFiles" />
       <input ref="folderInput" class="hidden-file-input" type="file" multiple webkitdirectory directory :disabled="busy" @change="selectFiles" />
     </div>
 
@@ -277,6 +301,10 @@ async function importStudy() {
       <span v-for="group in dicomGroups" :key="group.key">
         {{ $t('ui.upload.dicomSeriesDetail', { modality: group.modality, description: group.seriesDescription || group.seriesInstanceUID, files: group.files.length, frames: group.totalFrames }) }}
       </span>
+    </div>
+    <div v-if="niftiMetadata" class="series-summary">
+      <strong>{{ $t('ui.upload.niftiDetected') }}</strong>
+      <span>{{ $t('ui.upload.niftiDetail', { shape: niftiMetadata.shape.join(' × '), spacing: niftiMetadata.spacing.map(value => value.toFixed(2)).join(' × '), datatype: niftiMetadata.datatype }) }}</span>
     </div>
     <label v-if="mismatchedPatientIds.length" class="patient-warning">
       <input v-model="confirmPatientAssociation" type="checkbox" :disabled="busy" />

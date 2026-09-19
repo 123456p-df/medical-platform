@@ -65,17 +65,12 @@ def release_volume_cache(root: Path):
 def prepare_slice_cache(path: Path, volume, data):
     canonical = nib.as_closest_canonical(nib.Nifti1Image(data, volume.affine))
     target = slice_cache_path(path)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=path.parent, prefix=".slice-", suffix=".tmp", delete=False
-        ) as output:
-            temporary = Path(output.name)
-            np.save(output, np.asarray(canonical.dataobj, dtype=np.float32), allow_pickle=False)
-        os.replace(temporary, target)
-    finally:
-        if temporary:
-            temporary.unlink(missing_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent, prefix=".slice-", suffix=".tmp", delete=False
+    ) as output:
+        temporary = Path(output.name)
+        np.save(output, np.asarray(canonical.dataobj, dtype=np.float32), allow_pickle=False)
+    os.replace(temporary, target)
     return canonical
 
 
@@ -110,17 +105,12 @@ def prepare_label_cache(path: Path, settings: Settings):
     labels = np.rint(data).astype(np.uint16, copy=False)
     canonical = nib.as_closest_canonical(nib.Nifti1Image(labels, image.affine))
     target = label_cache_path(path)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            dir=path.parent, prefix=".labels-", suffix=".tmp", delete=False
-        ) as output:
-            temporary = Path(output.name)
-            np.save(output, np.asarray(canonical.dataobj, dtype=np.uint16), allow_pickle=False)
-        os.replace(temporary, target)
-    finally:
-        if temporary:
-            temporary.unlink(missing_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent, prefix=".labels-", suffix=".tmp", delete=False
+    ) as output:
+        temporary = Path(output.name)
+        np.save(output, np.asarray(canonical.dataobj, dtype=np.uint16), allow_pickle=False)
+    os.replace(temporary, target)
     return target
 
 

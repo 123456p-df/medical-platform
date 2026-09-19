@@ -31,12 +31,17 @@ const emit = defineEmits<{
 }>()
 
 const entries = ref<UploadEntry[]>([])
+const dicomFiles = ref<File[]>([])
 const organ = ref('lung')
 const imageType = ref<'CT' | 'MRI'>('CT')
 const busy = ref(false)
 const error = ref('')
 const dragging = ref(false)
 const fileInput = ref<HTMLInputElement>()
+const dicomInput = ref<HTMLInputElement>()
+const dicomStudyDate = ref(localCalendarDate())
+const dicomBusy = ref(false)
+const dicomError = ref('')
 const today = localCalendarDate()
 const effectiveType = computed<'CT' | 'MRI'>(() => props.ctOnly ? 'CT' : imageType.value)
 const finishedCount = computed(() => entries.value.filter(entry => entry.status === 'completed').length)
@@ -82,6 +87,34 @@ function dropFiles(event: DragEvent) {
 function removeEntry(id: string) {
   if (busy.value) return
   entries.value = entries.value.filter(item => item.id !== id)
+}
+
+function selectDicomFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  dicomFiles.value = Array.from(input.files || []).filter(file => /\.dcm$/i.test(file.name))
+  dicomError.value = ''
+  input.value = ''
+}
+
+async function uploadDicomSeries() {
+  if (!dicomFiles.value.length || dicomBusy.value) return
+  dicomBusy.value = true
+  dicomError.value = ''
+  try {
+    const study = await examinationApi.uploadDicomSeries(
+      props.patientId,
+      dicomFiles.value,
+      organ.value,
+      effectiveType.value,
+      dicomStudyDate.value,
+    )
+    dicomFiles.value = []
+    emit('complete', [study])
+  } catch (reason) {
+    dicomError.value = reason instanceof Error ? reason.message : t('ui.upload.failed')
+  } finally {
+    dicomBusy.value = false
+  }
 }
 
 function statusLabel(entry: UploadEntry) {
@@ -192,6 +225,18 @@ async function uploadAll(retryOnly = false) {
       <span><strong>{{ $t(dragging ? 'ui.upload.dropReady' : 'ui.upload.dropFiles') }}</strong><small>{{ $t('ui.upload.clickToAdd') }}</small></span>
       <input ref="fileInput" type="file" accept=".nii,.nii.gz" multiple :disabled="busy" @change="selectFiles" />
     </label>
+    <div class="dicom-entry">
+      <div><strong>{{ $t('ui.upload.dicomSeriesTitle') }}</strong><small>{{ $t('ui.upload.dicomSeriesHelp') }}</small></div>
+      <label class="dicom-picker">
+        <input ref="dicomInput" type="file" accept=".dcm" multiple :disabled="dicomBusy" @change="selectDicomFiles" />
+        <span>{{ dicomFiles.length ? $t('ui.upload.dicomSelected', { count: dicomFiles.length }) : $t('ui.upload.chooseDicom') }}</span>
+      </label>
+      <input v-model="dicomStudyDate" type="date" :max="today" :disabled="dicomBusy" />
+      <button type="button" class="btn btn-secondary btn-sm" :disabled="dicomBusy || !dicomFiles.length" @click="uploadDicomSeries">
+        {{ $t(dicomBusy ? 'ui.upload.processing' : 'ui.upload.dicomUpload') }}
+      </button>
+      <p v-if="dicomError" class="upload-error" role="alert">{{ dicomError }}</p>
+    </div>
     <p v-if="entries.length" class="file-count" role="status">{{ $t('ui.upload.selectedCount', { count: entries.length }) }}</p>
     <div v-if="entries.length" class="upload-queue">
       <div v-for="entry in entries" :key="entry.id" class="upload-row" :class="`is-${entry.status}`">
@@ -208,5 +253,5 @@ async function uploadAll(retryOnly = false) {
 </template>
 
 <style scoped>
-.multi-upload{display:grid;gap:13px;padding:18px}.upload-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.upload-heading h3{margin:0 0 5px;font-size:15px}.upload-heading p{margin:0;color:var(--text-muted);font-size:11px;line-height:1.5}.upload-heading>svg{color:var(--accent)}.upload-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.upload-options .label{display:grid;gap:6px;margin:0}.file-picker{display:flex;min-height:92px;align-items:center;justify-content:center;gap:10px;border:1px dashed var(--border-strong);border-radius:8px;background:var(--surface-2);color:var(--accent-strong);font-size:12px;font-weight:650;cursor:pointer;transition:border-color 150ms ease,background 150ms ease,box-shadow 150ms ease}.file-picker>span{display:grid;gap:4px}.file-picker small{color:var(--text-muted);font-size:10px;font-weight:500}.file-picker:hover,.file-picker.dragging{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 4px rgb(47 143 146 / 10%)}.file-picker.disabled{cursor:default;opacity:.6}.file-picker input{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0}.file-count{margin:0;color:var(--accent-strong);font-size:11px;font-weight:650}.upload-queue{display:grid;gap:7px;max-height:300px;overflow:auto}.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto 28px;align-items:center;gap:10px;padding:9px;border:1px solid var(--border);border-radius:7px;background:var(--surface)}.upload-row.is-failed{border-color:#e7b5b5}.upload-row.is-completed{border-color:#a9d8c5;background:#f3fbf7}.upload-row>div{display:grid;min-width:0;gap:3px}.upload-row strong{overflow:hidden;text-overflow:ellipsis;font-size:11px;white-space:nowrap}.upload-row small{color:var(--text-muted);font-size:9px}.upload-file progress{width:100%;height:5px}.upload-row label{display:flex;align-items:center;gap:5px;color:var(--text-muted);font-size:9px}.upload-row label span{display:none}.upload-row input{width:126px;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:10px}.upload-row>button{display:grid;width:28px;height:28px;place-items:center;border:0;background:transparent;color:var(--text-muted)}.upload-row>button:hover{color:var(--red)}.entry-error{grid-column:1/-1;margin:0;color:var(--red);font-size:9px}.queue-actions,.submit-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.queue-actions .progress-note{margin-right:auto}.text-action{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--accent-strong);font-size:10px;cursor:pointer}.submit-actions .btn-primary{flex:1}.preview-note,.progress-note,.upload-error{margin:0;font-size:11px;line-height:1.5}.preview-note{color:#8a682d}.progress-note{color:var(--accent-strong)}.upload-error{color:var(--red)}@media(max-width:520px){.upload-options{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr 28px}.upload-row label{grid-column:1}.upload-row>button{grid-column:2;grid-row:1}}
+.multi-upload{display:grid;gap:13px;padding:18px}.upload-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.upload-heading h3{margin:0 0 5px;font-size:15px}.upload-heading p{margin:0;color:var(--text-muted);font-size:11px;line-height:1.5}.upload-heading>svg{color:var(--accent)}.upload-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.upload-options .label{display:grid;gap:6px;margin:0}.file-picker{display:flex;min-height:92px;align-items:center;justify-content:center;gap:10px;border:1px dashed var(--border-strong);border-radius:8px;background:var(--surface-2);color:var(--accent-strong);font-size:12px;font-weight:650;cursor:pointer;transition:border-color 150ms ease,background 150ms ease,box-shadow 150ms ease}.file-picker>span{display:grid;gap:4px}.file-picker small{color:var(--text-muted);font-size:10px;font-weight:500}.file-picker:hover,.file-picker.dragging{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 4px rgb(47 143 146 / 10%)}.file-picker.disabled{cursor:default;opacity:.6}.file-picker input{position:absolute;width:1px;height:1px;overflow:hidden;opacity:0}.file-count{margin:0;color:var(--accent-strong);font-size:11px;font-weight:650}.upload-queue{display:grid;gap:7px;max-height:300px;overflow:auto}.upload-row{display:grid;grid-template-columns:minmax(0,1fr) auto 28px;align-items:center;gap:10px;padding:9px;border:1px solid var(--border);border-radius:7px;background:var(--surface)}.upload-row.is-failed{border-color:#e7b5b5}.upload-row.is-completed{border-color:#a9d8c5;background:#f3fbf7}.upload-row>div{display:grid;min-width:0;gap:3px}.upload-row strong{overflow:hidden;text-overflow:ellipsis;font-size:11px;white-space:nowrap}.upload-row small{color:var(--text-muted);font-size:9px}.upload-file progress{width:100%;height:5px}.upload-row label{display:flex;align-items:center;gap:5px;color:var(--text-muted);font-size:9px}.upload-row label span{display:none}.upload-row input{width:126px;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text);font-size:10px}.upload-row>button{display:grid;width:28px;height:28px;place-items:center;border:0;background:transparent;color:var(--text-muted)}.upload-row>button:hover{color:var(--red)}.entry-error{grid-column:1/-1;margin:0;color:var(--red);font-size:9px}.queue-actions,.submit-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.queue-actions .progress-note{margin-right:auto}.text-action{display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--accent-strong);font-size:10px;cursor:pointer}.submit-actions .btn-primary{flex:1}.preview-note,.progress-note,.upload-error{margin:0;font-size:11px;line-height:1.5}.preview-note{color:#8a682d}.progress-note{color:var(--accent-strong)}.upload-error{color:var(--red)}.dicom-entry{display:grid;gap:7px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)}.dicom-entry>div{display:grid;gap:3px}.dicom-entry strong{font-size:12px}.dicom-entry small{color:var(--text-muted);font-size:9px}.dicom-picker{display:inline-flex;justify-self:start;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--accent-strong);font-size:10px;cursor:pointer}.dicom-picker input{display:none}.dicom-entry input[type=date]{width:150px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)}@media(max-width:520px){.upload-options{grid-template-columns:1fr}.upload-row{grid-template-columns:1fr 28px}.upload-row label{grid-column:1}.upload-row>button{grid-column:2;grid-row:1}}
 </style>

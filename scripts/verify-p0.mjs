@@ -91,6 +91,7 @@ assert.deepEqual(
 
 const loader = await sourceModule('src/utils/studyLoader.ts', [
   ["import dicomParser from 'dicom-parser'", 'const dicomParser = globalThis.testDicomParser'],
+  ["import { isNiftiFile } from './fileFormats'", 'const isNiftiFile = file => /\.nii(?:\.gz)?$/i.test(file.name)'],
   ["import { normalizeDicomDate } from './dates'", "const normalizeDicomDate = value => { if (!value || !/^\\d{8}$/.test(value)) return ''; const result = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`; const [year, month, day] = result.split('-').map(Number); const date = new Date(year, month - 1, day); return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? result : '' }"],
 ])
 const files = [

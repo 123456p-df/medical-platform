@@ -5,7 +5,7 @@ import { examinationApi } from '@/api/examinations'
 import { findingApi } from '@/api/findings'
 import { patientApi } from '@/api/patients'
 import { reportApi } from '@/api/reports'
-import type { ArchivedPatient, Examination, Finding, Patient, Report } from '@/types'
+import type { ArchivedPatient, Examination, Finding, Patient, Report, ReportEvent, ReportTask } from '@/types'
 import { mockExaminations, mockFindings, mockPatients, mockReports } from '@/data/mockData'
 import { localPreview } from '@/utils/runtime'
 import { getLocalUploads } from '@/api/localStudyRepository'
@@ -88,6 +88,8 @@ export const usePatientStore = defineStore('patients', () => {
   const examinations = ref<Examination[]>([])
   const findings = ref<Finding[]>([])
   const reports = ref<Report[]>([])
+  const reportTasks = ref<ReportTask[]>([])
+  const reportEvents = ref<ReportEvent[]>([])
   const lastArchivedPatient = ref<Patient | null>(null)
   const archivedPatients = ref<ArchivedPatient[]>([])
   const reviewedReports = computed(() => reports.value.filter(report => report.reviewed))
@@ -100,6 +102,7 @@ export const usePatientStore = defineStore('patients', () => {
     generation++
     patients.value = []; patientTotal.value = 0; patientPage.value = 1; selectedPatientId.value = null; examinations.value = []
     findings.value = []; reports.value = []; activeExamId.value = null; lastArchivedPatient.value = null
+    reportTasks.value = []; reportEvents.value = []
     archivedPatients.value = []
     error.value = null; loading.value = false
   }
@@ -211,6 +214,7 @@ export const usePatientStore = defineStore('patients', () => {
       if (!activeExamId.value || !examinations.value.some(item => item.id === activeExamId.value)) {
         activeExamId.value = examinations.value[0]?.id ?? null
       }
+      await loadReportTasks()
       loading.value = false
       return
     }
@@ -233,6 +237,7 @@ export const usePatientStore = defineStore('patients', () => {
       if (!activeExamId.value || !examinations.value.some(item => item.id === activeExamId.value)) {
         activeExamId.value = examinations.value[0]?.id ?? null
       }
+      await loadReportTasks()
     } catch (reason) {
       if (revision === generation) error.value = reason instanceof Error ? reason.message : '加载病历失败'
     } finally { if (revision === generation) loading.value = false }
@@ -311,7 +316,15 @@ export const usePatientStore = defineStore('patients', () => {
   }
   async function saveReport(report: Report) {
     if (localPreview) {
-      const saved = { ...report, id: report.id || `LOCAL-${Date.now()}` }
+      const saved = {
+        ...report,
+        id: report.id || `LOCAL-${Date.now()}`,
+        status: report.reviewed ? 'signed' as const : 'draft' as const,
+        revision: (report.revision || 0) + 1,
+        signedAt: report.reviewed ? new Date().toISOString() : null,
+        signedByUserId: report.reviewed ? 'local-preview' : null,
+        signedByUsername: report.reviewed ? report.doctor : null,
+      }
       const allReports = structuredClone(readPreviewReports() || mockReports)
       const storedIndex = allReports.findIndex(item => item.id === saved.id)
       if (storedIndex < 0) allReports.push(saved)
@@ -350,6 +363,88 @@ export const usePatientStore = defineStore('patients', () => {
     const addendum = await reportApi.addAddendum(reportId, reason, content)
     report.addenda = [...(report.addenda || []), addendum]
     return addendum
+  }
+  async function transitionReport(
+    reportId: string,
+    action: 'submit' | 'sign' | 'reopen' | 'cancel',
+    reason?: string,
+  ) {
+    const current = reports.value.find(item => item.id === reportId)
+    if (!current) throw new Error('找不到需要处理的报告。')
+    if (localPreview) {
+      const now = new Date().toISOString()
+      const status = action === 'submit'
+        ? 'pending_review'
+        : action === 'sign'
+          ? 'signed'
+          : action === 'reopen'
+            ? 'draft'
+            : 'cancelled'
+      const updated: Report = {
+        ...current,
+        status,
+        revision: (current.revision || 0) + 1,
+        reviewed: status === 'signed',
+        signedAt: status === 'signed' ? now : null,
+        signedByUserId: status === 'signed' ? 'local-preview' : null,
+        signedByUsername: status === 'signed' ? current.doctor : null,
+      }
+      const index = reports.value.findIndex(item => item.id === reportId)
+      if (index >= 0) reports.value[index] = updated
+      const all = structuredClone(readPreviewReports() || mockReports)
+      const stored = all.findIndex(item => item.id === reportId)
+      if (stored >= 0) all[stored] = JSON.parse(JSON.stringify(updated))
+      writePreviewReports(all)
+      await loadReportTasks()
+      return updated
+    }
+    const updated = await reportApi.transitionReport(
+      reportId,
+      action,
+      current.revision || 1,
+      reason,
+    )
+    const index = reports.value.findIndex(item => item.id === reportId)
+    if (index >= 0) reports.value[index] = updated
+    await loadReportTasks()
+    return updated
+  }
+  async function loadReportTasks() {
+    if (!selectedPatientId.value && !examinations.value.some(item => item.patientId)) return
+    const patientId = selectedPatientId.value || examinations.value[0]?.patientId
+    if (!patientId) return
+    if (localPreview) {
+      reportTasks.value = examinations.value
+        .filter(item => item.patientId === patientId)
+        .map(item => {
+          const linked = reports.value.find(report => report.examinationId === item.id)
+          return {
+            id: `LOCAL-TASK-${item.id}`,
+            patientId,
+            examinationId: item.id,
+            status: linked?.status === 'signed'
+              ? 'signed'
+              : linked?.status === 'pending_review'
+                ? 'in_review'
+                : linked?.status === 'draft'
+                  ? 'drafting'
+                  : 'pending_draft',
+            primaryRecordId: linked?.id || null,
+            assignedDoctorId: null,
+            updatedAt: linked?.updatedAt || new Date().toISOString(),
+            createdAt: linked?.createdAt || new Date().toISOString(),
+          }
+        })
+      return
+    }
+    reportTasks.value = await reportApi.getReportTasksByPatient(patientId)
+  }
+  async function loadReportEvents(reportId: string) {
+    if (localPreview) {
+      reportEvents.value = []
+      return
+    }
+    reportEvents.value = await reportApi.getReportEvents(reportId)
   }
   async function createPatient(draft: PatientDraft) {
     if (localPreview) {
@@ -489,9 +584,10 @@ export const usePatientStore = defineStore('patients', () => {
     if (localPreview) localStorage.setItem(PREVIEW_PATIENTS_KEY, JSON.stringify(patients.value))
   }
   return { patients, patientTotal, patientPage, patientPageSize, selectedPatientId, selectedPatient, examinations, findings, reports, reviewedReports, activeExamId,
-    lastArchivedPatient, loading, error, reset, loadPatients, selectPatient, loadPatientContext,
+    lastArchivedPatient, reportTasks, reportEvents, loading, error, reset, loadPatients, selectPatient, loadPatientContext,
     loadPatientRoster,
-    updateFindingStatus, updateFindingBox, saveFindingBox, saveReport, addReportAddendum, createPatient, registerPreviewPatient,
+    updateFindingStatus, updateFindingBox, saveFindingBox, saveReport, addReportAddendum, transitionReport, loadReportTasks, loadReportEvents,
+    createPatient, registerPreviewPatient,
     linkExistingPatient,
     archivePatient, removePatientAccess, archivePatientGlobally, restoreLastPatient,
     archivedPatients, loadArchivedPatients, restoreArchivedPatient, updateExaminationReview }

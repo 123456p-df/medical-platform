@@ -234,6 +234,7 @@ class RecordPatch(Input):
     recommendation: str | None = Field(default=None, max_length=10000)
     reviewed: bool | None = None
     record_date: date | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def nonempty(self):
@@ -272,6 +273,63 @@ class AddendumOut(BaseModel):
     created_at: datetime
 
 
+class RecordTransitionInput(Input):
+    action: Literal["submit", "sign", "reopen", "cancel"]
+    expected_revision: int = Field(ge=1)
+    reason: str | None = Field(default=None, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def nonblank_reason(cls, value):
+        if value is None or value.strip():
+            return value.strip() if value is not None else value
+        raise ValueError("Reason must not be blank")
+
+
+class ApplyAICandidateInput(Input):
+    expected_revision: int = Field(ge=1)
+    candidate_fields: dict[str, str]
+    replace: bool = False
+
+    @field_validator("candidate_fields")
+    @classmethod
+    def allowed_fields(cls, value):
+        allowed = {"diagnosis", "description", "recommendation"}
+        unknown = set(value) - allowed
+        if unknown or not value or any(not isinstance(item, str) for item in value.values()):
+            raise ValueError("candidate_fields must contain diagnosis, description, or recommendation text")
+        return value
+
+
+class ReportEventOut(BaseModel):
+    event_id: int
+    record_id: int
+    revision: int
+    action: str
+    from_status: str | None
+    to_status: str | None
+    actor_user_id: int | None
+    reason: str | None
+    metadata: dict
+    created_at: datetime
+
+
+class ReportTaskOut(BaseModel):
+    task_id: int
+    patient_id: int
+    examination_id: str
+    status: Literal["pending_draft", "drafting", "in_review", "signed", "cancelled"]
+    primary_record_id: int | None
+    assigned_doctor_id: int | None
+    updated_at: datetime
+    created_at: datetime
+
+
+class ReportTaskPage(BaseModel):
+    items: list[ReportTaskOut]
+    total: int
+
+
 class RecordOut(BaseModel):
     record_id: int
     patient_id: int
@@ -283,6 +341,10 @@ class RecordOut(BaseModel):
     recommendation: str
     reviewed: bool
     signed_at: datetime | None
+    status: Literal["draft", "pending_review", "signed", "cancelled"]
+    revision: int
+    signed_by_user_id: int | None
+    signed_by_username: str | None
     record_date: date
     doctor_name: str
     created_at: datetime
@@ -505,6 +567,11 @@ class FindingOut(BaseModel):
     description: str
     confidence: float
     diameter_mm: float
+    box_extent_mm: float | None
+    measurement_mm: float | None
+    measurement_method: str | None
+    measurement_status: Literal["candidate", "manual", "reviewed", "rejected"]
+    side_evidence: str | None
     coordinate_system: Literal["RAS"]
     box_mode: Literal["cccwhd"]
     center_world_mm: list[float] = Field(min_length=3, max_length=3)
@@ -525,6 +592,10 @@ class FindingPatch(Input):
     label: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, min_length=1, max_length=4000)
     diameter_mm: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    measurement_mm: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    measurement_method: str | None = Field(default=None, min_length=1, max_length=64)
+    measurement_status: Literal["candidate", "manual", "reviewed", "rejected"] | None = None
+    side_evidence: str | None = Field(default=None, min_length=1, max_length=64)
     center_world_mm: list[float] | None = Field(default=None, min_length=3, max_length=3)
     box_world_mm: list[float] | None = Field(default=None, min_length=6, max_length=6)
     center_voxel: list[float] | None = Field(default=None, min_length=3, max_length=3)
@@ -588,6 +659,7 @@ class ModelOut(BaseModel):
 class ChatInput(Input):
     patient_id: int = Field(gt=0)
     organ_id: str = Field(min_length=1, max_length=64)
+    examination_id: str | None = Field(default=None, min_length=1, max_length=64)
     question: str = Field(min_length=1, max_length=4000)
 
     @field_validator("question")
@@ -596,6 +668,130 @@ class ChatInput(Input):
         if not value.strip():
             raise ValueError("Question must not be blank")
         return value.strip()
+
+
+class AICapabilityOut(BaseModel):
+    purpose: Literal["record_summary", "report_draft", "report_qa"]
+    available: bool
+    provider_id: str | None = None
+    model_id: str | None = None
+    reason: str | None = None
+
+
+class AIInvocationCreate(Input):
+    patient_id: int = Field(gt=0)
+    organ_id: str = Field(min_length=1, max_length=64)
+    examination_id: str | None = Field(default=None, max_length=64)
+    purpose: Literal["record_summary", "report_draft", "report_qa"] = "record_summary"
+    question: str | None = Field(default=None, min_length=1, max_length=4000)
+    base_revision: int | None = Field(default=None, ge=1)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def purpose_input(self):
+        if self.purpose == "record_summary" and not self.question:
+            raise ValueError("record_summary requires a question")
+        return self
+
+
+class AIInvocationAttemptOut(BaseModel):
+    attempt_id: int
+    invocation_id: str
+    attempt_number: int
+    status: str
+    provider_id: str | None
+    model_id: str | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    error_code: int | None
+    error_message: str | None
+    usage: dict
+    created_at: datetime
+
+
+class AIInvocationOut(BaseModel):
+    invocation_id: str
+    patient_id: int
+    examination_id: str | None
+    organ_id: str
+    purpose: str
+    status: str
+    provider_id: str | None
+    model_id: str | None
+    base_revision: int | None
+    result: dict | None
+    error_code: int | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AIProviderConfigCreate(Input):
+    provider_id: str = Field(min_length=1, max_length=64, pattern=r"^[\w.-]+$")
+    display_name: str = Field(min_length=1, max_length=120)
+    protocol: Literal["chat_completions", "responses", "anthropic", "gemini"] = "chat_completions"
+    base_url: str = Field(min_length=1, max_length=500)
+    api_key_env: str | None = Field(default=None, min_length=1, max_length=120)
+    model_id: str = Field(min_length=1, max_length=160)
+    capabilities: list[Literal["record_summary", "report_draft", "report_qa"]] = Field(
+        default_factory=list
+    )
+    modalities: list[Literal["CT", "MRI", "X-Ray"]] = Field(default_factory=list)
+    organs: list[str] = Field(default_factory=list)
+    status: Literal["configured", "connected", "accepted", "disabled"] = "configured"
+    data_scope: dict = Field(default_factory=dict)
+    timeout_seconds: int = Field(default=60, ge=1, le=600)
+    max_input_chars: int = Field(default=30000, ge=1000, le=100000)
+    max_output_chars: int = Field(default=16000, ge=100, le=50000)
+
+
+class AIProviderConfigUpdate(Input):
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    protocol: Literal["chat_completions", "responses", "anthropic", "gemini"] | None = None
+    base_url: str | None = Field(default=None, min_length=1, max_length=500)
+    api_key_env: str | None = Field(default=None, min_length=1, max_length=120)
+    model_id: str | None = Field(default=None, min_length=1, max_length=160)
+    capabilities: list[Literal["record_summary", "report_draft", "report_qa"]] | None = None
+    modalities: list[Literal["CT", "MRI", "X-Ray"]] | None = None
+    organs: list[str] | None = None
+    status: Literal["configured", "connected", "accepted", "disabled"] | None = None
+    data_scope: dict | None = None
+    timeout_seconds: int | None = Field(default=None, ge=1, le=600)
+    max_input_chars: int | None = Field(default=None, ge=1000, le=100000)
+    max_output_chars: int | None = Field(default=None, ge=100, le=50000)
+
+    @model_validator(mode="after")
+    def nonempty(self):
+        if not self.model_dump(exclude_unset=True):
+            raise ValueError("Provide at least one provider field")
+        return self
+
+
+class AIProviderConfigOut(BaseModel):
+    id: str
+    provider_id: str
+    display_name: str
+    protocol: str
+    base_url: str
+    api_key_env: str | None
+    model_id: str
+    capabilities: list
+    modalities: list
+    organs: list
+    status: str
+    data_scope: dict
+    timeout_seconds: int
+    max_input_chars: int
+    max_output_chars: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AIProviderProbeOut(BaseModel):
+    provider_id: str
+    checked: bool
+    reachable: bool
+    message: str
 
 
 class Reference(BaseModel):

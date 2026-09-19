@@ -157,8 +157,10 @@ class AnalysisRunner:
             for candidate in result.findings:
                 box_world = list(candidate.box)
                 center_voxel, box_voxel = self._voxel_box(image_path, box_world)
-                diameter = max(box_world[3:])
+                box_extent = max(box_world[3:])
+                diameter = box_extent
                 side = candidate.side or ("right" if box_world[0] >= 0 else "left")
+                side_evidence = "model" if candidate.side else "coordinate_sign"
                 findings.append(
                     Finding(
                         id=f"finding_{uuid4().hex}",
@@ -169,11 +171,17 @@ class AnalysisRunner:
                         model_label=str(candidate.label),
                         label="Pulmonary nodule candidate",
                         description=(
-                            f"Model-detected pulmonary nodule candidate measuring "
-                            f"approximately {diameter:.1f} mm; clinical review required."
+                            f"Model-detected pulmonary nodule candidate with a "
+                            f"{box_extent:.1f} mm box extent; clinical measurement "
+                            f"and review are required."
                         ),
                         confidence=candidate.score,
                         diameter_mm=diameter,
+                        box_extent_mm=box_extent,
+                        measurement_mm=None,
+                        measurement_method="box_extent_max",
+                        measurement_status="candidate",
+                        side_evidence=side_evidence,
                         coordinate_system="RAS",
                         box_mode="cccwhd",
                         center_world_mm=box_world[:3],

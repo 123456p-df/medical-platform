@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Send, BookOpen, Sparkles } from 'lucide-vue-next'
 import { organNames } from '@/api/mappers'
@@ -11,20 +11,22 @@ import { normalizePatientId } from '@/utils/patientIds'
 import type { Finding } from '@/types'
 import { capabilityForStudy } from '@/utils/capabilities'
 import { useAIChatStore } from '@/stores/aiChat'
+import { useStudyWorkspaceStore } from '@/stores/studyWorkspace'
 import { t } from '@/i18n'
 const auth = useAuthStore()
 const patientStore = usePatientStore()
 const ai = useAIChatStore()
+const workspace = useStudyWorkspaceStore()
 const route = useRoute(), organ = ref('lung'), question = ref('')
 const patientId = computed(() => normalizePatientId(auth.portal === 'patient' ? auth.session?.id : route.params.id))
-const selectedExaminationId = ref(String(route.query.exam || ''))
+const selectedExaminationId = ref(String(route.query.exam || workspace.context.examinationId || ''))
 const selectedExamination = computed(() => patientStore.examinations.find(item => item.id === selectedExaminationId.value)
   || patientStore.examinations[0])
 const capabilities = computed(() => capabilityForStudy(selectedExamination.value, auth.portal))
 const visibleFindings = computed(() => selectedExaminationId.value
   ? patientStore.findings.filter(item => item.examinationId === selectedExaminationId.value)
   : patientStore.findings)
-const scopeKey = computed(() => `${auth.session?.username || 'anonymous'}:${patientId.value}:${organ.value}`)
+const scopeKey = computed(() => `${auth.session?.username || 'anonymous'}:${patientId.value}:${organ.value}:${selectedExaminationId.value || 'all'}`)
 const chat = computed(() => ai.thread(scopeKey.value))
 const findingError = ref('')
 const busy = computed(() => chat.value.busy)
@@ -36,7 +38,14 @@ async function ask() {
   const text = question.value.trim()
   if (!text) return
   const unavailable = capabilities.value.aiAssistant.enabled ? '' : capabilities.value.aiAssistant.reason
-  const sent = await ai.ask(scopeKey.value, patientId.value, organ.value, text, unavailable)
+  const sent = await ai.ask(
+    scopeKey.value,
+    patientId.value,
+    organ.value,
+    text,
+    unavailable,
+    selectedExaminationId.value,
+  )
   if (sent) question.value = ''
 }
 async function openReference(id:number) {
@@ -46,10 +55,27 @@ async function updateFinding(finding: Finding, status: Finding['status']) {
   try { await patientStore.updateFindingStatus(finding.id, status) }
   catch (reason) { findingError.value = reason instanceof Error ? reason.message : t('ui.ai.updateFindingFailed') }
 }
+function selectStudy(event: Event) {
+  const id = (event.target as HTMLSelectElement).value
+  selectedExaminationId.value = id
+  workspace.selectExamination(id || null)
+}
+watch(() => workspace.context.examinationId, value => {
+  if (value && value !== selectedExaminationId.value) selectedExaminationId.value = value
+})
+watch(() => route.query.exam, value => {
+  selectedExaminationId.value = String(value || workspace.context.examinationId || '')
+})
+watch(selectedExamination, examination => {
+  if (examination?.organId) organ.value = examination.organId
+})
 onMounted(async () => {
   const id = patientId.value
   if (id && patientStore.selectedPatientId !== id) await patientStore.selectPatient(id)
-  if (capabilities.value.aiAssistant.enabled) await ai.refreshConfiguration()
+  if (capabilities.value.aiAssistant.enabled) {
+    await ai.refreshConfiguration()
+    await ai.loadCapabilities(organ.value, selectedExaminationId.value)
+  }
 })
 </script>
 <template>
@@ -62,7 +88,7 @@ onMounted(async () => {
         </div>
         <label v-if="patientStore.examinations.length" class="study-filter">
           <span>{{ $t('ui.ai.study') }}</span>
-          <select v-model="selectedExaminationId" class="select">
+          <select :value="selectedExaminationId" class="select" @change="selectStudy">
             <option value="">{{ $t('ui.ai.allStudies') }}</option>
             <option v-for="image in patientStore.examinations" :key="image.id" :value="image.id">
               {{ image.date }} · {{ image.type }} {{ image.organ }}

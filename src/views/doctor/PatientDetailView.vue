@@ -17,14 +17,6 @@ const store = usePatientStore()
 const patientId = computed(() => String(route.params.id))
 const selectedPatient = computed(() => store.selectedPatient)
 
-const tabs = [
-  { label: 'Overview', name: 'doctor-patient-overview' },
-  { label: 'Imaging', name: 'doctor-patient-imaging' },
-  { label: 'Report', name: 'doctor-patient-report' },
-  { label: 'ui.patientDetail.ai', name: 'doctor-patient-ai' },
-  { label: 'ui.patientDetail.organ3d', name: 'doctor-patient-3d', external: true },
-]
-
 async function loadPatient() {
   if (!store.patients.length) {
     await store.loadPatients()
@@ -65,30 +57,9 @@ watch(patientId, loadPatient)
       </div>
     </section>
 
-    <nav class="detail-tabs" aria-label="Patient record sections">
-      <template v-for="tab in tabs" :key="tab.name">
-        <a
-          v-if="tab.external"
-          :href="router.resolve({ name: 'study-viewer', params: { patientId: patientId } }).href"
-          target="_blank"
-          class="detail-tab"
-        >
-          {{ $t(tab.label) }}
-        </a>
-        <RouterLink
-          v-else
-          :to="{ name: tab.name, params: { id: patientId } }"
-          class="detail-tab"
-          exact-active-class="is-active"
-        >
-          {{ $t(tab.label) }}
-        </RouterLink>
-      </template>
-    </nav>
-
     <StatePanel v-if="store.loading && !store.examinations.length" kind="loading" :message="$t('Loading patient record...')" />
     <StatePanel v-else-if="store.error" kind="error" :message="store.error" />
-    <RouterView v-else :key="patientId" />
+    <RouterView v-else :key="patientId" class="detail-content" />
   </div>
 </template>
 
@@ -170,40 +141,8 @@ watch(patientId, loadPatient)
   font-size: 12px;
 }
 
-.detail-tabs {
-  display: flex;
-  gap: 4px;
-  margin: 18px 0;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--border);
-}
-
-.detail-tab {
-  position: relative;
-  padding: 10px 13px 12px;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 620;
-  white-space: nowrap;
-}
-
-.detail-tab:hover {
-  color: var(--text);
-}
-
-.detail-tab.is-active {
-  color: var(--accent-strong);
-}
-
-.detail-tab.is-active::after {
-  position: absolute;
-  right: 12px;
-  bottom: -1px;
-  left: 12px;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: var(--accent);
-  content: '';
+.detail-content {
+  margin-top: 18px;
 }
 
 .patient-detail.is-imaging .back-link {
@@ -213,6 +152,10 @@ watch(patientId, loadPatient)
 .patient-detail.is-imaging .patient-hero {
   gap: 12px;
   padding: 9px 12px;
+}
+
+.patient-detail.is-imaging .detail-content {
+  margin-top: 9px;
 }
 
 .patient-detail.is-imaging .patient-avatar {
@@ -229,15 +172,6 @@ watch(patientId, loadPatient)
 .patient-detail.is-imaging .patient-status {
   align-items: center;
   flex-direction: row;
-}
-
-.patient-detail.is-imaging .detail-tabs {
-  margin: 7px 0 9px;
-}
-
-.patient-detail.is-imaging .detail-tab {
-  padding-block: 7px 9px;
-  font-size: 11px;
 }
 
 @media (max-width: 760px) {

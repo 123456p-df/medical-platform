@@ -22,7 +22,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'VITE_LOCAL_PREVIEW=false VMRB_BACKEND_URL=http://127.0.0.1:8001 node_modules/.bin/vite --host 127.0.0.1 --port 4192 --strictPort',
+      command: 'VITE_LOCAL_PREVIEW=false VMRB_BACKEND_URL=http://127.0.0.1:8001 pnpm exec vite --host 127.0.0.1 --port 4192 --strictPort',
       url: 'http://127.0.0.1:4192/login',
       reuseExistingServer: false,
       timeout: 60_000,

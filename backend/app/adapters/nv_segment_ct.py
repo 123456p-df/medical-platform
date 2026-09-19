@@ -11,15 +11,17 @@ Pure 1-Stage Global Anatomy Inference (modality="CT_BODY")
 - Linear RGB gamma-corrected PBR materials
 """
 
+import hashlib
 import importlib
+import json
 import logging
-import shutil
 import sys
 from pathlib import Path
 
 import nibabel as nib
 import numpy as np
 import scipy.ndimage as ndi
+
 try:
     import torch
 except ImportError:
@@ -31,14 +33,14 @@ except ImportError:
     trimesh = None
 
 try:
-    from monai.data.utils import decollate_batch
     from monai.apps.vista3d.transforms import VistaPostTransformd
+    from monai.data.utils import decollate_batch
 except ImportError:
     decollate_batch = None
     VistaPostTransformd = None
 from app.config import Settings
-from app.services.imaging import get_organ_color, refine_boundary_native_grid
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
+from app.services.imaging import refine_boundary_native_grid
 from app.services.label_catalog import LabelCatalog
 
 logger = logging.getLogger(__name__)
@@ -118,7 +120,7 @@ class NVSegmentCT:
         min_voxels = self.settings.segmentation_min_component_voxels
         recognized = [
             int(label)
-            for label, count in zip(labels.tolist(), counts.tolist())
+            for label, count in zip(labels.tolist(), counts.tolist(), strict=True)
             if int(label) > 0 and int(count) >= min_voxels
         ]
         label_map_path = output_dir / "label_map_1mm.nii.gz"
@@ -138,16 +140,44 @@ class NVSegmentCT:
             native_affine = native_result.affine
             native_header = native_result.header.copy()
         else:
-            zoom = [target / source for target, source in zip(native_img.shape, label_map.shape)]
+            zoom = [
+                target / source
+                for target, source in zip(native_img.shape, label_map.shape, strict=True)
+            ]
             native_values = ndi.zoom(label_map, zoom, order=0)
             native_values = native_values[tuple(slice(0, size) for size in native_img.shape)]
             native_affine = native_img.affine
             native_header = native_img.header.copy()
         native_header.set_data_dtype(dtype)
         nib.save(nib.Nifti1Image(native_values, native_affine, native_header), str(native_path))
-        shutil.rmtree(str(raw_dir), ignore_errors=True)
+        manifest_path = output_dir / "manifest.json"
+        files = {
+            "label_map_1mm": label_map_path,
+            "label_map_native": native_path,
+        }
+        manifest = {
+            "schema_version": 1,
+            "modality": "CT",
+            "labels": recognized,
+            "files": {
+                name: {
+                    "path": str(path.relative_to(output_dir)),
+                    "shape": list(nib.load(str(path)).shape),
+                    "affine": nib.load(str(path)).affine.tolist(),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+                for name, path in files.items()
+            },
+            "source": "nv_segment_ct",
+        }
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
         progress(100)
-        return {"label_map_1mm": label_map_path, "label_map_native": native_path, "labels": recognized}
+        return {
+            "label_map_1mm": label_map_path,
+            "label_map_native": native_path,
+            "labels": recognized,
+            "manifest": manifest_path,
+        }
 
     def __call__(self, *, image_path: Path, organ_id: str, output_dir: Path, progress):
         self._ensure_pipelines()
@@ -190,7 +220,7 @@ class NVSegmentCT:
         progress(35)
 
         # 2. Global Sliding-Window Forward Pass (overlap=0.5)
-        logger.info(f"[Pure 1-Stage] Running 1.0mm global sliding-window inference on RTX 5090...")
+        logger.info("[Pure 1-Stage] Running 1.0mm global sliding-window inference on RTX 5090...")
         outputs = self.pipeline._forward(prep)
         progress(70)
 
@@ -241,7 +271,7 @@ class NVSegmentCT:
         progress(85)
 
         # 5. Invert to Native Grid for 2D DICOM viewer
-        logger.info(f"[Pure 1-Stage] Inverting prediction to native grid for 2D slice viewer...")
+        logger.info("[Pure 1-Stage] Inverting prediction to native grid for 2D slice viewer...")
         post_dir = raw_dir / "post"
         post_dir.mkdir(exist_ok=True)
         self.pipeline.postprocess(outputs, output_dir=str(post_dir), separate_folder=False)
@@ -253,7 +283,10 @@ class NVSegmentCT:
         else:
             inverted_mask = ndi.zoom(
                 mask_1mm.astype(float),
-                [s_nat / s_1mm for s_nat, s_1mm in zip(native_shape, mask_1mm.shape)],
+                [
+                    s_nat / s_1mm
+                    for s_nat, s_1mm in zip(native_shape, mask_1mm.shape, strict=True)
+                ],
                 order=1,
             ) > 0.5
 
@@ -271,12 +304,6 @@ class NVSegmentCT:
         header = native_img.header.copy()
         header.set_data_dtype(np.uint8)
         nib.save(nib.Nifti1Image(refined_mask.astype(np.uint8), native_img.affine, header), str(out_path))
-
-        # Cleanup temporary files
-        try:
-            shutil.rmtree(str(raw_dir))
-        except Exception:
-            pass
 
         progress(100)
         logger.info(f"[Pure 1-Stage Complete] Generated high-definition mask at {out_path}")

@@ -2,8 +2,13 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [vue()],
+  define: {
+    __PULMOLINK_BUILD_ID__: JSON.stringify(
+      process.env.VMRB_BUILD_ID || `${mode}-${new Date().toISOString().slice(0, 10)}`,
+    ),
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -30,4 +35,4 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
-})
+}))

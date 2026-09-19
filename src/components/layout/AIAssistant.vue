@@ -1,21 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Sparkles, X, Send, ArrowUpRight, RotateCcw } from 'lucide-vue-next'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePatientStore } from '@/stores/patients'
 import { useAIChatStore } from '@/stores/aiChat'
+import { useStudyWorkspaceStore } from '@/stores/studyWorkspace'
 import { organNames } from '@/api/mappers'
 import { capabilityForStudy } from '@/utils/capabilities'
 
 const auth = useAuthStore(), patients = usePatientStore(), ai = useAIChatStore(), route = useRoute(), router = useRouter()
+const workspace = useStudyWorkspaceStore()
 const open = ref(false), question = ref(''), organ = ref('lung')
 const input = ref<HTMLTextAreaElement>(), log = ref<HTMLDivElement>(), launcher = ref<HTMLButtonElement>()
 const patientId = computed(() => auth.portal === 'patient' ? auth.session?.id || '' : typeof route.params.id === 'string' ? route.params.id : '')
 const patient = computed(() => patients.patients.find(p => p.id === patientId.value))
-const selectedExamination = computed(() => patients.examinations.find(item => item.id === String(route.query.exam || patients.activeExamId || '')) || patients.examinations[0])
+const selectedExamination = computed(() => patients.examinations.find(item => item.id === String(workspace.context.examinationId || route.query.exam || patients.activeExamId || '')) || patients.examinations[0])
 const aiCapability = computed(() => capabilityForStudy(selectedExamination.value, auth.portal).aiAssistant)
-const scopeKey = computed(() => `${auth.session?.username || 'anonymous'}:${patientId.value}:${organ.value}`)
+const scopeKey = computed(() => `${auth.session?.username || 'anonymous'}:${patientId.value}:${organ.value}:${selectedExamination.value?.id || 'all'}`)
 const chat = computed(() => ai.thread(scopeKey.value))
 const configured = computed(() => aiCapability.value.enabled ? ai.configured : false)
 const busy = computed(() => chat.value.busy)
@@ -23,17 +25,38 @@ const error = computed(() => chat.value.error)
 const messages = computed(() => chat.value.messages)
 const reference = computed(() => chat.value.reference)
 
+watch(selectedExamination, examination => {
+  if (examination?.organId) organ.value = examination.organId
+})
+
+function openFromEvent() {
+  open.value = true
+}
+
+onMounted(() => window.addEventListener('pulmolink-open-ai', openFromEvent))
+onBeforeUnmount(() => window.removeEventListener('pulmolink-open-ai', openFromEvent))
+
 watch(open, async value => {
   if (!value) { launcher.value?.focus(); return }
   await nextTick(); input.value?.focus()
-  if (aiCapability.value.enabled) await ai.refreshConfiguration()
+  if (aiCapability.value.enabled) {
+    await ai.refreshConfiguration()
+    await ai.loadCapabilities(organ.value, selectedExamination.value?.id || '')
+  }
 })
 
 async function ask() {
   const text = question.value.trim()
   if (!text || busy.value) return
   question.value = ''
-  const sent = await ai.ask(scopeKey.value, patientId.value, organ.value, text, aiCapability.value.enabled ? '' : aiCapability.value.reason)
+  const sent = await ai.ask(
+    scopeKey.value,
+    patientId.value,
+    organ.value,
+    text,
+    aiCapability.value.enabled ? '' : aiCapability.value.reason,
+    selectedExamination.value?.id || '',
+  )
   if (!sent && chat.value.error) question.value = text
   await nextTick(); log.value?.scrollTo({ top: log.value.scrollHeight, behavior: 'smooth' })
 }
