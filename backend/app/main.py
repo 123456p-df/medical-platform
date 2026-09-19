@@ -14,6 +14,7 @@ from app.audit import reset_request_context, set_request_context
 from app.config import Settings
 from app.db import make_engine, make_session_factory
 from app.errors import APIError, success
+from app.report_templates import seed_default_report_templates
 from app.routers import (
     ai,
     analysis,
@@ -25,6 +26,7 @@ from app.routers import (
     patients,
     profile,
     records,
+    report_templates,
     segmentation,
     workflow,
 )
@@ -117,6 +119,7 @@ def create_app(
                         "BackgroundTasks deployment supports one API process; use --workers 1"
                     )
             settings.storage_root.mkdir(parents=True, exist_ok=True)
+            seed_default_report_templates(sessions)
             runner.cleanup_label_maps()
             if recover_tasks:
                 runner.recover()
@@ -257,6 +260,7 @@ def create_app(
         dicom.router,
         patients.router,
         records.router,
+        report_templates.router,
         images.router,
         segmentation.router,
         analysis.router,

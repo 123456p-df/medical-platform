@@ -88,6 +88,30 @@ export interface Finding {
   revision?: number
 }
 
+export type ReportTemplateFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'boolean'
+
+export interface ReportTemplateField {
+  key: string
+  label: string
+  section: string
+  type: ReportTemplateFieldType
+  required: boolean
+  options?: string[]
+  unit?: string | null
+}
+
+export interface ReportTemplate {
+  id: string
+  name: string
+  modality: ExaminationType | null
+  organId: string | null
+  version: number
+  isActive: boolean
+  fields: ReportTemplateField[]
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface Report {
   organIds?: string[]
   organId?: string
@@ -103,6 +127,9 @@ export interface Report {
   signedAt?: string | null
   createdAt?: string
   updatedAt?: string
+  reportTemplateId?: string
+  structuredData?: Record<string, unknown>
+  reportTemplate?: ReportTemplate
   addenda?: ReportAddendum[]
 }
 

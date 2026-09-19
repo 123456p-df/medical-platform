@@ -114,6 +114,9 @@ async function logout() {
           <RouterLink to="/doctor/dashboard" class="tree-item" active-class="is-active" @click="emit('close')">
             <LayoutDashboard :size="16" /><span>{{ $t('ui.sidebar.patientWorkspace') }}</span>
           </RouterLink>
+          <RouterLink to="/doctor/report-templates" class="tree-item" active-class="is-active" @click="emit('close')">
+            <ClipboardList :size="16" /><span>{{ $t('ui.sidebar.reportTemplates') }}</span>
+          </RouterLink>
           <RouterLink v-if="auth.session?.accountRole === 'admin'" to="/doctor/archived" class="tree-item" active-class="is-active" @click="emit('close')">
             <ArchiveRestore :size="16" /><span>{{ $t('ui.sidebar.archivedPatients') }}</span>
           </RouterLink>

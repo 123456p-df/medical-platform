@@ -35,6 +35,23 @@ class User(CreatedMixin, Base):
     is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
 
 
+class ReportTemplate(CreatedMixin, Base):
+    __tablename__ = "report_templates"
+    __table_args__ = (
+        CheckConstraint("modality IN ('CT', 'MRI', 'X-Ray') OR modality IS NULL", name="ck_report_template_modality"),
+        Index("ix_report_templates_active_modality", "is_active", "modality", "organ_id"),
+    )
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(160))
+    modality: Mapped[str | None] = mapped_column(String(16))
+    organ_id: Mapped[str | None] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(default=1)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    fields: Mapped[list] = mapped_column(JSON, default=list, server_default=text("'[]'"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Patient(CreatedMixin, Base):
     __tablename__ = "patients"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -153,6 +170,8 @@ class MedicalRecord(CreatedMixin, Base):
     description: Mapped[str] = mapped_column(Text)
     recommendation: Mapped[str] = mapped_column(Text, default="", server_default=text("''"))
     reviewed: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
+    report_template_id: Mapped[str | None] = mapped_column(ForeignKey("report_templates.id"))
+    structured_data: Mapped[dict | None] = mapped_column(JSON)
     signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     record_date: Mapped[date]
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -33,6 +33,11 @@ const router = createRouter({
           component: () => import('@/views/doctor/DoctorDashboardView.vue'),
         },
         {
+          path: 'report-templates',
+          name: 'doctor-report-templates',
+          component: () => import('@/views/doctor/ReportTemplatesView.vue'),
+        },
+        {
           path: 'archived',
           name: 'doctor-archived',
           component: () => import('@/views/doctor/ArchivedPatientsView.vue'),
