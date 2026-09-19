@@ -836,8 +836,8 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        /** Images */
-        get: operations["images_api_v1_patients__patient_id__medical_images_get"];
+        /** List Patient Images */
+        get: operations["list_patient_images_api_v1_patients__patient_id__medical_images_get"];
         put?: never;
         /** Upload Image */
         post: operations["upload_image_api_v1_patients__patient_id__medical_images_post"];
@@ -854,8 +854,8 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        /** Records */
-        get: operations["records_api_v1_patients__patient_id__medical_records_get"];
+        /** List Patient Records */
+        get: operations["list_patient_records_api_v1_patients__patient_id__medical_records_get"];
         put?: never;
         /** Create Record */
         post: operations["create_record_api_v1_patients__patient_id__medical_records_post"];
@@ -8965,6 +8965,7 @@ export interface operations {
                 window_center?: number | null;
                 window_width?: number | null;
                 axis?: PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryAxis;
+                format?: PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryFormat;
             };
             header?: never;
             path: {
@@ -8982,6 +8983,7 @@ export interface operations {
                 };
                 content: {
                     "image/png": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Error envelope */
@@ -11264,7 +11266,7 @@ export interface operations {
             };
         };
     };
-    images_api_v1_patients__patient_id__medical_images_get: {
+    list_patient_images_api_v1_patients__patient_id__medical_images_get: {
         parameters: {
             query?: {
                 page?: number;
@@ -11575,7 +11577,7 @@ export interface operations {
             };
         };
     };
-    records_api_v1_patients__patient_id__medical_records_get: {
+    list_patient_records_api_v1_patients__patient_id__medical_records_get: {
         parameters: {
             query?: {
                 page?: number;
@@ -12679,6 +12681,10 @@ export enum PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryAxi
     axial = "axial",
     coronal = "coronal",
     sagittal = "sagittal"
+}
+export enum PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryFormat {
+    webp = "webp",
+    png = "png"
 }
 export enum AnalysisTaskOutStatus {
     queued = "queued",

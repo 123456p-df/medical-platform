@@ -16701,12 +16701,27 @@
               "title": "Axis",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "webp",
+              "enum": [
+                "webp",
+                "png"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
-              "image/png": {}
+              "image/png": {},
+              "image/webp": {}
             },
             "description": "Successful Response"
           },
@@ -20353,7 +20368,7 @@
         ],
         "summary": "Patients",
         "tags": [
-          "Portal collections"
+          "Patient / Organ"
         ]
       },
       "post": {
@@ -21247,7 +21262,7 @@
     },
     "/api/v1/patients/{patient_id}/medical-images": {
       "get": {
-        "operationId": "images_api_v1_patients__patient_id__medical_images_get",
+        "operationId": "list_patient_images_api_v1_patients__patient_id__medical_images_get",
         "parameters": [
           {
             "in": "path",
@@ -21559,9 +21574,9 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Images",
+        "summary": "List Patient Images",
         "tags": [
-          "Portal collections"
+          "Medical Image"
         ]
       },
       "post": {
@@ -21872,7 +21887,7 @@
     },
     "/api/v1/patients/{patient_id}/medical-records": {
       "get": {
-        "operationId": "records_api_v1_patients__patient_id__medical_records_get",
+        "operationId": "list_patient_records_api_v1_patients__patient_id__medical_records_get",
         "parameters": [
           {
             "in": "path",
@@ -22184,9 +22199,9 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Records",
+        "summary": "List Patient Records",
         "tags": [
-          "Portal collections"
+          "Medical Record"
         ]
       },
       "post": {

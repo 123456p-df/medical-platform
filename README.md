@@ -2,40 +2,36 @@
 
 ## 直接运行
 
-`pnpm start` 现在是全栈启动入口：Windows 会启动本机 PostgreSQL、FastAPI 和前端，
-macOS/Linux 会通过 Docker Compose 启动 PostgreSQL 与 FastAPI，再启动前端。首次运行需要
-Node.js 20+、pnpm 和 uv；Windows 需安装 PostgreSQL，macOS/Linux 需启动 Docker。
+`pnpm start` 现在是全栈启动入口：macOS 和 Windows 均直接启动本机轻量原生全栈（FastAPI + uv + Vite + 独立的本机 PostgreSQL，无需 Docker 引擎）。首次运行需要 Node.js 20+、pnpm、uv 以及 PostgreSQL（macOS 支持通过 Homebrew `brew install postgresql@16` 安装工具链）。
 在项目根目录执行：
 
 ```sh
-pnpm install --frozen-lockfile
+pnpm install
 pnpm start
 ```
 
-然后打开 <http://127.0.0.1:4173>。首次启动会自动生成本机 `.env` 密钥、安装后端依赖并执行数据库迁移。
-Windows 中按 `Ctrl+C` 会一并停止前端、FastAPI 和本地 PostgreSQL，数据和上传文件会保留。
+启动完成后自动就绪于 <http://127.0.0.1:4173>。首次启动会自动生成本地安全密钥、自动初始化 `.cache/preview/postgres` 私有集群（端口 15432）、安装后端依赖、执行数据库迁移并播种演示数据。
+按 `Ctrl+C` 会一并停止前端、FastAPI 和本地 PostgreSQL 实例，并保留数据库数据与上传文件。
 
-如果只需要不依赖数据库的浏览器合成演示，使用：
-
-```sh
-pnpm start:demo
-```
-
-macOS 也可以双击 `start.command`；脚本会自动检查依赖并打开浏览器。若系统提示权限，可在终端执行一次：
+macOS 支持直接双击 `start.command`：脚本会自动检查依赖、拉起完整原生全栈、自动打开浏览器并在窗口关闭或按下 `Ctrl+C` 时优雅清理资源。若首次双击提示权限，可在终端执行一次：
 
 ```sh
 chmod +x start.command
 ```
 
-Windows 的等价底层命令为：
+底层原生全栈启停脚本分别为：
+- macOS / Linux: `./scripts/start-preview.sh` 与 `./scripts/stop-preview.sh`
+- Windows: `.\scripts\start-preview.ps1` 与 `.\scripts\stop-preview.ps1`
 
-```powershell
-.\scripts\start-preview.ps1
+如果需要强制使用 Docker Compose 启动全栈，可设置 `VMRB_USE_DOCKER=1 pnpm start`。
+
+如果只需要不依赖数据库的浏览器纯前端合成演示，使用：
+
+```sh
+pnpm start:demo
 ```
 
-脚本会从 `PATH` 或常见安装目录查找 PostgreSQL，不绑定特定版本。非标准安装可先设置
-`VMRB_POSTGRES_BIN`。如需载入两份演示影像，再把 `VMRB_DEMO_SCAN_DIR` 指向包含
-`0.nii`、`1.nii` 的目录；未设置时会启动空数据库并允许注册新账号。
+脚本会从 `PATH` 或常见安装目录（如 Homebrew 安装路径）自动查找 PostgreSQL 工具链。如需自定义工具目录，可设置 `VMRB_POSTGRES_BIN`。如需载入两份演示影像，可把 `VMRB_DEMO_SCAN_DIR` 指向包含 `0.nii`、`1.nii` 的目录。
 
 演示环境只预置以下四个账号，密码统一为 `123456`：
 

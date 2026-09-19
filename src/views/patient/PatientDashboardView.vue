@@ -10,6 +10,7 @@ import OrganVisibilityList, { type OrganGroup } from '@/components/3d/OrganVisib
 import { examinationApi } from '@/api/examinations'
 import { viewerApi, type SegmentationBatch, type ViewerOrgan } from '@/api/viewer'
 import type { Examination } from '@/types'
+import { locale } from '@/i18n'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -37,7 +38,9 @@ const batchStatusText = computed(() => {
   if (!batch.value) return ''
   if (batch.value.status === 'completed') return `已识别 ${batch.value.completed_count || organs.value.length} 个器官结构`
   if (batch.value.status === 'running') return 'AI 器官分割中…'
-  return `分割${batch.value.status}`
+  if (batch.value.status === 'queued') return 'AI 任务排队中…'
+  if (batch.value.status === 'failed') return '分割失败'
+  return `分割 ${batch.value.status}`
 })
 
 const activeModelId = computed(() => {
@@ -232,24 +235,24 @@ onMounted(async () => {
 <template>
   <div class="page patient-health-page">
     <PageHeader
-      title="我的健康"
-      :subtitle="`欢迎回来，${auth.session?.name ?? '患者'}。以下是您的 3D 人体解剖与器官全景视图。`"
+      :title="$t('My Health')"
+      :subtitle="locale === 'zh' ? `欢迎回来，${auth.session?.name ?? '患者'}。以下是您的 3D 人体解剖与器官全景视图。` : `Welcome back, ${auth.session?.name ?? 'Patient'}. Below is your 3D anatomical model and overview.`"
     >
       <template #actions>
         <div class="header-actions">
           <div v-if="studies.length > 1" class="study-selector">
-            <label for="study-select">检查时期：</label>
+            <label for="study-select">{{ $t('ui.patient.health.studyPeriod') || '检查时期：' }}</label>
             <select id="study-select" v-model="selectedStudyId">
               <option v-for="s in studies" :key="s.id" :value="s.id">
-                {{ s.date }} · {{ s.organ }} · {{ s.sliceCount }} 层
+                {{ s.date }} · {{ s.organ }} · {{ s.sliceCount }} {{ $t('ui.patient.health.slices') || '层' }}
               </option>
             </select>
           </div>
           <button type="button" class="btn btn-secondary btn-sm" @click="router.push({ name: 'patient-examinations' })">
-            <Stethoscope :size="15" /> 我的检查
+            <Stethoscope :size="15" /> {{ $t('My Examinations') }}
           </button>
           <button type="button" class="btn btn-secondary btn-sm" @click="router.push({ name: 'patient-reports' })">
-            <FileText :size="15" /> 我的报告
+            <FileText :size="15" /> {{ $t('My Reports') }}
           </button>
         </div>
       </template>
@@ -267,20 +270,19 @@ onMounted(async () => {
         </div>
         <div class="toolbar-right">
           <button type="button" class="tool-btn" @click="setAll(true)">
-            <Eye :size="14" /> 全部显示
+            <Eye :size="14" /> {{ $t('ui.patient.health.showAll') || '全部显示' }}
           </button>
           <button type="button" class="tool-btn" @click="setAll(false)">
-            <EyeOff :size="14" /> 全部隐藏
+            <EyeOff :size="14" /> {{ $t('ui.patient.health.hideAll') || '全部隐藏' }}
           </button>
           <button type="button" class="tool-btn" @click="reloadModel">
-            <RotateCw :size="14" /> 刷新
+            <RotateCw :size="14" /> {{ $t('ui.patient.health.refresh') || '刷新' }}
           </button>
         </div>
       </div>
 
-      <!-- 核心 3D 解剖主区 (仅保留医生 3D 视口左侧部分，白色背景) -->
+      <!-- 核心 3D 解剖主区 -->
       <div class="viewer-3d-body">
-        <!-- 3D 模型视口 (背景纯白 #ffffff) -->
         <div class="scene-viewport">
           <AnatomyScene
             :model-id="activeModelId"
@@ -300,7 +302,7 @@ onMounted(async () => {
                 <span class="inspection-title">
                   {{ selectedOrganInfo.group_name || selectedOrganInfo.display_name || selectedOrganInfo.name }}
                 </span>
-                <button type="button" class="close-btn" @click="selectedLabelId = null">
+                <button type="button" class="close-btn" aria-label="Close" title="Close" @click="selectedLabelId = null">
                   <X :size="14" />
                 </button>
               </div>

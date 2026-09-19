@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     segmentation_callable: str | None = None
     segmentation_image_types: list[str] = ["CT", "MRI"]
     nv_segment_ct_dir: Path | None = None
-    nv_segment_device: str = "cuda:0"
+    nv_segment_device: str = "auto"
     nv_segment_roi_size: tuple[int, int, int] = (192, 192, 128)
     nv_segment_overlap: float = Field(default=0.3, ge=0, lt=1)
     segmentation_model_fingerprint: str = "nv-segment-ctmr-vista3d-1mm"
@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     watermark_enabled: bool = True
     watermark_delta: float = Field(default=20.0, gt=0, le=100.0)
     watermark_cache_size: int = Field(default=256, ge=16, le=4096)
+    agent_llm_base_url: str | None = None
+    agent_llm_api_key: SecretStr | None = None
+    agent_llm_model: str = "gpt-4o"
+    radsight_service_url: str = "http://127.0.0.1:8001"
+    radsight_model_path: str = "/Users/allenyuan/modilify_app/RadSight-8B"
 
     @model_validator(mode="after")
     def validate_secrets(self):

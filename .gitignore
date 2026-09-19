@@ -9,6 +9,8 @@ dist
 .env.*
 !.env.example
 .venv/
+.venv-radsight/
+.claude-flow/
 __pycache__/
 *.py[cod]
 .pytest_cache/

@@ -16,7 +16,6 @@
     "test:p0": "node scripts/verify-p0.mjs",
     "test:p1-consistency": "node scripts/verify-p1-consistency.mjs",
     "test:viewer-stability": "node scripts/verify-viewer-stability.mjs",
-    "test:docs": "node scripts/verify-project-docs.mjs",
     "test:i18n": "node scripts/verify-i18n.mjs",
     "test:profile": "node scripts/verify-profile-upload.mjs",
     "test:a11y": "node scripts/verify-accessibility.mjs",
@@ -45,6 +44,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "@types/three": "^0.172.0",

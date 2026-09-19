@@ -15,10 +15,10 @@ from app.config import Settings
 from app.db import make_engine, make_session_factory
 from app.errors import APIError, success
 from app.routers import (
+    agent,
     ai,
     analysis,
     auth,
-    catalog,
     dicom,
     images,
     organ_models,
@@ -253,7 +253,6 @@ def create_app(
         profile.router,
         workflow.router,
         auth.router,
-        catalog.router,
         dicom.router,
         patients.router,
         records.router,
@@ -262,6 +261,7 @@ def create_app(
         analysis.router,
         organ_models.router,
         ai.router,
+        agent.router,
     ]:
         app.include_router(router, prefix="/api/v1")
 

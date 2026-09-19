@@ -132,7 +132,7 @@ const router = createRouter({
         {
           path: 'body',
           name: 'patient-body',
-          component: () => import('@/views/patient/BodyView.vue'),
+          redirect: { name: 'patient-dashboard' },
         },
         {
           path: 'assistant',

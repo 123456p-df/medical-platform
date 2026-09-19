@@ -91,6 +91,7 @@ export async function request(path: string, options: RequestInit = {}): Promise<
       40103: 'errors.40103', 40301: 'errors.40301',
       40305: 'errors.40305', 40306: 'errors.40306',
       40405: 'errors.40405', 40406: 'errors.40406',
+      40410: 'errors.40410', 40411: 'errors.40411',
       40901: 'errors.40901',
       40904: 'errors.40904',
       40910: 'errors.40910', 40911: 'errors.40911',

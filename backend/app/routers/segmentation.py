@@ -90,7 +90,7 @@ def get_batch(image_id: str, db: DB, user: CurrentUser):
         .order_by(SegmentationBatch.created_at.desc())
     )
     if batch is None:
-        raise APIError(404, 40406, "Segmentation batch not found")
+        raise APIError(404, 40410, "Segmentation batch not found")
     return success(batch_payload(batch, db))
 
 
@@ -199,7 +199,7 @@ def create_task(
 def get_task(task_id: str, db: DB, user: CurrentUser):
     task = db.get(SegmentationTask, task_id)
     if task is None:
-        raise APIError(404, 40406, "Segmentation task not found")
+        raise APIError(404, 40411, "Segmentation task not found")
     accessible_image(db, user, task.image_id)
     return success(
         {
