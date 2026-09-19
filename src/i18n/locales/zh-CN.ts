@@ -851,6 +851,10 @@ export const zhCN: Record<string, string> = {
   'ui.reportTemplates.saveFailed': '保存失败。',
   'ui.reportTemplates.loadFailed': '无法加载模板。',
   'ui.sidebar.reportTemplates': '报告模板',
+  'ui.patient.closeInspection': '关闭器官检查信息',
+  'ui.patient.studyPeriod': '检查时期：',
+  'ui.anatomy.sliceHint': '点击联动 2D 切片中心',
+  'ui.anatomy.tumorNodule': '肿瘤 / 结节病灶',
   'Signed report linked to this examination.': '此检查关联的已签署报告。',
 }
 

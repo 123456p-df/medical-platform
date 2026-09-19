@@ -916,6 +916,42 @@ export type paths = {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/report-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Report Templates */
+        get: operations["list_report_templates_api_v1_report_templates_get"];
+        put?: never;
+        /** Create Report Template */
+        post: operations["create_report_template_api_v1_report_templates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/report-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Report Template */
+        get: operations["get_report_template_api_v1_report_templates__template_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Report Template */
+        patch: operations["update_report_template_api_v1_report_templates__template_id__patch"];
+        trace?: never;
+    };
     "/api/v1/segmentation/tasks/{task_id}": {
         parameters: {
             query?: never;
@@ -1546,6 +1582,20 @@ export type components = {
              */
             message: string;
         };
+        /** Envelope[ReportTemplateOut] */
+        Envelope_ReportTemplateOut_: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            data: components["schemas"]["ReportTemplateOut"];
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
         /** Envelope[SegmentationBatchOut] */
         Envelope_SegmentationBatchOut_: {
             /**
@@ -1717,6 +1767,21 @@ export type components = {
             code: number;
             /** Data */
             data: components["schemas"]["LabelColorOut"][];
+            /**
+             * Message
+             * @default success
+             */
+            message: string;
+        };
+        /** Envelope[list[ReportTemplateOut]] */
+        Envelope_list_ReportTemplateOut__: {
+            /**
+             * Code
+             * @default 0
+             */
+            code: number;
+            /** Data */
+            data: components["schemas"]["ReportTemplateOut"][];
             /**
              * Message
              * @default success
@@ -2285,11 +2350,17 @@ export type components = {
              * Format: date
              */
             record_date: string;
+            /** Report Template Id */
+            report_template_id?: string | null;
             /**
              * Reviewed
              * @default false
              */
             reviewed: boolean;
+            /** Structured Data */
+            structured_data?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** RecordOut */
         RecordOut: {
@@ -2323,10 +2394,17 @@ export type components = {
             record_date: string;
             /** Record Id */
             record_id: number;
+            report_template?: components["schemas"]["ReportTemplateOut"] | null;
+            /** Report Template Id */
+            report_template_id?: string | null;
             /** Reviewed */
             reviewed: boolean;
             /** Signed At */
             signed_at: string | null;
+            /** Structured Data */
+            structured_data?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Updated At
              * Format: date-time
@@ -2360,8 +2438,14 @@ export type components = {
             recommendation?: string | null;
             /** Record Date */
             record_date?: string | null;
+            /** Report Template Id */
+            report_template_id?: string | null;
             /** Reviewed */
             reviewed?: boolean | null;
+            /** Structured Data */
+            structured_data?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** Reference */
         Reference: {
@@ -2385,6 +2469,83 @@ export type components = {
             role: "patient";
             /** Username */
             username: string;
+        };
+        /** ReportTemplateCreate */
+        ReportTemplateCreate: {
+            /** Fields */
+            fields: components["schemas"]["ReportTemplateField"][];
+            /** Modality */
+            modality?: ReportTemplateCreateModalityAnyOf0 | null;
+            /** Name */
+            name: string;
+            /** Organ Id */
+            organ_id?: string | null;
+        };
+        /** ReportTemplateField */
+        ReportTemplateField: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Options */
+            options?: string[];
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /**
+             * Section
+             * @default findings
+             */
+            section: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: ReportTemplateFieldType;
+            /** Unit */
+            unit?: string | null;
+        };
+        /** ReportTemplateOut */
+        ReportTemplateOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Fields */
+            fields: components["schemas"]["ReportTemplateField"][];
+            /** Is Active */
+            is_active: boolean;
+            /** Modality */
+            modality?: ReportTemplateOutModalityAnyOf0 | null;
+            /** Name */
+            name: string;
+            /** Organ Id */
+            organ_id?: string | null;
+            /** Template Id */
+            template_id: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
+        };
+        /** ReportTemplatePatch */
+        ReportTemplatePatch: {
+            /** Fields */
+            fields?: components["schemas"]["ReportTemplateField"][] | null;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Modality */
+            modality?: ReportTemplatePatchModalityAnyOf0 | null;
+            /** Name */
+            name?: string | null;
+            /** Organ Id */
+            organ_id?: string | null;
         };
         /** ResolveInput */
         ResolveInput: {
@@ -8965,6 +9126,7 @@ export interface operations {
                 window_center?: number | null;
                 window_width?: number | null;
                 axis?: PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryAxis;
+                format?: PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryFormat;
             };
             header?: never;
             path: {
@@ -8982,6 +9144,7 @@ export interface operations {
                 };
                 content: {
                     "image/png": unknown;
+                    "image/webp": unknown;
                 };
             };
             /** @description Error envelope */
@@ -12349,6 +12512,622 @@ export interface operations {
             };
         };
     };
+    list_report_templates_api_v1_report_templates_get: {
+        parameters: {
+            query?: {
+                modality?: string | null;
+                organ_id?: string | null;
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_list_ReportTemplateOut__"];
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    create_report_template_api_v1_report_templates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplateCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ReportTemplateOut_"];
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    get_report_template_api_v1_report_templates__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ReportTemplateOut_"];
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    update_report_template_api_v1_report_templates__template_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportTemplatePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Envelope_ReportTemplateOut_"];
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
     get_task_api_v1_segmentation_tasks__task_id__get: {
         parameters: {
             query?: never;
@@ -12680,6 +13459,10 @@ export enum PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryAxi
     coronal = "coronal",
     sagittal = "sagittal"
 }
+export enum PathsApiV1MedicalImagesImage_idSliceSlice_indexGetParametersQueryFormat {
+    webp = "webp",
+    png = "png"
+}
 export enum AnalysisTaskOutStatus {
     queued = "queued",
     running = "running",
@@ -12788,6 +13571,29 @@ export enum PatientOnboardingPatchGender {
     male = "male",
     female = "female",
     unknown = "unknown"
+}
+export enum ReportTemplateCreateModalityAnyOf0 {
+    CT = "CT",
+    MRI = "MRI",
+    X_Ray = "X-Ray"
+}
+export enum ReportTemplateFieldType {
+    text = "text",
+    textarea = "textarea",
+    number = "number",
+    date = "date",
+    select = "select",
+    boolean = "boolean"
+}
+export enum ReportTemplateOutModalityAnyOf0 {
+    CT = "CT",
+    MRI = "MRI",
+    X_Ray = "X-Ray"
+}
+export enum ReportTemplatePatchModalityAnyOf0 {
+    CT = "CT",
+    MRI = "MRI",
+    X_Ray = "X-Ray"
 }
 export enum SegmentationBatchOutStatus {
     queued = "queued",

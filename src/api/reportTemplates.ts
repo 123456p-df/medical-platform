@@ -9,8 +9,8 @@ interface ReportTemplateDTO {
   version: number
   is_active: boolean
   fields: ReportTemplateField[]
-  created_at?: string
-  updated_at?: string
+  created_at: string
+  updated_at: string
 }
 
 function mapTemplate(item: ReportTemplateDTO): ReportTemplate {

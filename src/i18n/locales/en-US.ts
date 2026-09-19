@@ -733,6 +733,11 @@ export const enUS: Record<string, string> = {
   'ui.reportTemplates.saveFailed': 'Save failed.',
   'ui.reportTemplates.loadFailed': 'Unable to load templates.',
   'ui.sidebar.reportTemplates': 'Report templates',
+  'ui.patient.closeInspection': 'Close organ inspection',
+  'ui.patient.studyPeriod': 'Study period:',
+  'ui.anatomy.sliceHint': 'Click to link the 2D slice center',
+  'ui.anatomy.tumorNodule': 'Tumor / nodule lesion',
+  'My Health': 'My Health',
   'Signed report linked to this examination.': 'Signed report linked to this examination.',
 }
 export default enUS

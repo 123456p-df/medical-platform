@@ -94,7 +94,7 @@ function fillForm(report?: Report) {
     recommendation: report?.recommendation || '',
   }
   Object.assign(baseline, savedFields)
-  const savedStructured = report?.structuredData ? structuredClone(report.structuredData) : {}
+  const savedStructured = report?.structuredData ? { ...report.structuredData } : {}
   Object.keys(structuredBaseline).forEach(key => delete structuredBaseline[key])
   Object.assign(structuredBaseline, savedStructured)
   selectedTemplateId.value = report?.reportTemplateId
@@ -175,7 +175,6 @@ async function loadTemplates() {
     if (!selectedTemplateId.value || !templates.value.some(item => item.id === selectedTemplateId.value)) {
       selectedTemplateId.value = matchingTemplates.value[0]?.id || ''
     }
-    if (!hydrating) fillForm(currentReport.value)
     templatesBusy.value = false
   }
 }
@@ -219,7 +218,10 @@ function requestSigning() {
     error.value = 'Enter a diagnosis and description before signing.'
     return
   }
-  if (activeTemplate.value) {
+  const hasStructuredInput = Object.values(structuredData).some(
+    value => value !== null && value !== undefined && value !== '',
+  )
+  if (activeTemplate.value && hasStructuredInput) {
     const missing = activeTemplate.value.fields.filter(field => field.required && !structuredData[field.key])
     if (missing.length) {
       error.value = t('ui.reportTemplate.requiredFields', { fields: missing.map(field => field.label).join(', ') })
@@ -239,6 +241,9 @@ async function saveReport(reviewed: boolean) {
   }
   busy.value = true
   try {
+    const hasStructuredInput = Object.values(structuredData).some(
+      value => value !== null && value !== undefined && value !== '',
+    )
     const saved = await store.saveReport({
       ...preview.value,
       diagnosis: form.diagnosis.trim(),
@@ -246,6 +251,8 @@ async function saveReport(reviewed: boolean) {
       recommendation: form.recommendation.trim(),
       doctor: currentReport.value?.doctor || authorName.value,
       date: localCalendarDate(),
+      reportTemplateId: hasStructuredInput ? selectedTemplateId.value : undefined,
+      structuredData: hasStructuredInput ? { ...structuredData } : undefined,
       reviewed,
     })
     drafts.clear(store.selectedPatientId, activeExamination.value.id)

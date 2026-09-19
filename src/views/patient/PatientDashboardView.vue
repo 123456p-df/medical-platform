@@ -232,13 +232,13 @@ onMounted(async () => {
 <template>
   <div class="page patient-health-page">
     <PageHeader
-      title="我的健康"
+      title="My Health"
       :subtitle="`欢迎回来，${auth.session?.name ?? '患者'}。以下是您的 3D 人体解剖与器官全景视图。`"
     >
       <template #actions>
         <div class="header-actions">
           <div v-if="studies.length > 1" class="study-selector">
-            <label for="study-select">检查时期：</label>
+            <label for="study-select">{{ $t('ui.patient.studyPeriod') }}</label>
             <select id="study-select" v-model="selectedStudyId">
               <option v-for="s in studies" :key="s.id" :value="s.id">
                 {{ s.date }} · {{ s.organ }} · {{ s.sliceCount }} 层
@@ -246,10 +246,10 @@ onMounted(async () => {
             </select>
           </div>
           <button type="button" class="btn btn-secondary btn-sm" @click="router.push({ name: 'patient-examinations' })">
-            <Stethoscope :size="15" /> 我的检查
+            <Stethoscope :size="15" /> {{ $t('My Examinations') }}
           </button>
           <button type="button" class="btn btn-secondary btn-sm" @click="router.push({ name: 'patient-reports' })">
-            <FileText :size="15" /> 我的报告
+            <FileText :size="15" /> {{ $t('My Reports') }}
           </button>
         </div>
       </template>
@@ -300,7 +300,7 @@ onMounted(async () => {
                 <span class="inspection-title">
                   {{ selectedOrganInfo.group_name || selectedOrganInfo.display_name || selectedOrganInfo.name }}
                 </span>
-                <button type="button" class="close-btn" @click="selectedLabelId = null">
+                <button type="button" class="close-btn" :aria-label="$t('ui.patient.closeInspection')" @click="selectedLabelId = null">
                   <X :size="14" />
                 </button>
               </div>

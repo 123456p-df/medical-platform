@@ -1,4 +1,4 @@
-import type { Examination, Patient, Report, ReportAddendum, ReportTemplate, ReportTemplateField } from '@/types'
+import type { Examination, Patient, Report, ReportAddendum, ReportTemplate } from '@/types'
 import { reviewStatus } from '@/utils/clinicalValues'
 import type { components } from './generated/schema'
 export const organNames: Record<string, string> = {
@@ -9,21 +9,9 @@ export type ImageDTO = components['schemas']['ImageOut']
 export type PatientDTO = components['schemas']['PatientRosterItem']
 export type RecordDTO = components['schemas']['RecordOut']
 export type AddendumDTO = components['schemas']['AddendumOut']
-interface ReportTemplateDTO {
-  template_id: string
-  name: string
-  modality: 'CT' | 'MRI' | 'X-Ray' | null
-  organ_id: string | null
-  version: number
-  is_active: boolean
-  fields: ReportTemplateField[]
-  created_at?: string
-  updated_at?: string
-}
 export interface StructuredRecordDTO extends RecordDTO {
   report_template_id?: string | null
   structured_data?: Record<string, unknown> | null
-  report_template?: ReportTemplateDTO | null
 }
 export function mapPatient(p: PatientDTO): Patient {
   let age: number | null = null
@@ -45,12 +33,12 @@ export function mapImage(i: ImageDTO): Examination {
     bodyPart: organNames[i.organ_id] || i.organ_id, date: i.study_date || i.created_at.slice(0, 10),
     status: reviewStatus(i.status), description: i.image_type + ' · ' + i.shape.join(' × ') + ' voxels', sliceCount: i.slice_count }
 }
-function mapReportTemplate(item: ReportTemplateDTO): ReportTemplate {
+function mapReportTemplate(item: components['schemas']['ReportTemplateOut']): ReportTemplate {
   return {
     id: item.template_id,
     name: item.name,
-    modality: item.modality,
-    organId: item.organ_id,
+    modality: item.modality ?? null,
+    organId: item.organ_id ?? null,
     version: item.version,
     isActive: item.is_active,
     fields: item.fields,
