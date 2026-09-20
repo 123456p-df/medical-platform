@@ -1,6 +1,11 @@
 export const zhCN: Record<string, string> = {
   'ui.copilot.brand': "AI Copilot",
   'ui.copilot.talkToCt': "Talk to CT",
+  'ui.copilot.mode': '影像会诊',
+  'ui.copilot.recordsMode': '病历问答',
+  'ui.copilot.history': '对话记录',
+  'ui.copilot.newChat': '新建对话',
+  'ui.copilot.noHistory': '暂无对话记录。发送第一条消息即可开始。',
   'ui.copilot.title': "AI 影像会诊 Copilot",
   'ui.copilot.engine': "Pi RPC + RadSight-8B",
   'ui.copilot.welcome': "您好，我是您的放射与临床决策 AI 助手",

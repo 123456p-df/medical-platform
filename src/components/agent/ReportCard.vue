@@ -106,8 +106,8 @@ function handleFillReport() {
 }
 
 .badge-status {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: #e5f3ed;
+  color: #176766;
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 9999px;
@@ -158,7 +158,7 @@ function handleFillReport() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #2563eb;
+  background: #267c72;
   color: #ffffff;
   border: none;
   padding: 7px 14px;
@@ -170,7 +170,7 @@ function handleFillReport() {
 }
 
 .fill-btn:hover {
-  background: #1d4ed8;
+  background: #176766;
   transform: translateY(-1px);
 }
 

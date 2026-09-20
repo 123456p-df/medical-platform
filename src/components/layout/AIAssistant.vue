@@ -7,11 +7,13 @@ import { usePatientStore } from '@/stores/patients'
 import { useAIChatStore } from '@/stores/aiChat'
 import { organNames } from '@/api/mappers'
 import { capabilityForStudy } from '@/utils/capabilities'
+import AICopilotDrawer from '@/components/agent/AICopilotDrawer.vue'
 
 const auth = useAuthStore(), patients = usePatientStore(), ai = useAIChatStore(), route = useRoute(), router = useRouter()
 const open = ref(false), question = ref(''), organ = ref('lung')
+const mode = ref<'copilot' | 'records'>(auth.portal === 'doctor' ? 'copilot' : 'records')
 const input = ref<HTMLTextAreaElement>(), log = ref<HTMLDivElement>(), launcher = ref<HTMLButtonElement>()
-const patientId = computed(() => auth.portal === 'patient' ? auth.session?.id || '' : typeof route.params.id === 'string' ? route.params.id : '')
+const patientId = computed(() => auth.portal === 'patient' ? auth.session?.id || '' : typeof route.params.id === 'string' ? route.params.id : patients.selectedPatientId || '')
 const patient = computed(() => patients.patients.find(p => p.id === patientId.value))
 const selectedExamination = computed(() => patients.examinations.find(item => item.id === String(route.query.exam || patients.activeExamId || '')) || patients.examinations[0])
 const aiCapability = computed(() => capabilityForStudy(selectedExamination.value, auth.portal).aiAssistant)
@@ -25,8 +27,17 @@ const reference = computed(() => chat.value.reference)
 
 watch(open, async value => {
   if (!value) { launcher.value?.focus(); return }
-  await nextTick(); input.value?.focus()
-  if (aiCapability.value.enabled) await ai.refreshConfiguration()
+  if (mode.value === 'records') {
+    await nextTick(); input.value?.focus()
+    if (aiCapability.value.enabled) await ai.refreshConfiguration()
+  }
+})
+
+watch(mode, async value => {
+  if (value === 'records' && open.value) {
+    await nextTick(); input.value?.focus()
+    if (aiCapability.value.enabled) await ai.refreshConfiguration()
+  }
 })
 
 async function ask() {
@@ -44,8 +55,9 @@ function enter(event: KeyboardEvent) { if (!event.isComposing) { event.preventDe
 </script>
 <template>
   <div class="assistant-anchor" @keydown.esc.stop="open = false">
-    <section v-if="open" class="assistant-panel" role="dialog" :aria-label="$t('ui.ai.dialog')">
-      <header><span class="assistant-symbol"><Sparkles :size="22" /></span><div><h2>{{ $t('ui.ai.title') }}</h2><small><i :class="{ connected: configured }" />{{ $t(configured === null ? 'ui.ai.checking' : configured ? 'ui.ai.connected' : 'ui.ai.disconnected') }}</small></div><button class="icon-btn" :aria-label="$t('ui.ai.close')" @click="open = false"><X :size="18" /></button></header>
+    <AICopilotDrawer v-if="auth.portal === 'doctor'" :open="open && mode === 'copilot'" @close="open = false" @open-records="mode = 'records'" />
+    <section v-if="open && mode === 'records'" class="assistant-panel" role="dialog" :aria-label="$t('ui.ai.dialog')">
+      <header><span class="assistant-symbol"><Sparkles :size="22" /></span><div><h2>{{ $t('ui.ai.title') }}</h2><small><i :class="{ connected: configured }" />{{ $t(configured === null ? 'ui.ai.checking' : configured ? 'ui.ai.connected' : 'ui.ai.disconnected') }}</small></div><button v-if="auth.portal === 'doctor'" type="button" class="mode-btn" @click="mode = 'copilot'">{{ $t('ui.copilot.mode') }}</button><button class="icon-btn" :aria-label="$t('ui.ai.close')" @click="open = false"><X :size="18" /></button></header>
       <div class="assistant-context"><span>{{ patient?.name || (patientId ? $t('ui.ai.currentPatient') : $t('ui.ai.noPatient')) }}<small v-if="patientId"> · ID {{ patientId }}</small></span><select v-model="organ" class="select" :aria-label="$t('ui.ai.organ')"><option v-for="(name, id) in organNames" :key="id" :value="id">{{ $t(name) }}</option></select></div>
       <div ref="log" class="assistant-log" aria-live="polite">
         <div v-if="!messages.length" class="assistant-welcome"><Sparkles :size="28" /><h3>{{ $t('ui.ai.welcome') }}</h3><p>{{ $t('ui.ai.welcomeBody') }}</p><button @click="question = $t('ui.ai.summaryPrompt'); input?.focus()">{{ $t('ui.ai.summarize') }} <ArrowUpRight :size="14" /></button><button @click="question = $t('ui.ai.reviewPrompt'); input?.focus()">{{ $t('ui.ai.reviewQuestions') }} <ArrowUpRight :size="14" /></button><template v-if="auth.portal === 'doctor'"><button @click="navigate('/imaging')">{{ $t('ui.ai.openImaging') }} <ArrowUpRight :size="14" /></button><button @click="navigate('/report')">{{ $t('ui.ai.openRecords') }} <ArrowUpRight :size="14" /></button></template><p v-if="configured === false" class="connection-note">{{ aiCapability.enabled ? $t('ui.ai.connectNote') : $t(aiCapability.reason) }}</p></div>
@@ -64,4 +76,6 @@ function enter(event: KeyboardEvent) { if (!event.isComposing) { event.preventDe
 .reference-detail{display:grid;gap:5px;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px;background:#fff}
 .reference-detail small{color:var(--text-muted)}
 .reference-detail p{margin:0;font-size:12px;line-height:1.6}
+.mode-btn{border:1px solid #c7dfd7;background:#f0f8f5;color:#176766;border-radius:8px;padding:7px 9px;font-size:11px;cursor:pointer;white-space:nowrap}
+.mode-btn:hover{background:#dcefe7}
 </style>
