@@ -18,7 +18,7 @@ from app.deps import check_patient_access
 from app.errors import APIError
 from app.models import MedicalImage, OrganModel, SegmentationBatch, SegmentationTask, User, utcnow
 from app.services.brain_preprocess import preprocess_brain_t1
-from app.services.geometry_engine import extract_subvoxel_surface_from_mask
+from app.services.geometry_engine import build_ct_lung_supports, extract_subvoxel_surface_from_mask
 from app.services.glb import (
     build_atlas_glb,
     export_mesh_glb,
@@ -62,7 +62,9 @@ class SegmentationRunner:
 
                 self.dispatcher = dispatch_segmentation
             except Exception:
-                logger.warning("Task queue is enabled but Celery is unavailable; using local runner")
+                logger.warning(
+                    "Task queue is enabled but Celery is unavailable; using local runner"
+                )
 
     def fingerprint_for(self, image) -> str:
         mode = resolve_segmentation_mode(image)
@@ -126,7 +128,9 @@ class SegmentationRunner:
                 self.dispatcher(task_id, batch=False)
                 return
             except Exception as exc:
-                logger.error("Celery dispatch failed (%s); falling back to local runner", type(exc).__name__)
+                logger.error(
+                    "Celery dispatch failed (%s); falling back to local runner", type(exc).__name__
+                )
         with self._lock:
             if task_id in self._pending:
                 return
@@ -151,9 +155,7 @@ class SegmentationRunner:
         cutoff = utcnow() - timedelta(days=days)
         with self.sessions() as db:
             stale = list(
-                db.scalars(
-                    select(SegmentationBatch).where(SegmentationBatch.updated_at < cutoff)
-                )
+                db.scalars(select(SegmentationBatch).where(SegmentationBatch.updated_at < cutoff))
             )
             for batch in stale:
                 for relative in (batch.label_map_path, batch.native_label_map_path):
@@ -311,7 +313,14 @@ class SegmentationRunner:
             db.add(batch)
             try:
                 db.flush()
-                audit(db, requested_by, image.patient_id, "segmentation.batch.create", "segmentation_batch", batch.id)
+                audit(
+                    db,
+                    requested_by,
+                    image.patient_id,
+                    "segmentation.batch.create",
+                    "segmentation_batch",
+                    batch.id,
+                )
                 db.commit()
             except IntegrityError:
                 db.rollback()
@@ -334,7 +343,10 @@ class SegmentationRunner:
                 self.dispatcher(batch_id, batch=True)
                 return
             except Exception as exc:
-                logger.error("Celery batch dispatch failed (%s); falling back to local runner", type(exc).__name__)
+                logger.error(
+                    "Celery batch dispatch failed (%s); falling back to local runner",
+                    type(exc).__name__,
+                )
         with self._lock:
             if batch_id in self._pending:
                 return
@@ -411,12 +423,25 @@ class SegmentationRunner:
             native_path = self._inside(Path(result["label_map_native"]), output_dir)
             label_image = nib.load(str(label_path))
             label_values = np.asarray(label_image.dataobj)
+            lung_supports = (
+                build_ct_lung_supports(
+                    label_values,
+                    self.settings.segmentation_min_component_voxels,
+                )
+                if mode == "CT_BODY"
+                else {}
+            )
             label_ids = sorted(set(int(value) for value in result.get("labels", [])))
             catalog = getattr(self.adapter, "catalog", self.catalog)
             specs = [catalog.describe(label_id) for label_id in label_ids]
             with self.sessions() as db:
                 batch = db.get(SegmentationBatch, batch_id)
-                existing = {task.label_id: task for task in db.scalars(select(SegmentationTask).where(SegmentationTask.batch_id == batch_id))}
+                existing = {
+                    task.label_id: task
+                    for task in db.scalars(
+                        select(SegmentationTask).where(SegmentationTask.batch_id == batch_id)
+                    )
+                }
                 for spec in specs:
                     if spec["label_id"] not in existing:
                         db.add(
@@ -439,13 +464,37 @@ class SegmentationRunner:
                 db.commit()
             task_specs = []
             with self.sessions() as db:
-                for task in db.scalars(select(SegmentationTask).where(SegmentationTask.batch_id == batch_id).order_by(SegmentationTask.label_id)):
-                    task_specs.append((task.id, task.label_id, task.organ_id, task.label_name, task.group_id, task.requested_by))
+                for task in db.scalars(
+                    select(SegmentationTask)
+                    .where(SegmentationTask.batch_id == batch_id)
+                    .order_by(SegmentationTask.label_id)
+                ):
+                    task_specs.append(
+                        (
+                            task.id,
+                            task.label_id,
+                            task.organ_id,
+                            task.label_name,
+                            task.group_id,
+                            task.requested_by,
+                        )
+                    )
             for spec in task_specs:
                 try:
-                    self._run_batch_label(batch_id, image_id, patient_id, label_values, label_image.affine, native_path, spec)
+                    self._run_batch_label(
+                        batch_id,
+                        image_id,
+                        patient_id,
+                        label_values,
+                        label_image.affine,
+                        native_path,
+                        spec,
+                        lung_supports,
+                    )
                 except Exception as exc:
-                    logger.error("Segmentation batch label %s failed (%s)", spec[0], type(exc).__name__)
+                    logger.error(
+                        "Segmentation batch label %s failed (%s)", spec[0], type(exc).__name__
+                    )
             with self.sessions() as db:
                 tasks = list(
                     db.scalars(
@@ -476,18 +525,26 @@ class SegmentationRunner:
                 )
                 batch.updated_at = utcnow()
                 db.commit()
-        except Exception as exc:
+        except Exception:
             logger.exception("Segmentation batch %s failed", batch_id)
             with self.sessions() as db:
                 db.execute(
                     update(SegmentationBatch)
                     .where(SegmentationBatch.id == batch_id)
-                    .values(status="failed", progress=100, error_message="Segmentation batch failed; verify adapter, image and model runtime", updated_at=utcnow())
+                    .values(
+                        status="failed",
+                        progress=100,
+                        error_message="Segmentation batch failed; verify adapter, image and model runtime",
+                        updated_at=utcnow(),
+                    )
                 )
                 db.commit()
 
     def _store_atlas(self, batch_id, image_id, patient_id):
         with self.sessions() as db:
+            batch = db.get(SegmentationBatch, batch_id)
+            if batch is None or not batch.native_label_map_path:
+                return
             models = list(
                 db.scalars(
                     select(OrganModel)
@@ -495,6 +552,7 @@ class SegmentationRunner:
                         OrganModel.image_id == image_id,
                         OrganModel.kind == "organ",
                         OrganModel.source == "segmentation",
+                        OrganModel.mask_path == batch.native_label_map_path,
                     )
                     .order_by(OrganModel.label_id, OrganModel.id)
                 )
@@ -522,7 +580,9 @@ class SegmentationRunner:
                 return
             data = build_atlas_glb(named)
             existing = db.scalar(
-                select(OrganModel).where(OrganModel.image_id == image_id, OrganModel.kind == "atlas")
+                select(OrganModel).where(
+                    OrganModel.image_id == image_id, OrganModel.kind == "atlas"
+                )
             )
             model_id = existing.id if existing else f"model_{uuid4().hex}"
             if existing is None:
@@ -546,7 +606,17 @@ class SegmentationRunner:
             store_model_blob(db, model_id, data)
             db.commit()
 
-    def _run_batch_label(self, batch_id, image_id, patient_id, label_values, affine, native_path, spec):
+    def _run_batch_label(
+        self,
+        batch_id,
+        image_id,
+        patient_id,
+        label_values,
+        affine,
+        native_path,
+        spec,
+        lung_supports=None,
+    ):
         task_id, label_id, organ_id, label_name, group_id, requested_by = spec
         try:
             with self.sessions() as db:
@@ -559,6 +629,8 @@ class SegmentationRunner:
                 if claimed.rowcount != 1:
                     return
             mask = label_values == label_id
+            if lung_supports and group_id in lung_supports:
+                mask &= lung_supports[group_id]
             if not np.any(mask):
                 raise ValueError("Label contains no foreground voxels")
             mesh, metadata = extract_subvoxel_surface_from_mask(
@@ -578,16 +650,28 @@ class SegmentationRunner:
                 "min_m": metadata.get("bounds_min_m"),
                 "max_m": metadata.get("bounds_max_m"),
                 "centroid_m": centroid,
+                "topology": metadata.get("topology"),
             }
             with self.sessions() as db:
                 task = db.get(SegmentationTask, task_id)
                 db.add(
                     OrganModel(
-                        id=model_id, patient_id=patient_id, image_id=image_id,
-                        organ_id=organ_id, label_id=label_id, label_name=label_name, group_id=group_id,
-                        source="segmentation", format="glb", kind="organ", file_path=None,
-                        mask_path=relative_path(self.settings, native_path), face_count=int(metadata["faces"]),
-                        size_bytes=len(glb_data), volume_cm3=volume, is_watertight=bool(metadata["is_watertight"]),
+                        id=model_id,
+                        patient_id=patient_id,
+                        image_id=image_id,
+                        organ_id=organ_id,
+                        label_id=label_id,
+                        label_name=label_name,
+                        group_id=group_id,
+                        source="segmentation",
+                        format="glb",
+                        kind="organ",
+                        file_path=None,
+                        mask_path=relative_path(self.settings, native_path),
+                        face_count=int(metadata["faces"]),
+                        size_bytes=len(glb_data),
+                        volume_cm3=volume,
+                        is_watertight=bool(metadata["is_watertight"]),
                         bounds=bounds,
                     )
                 )
@@ -595,14 +679,27 @@ class SegmentationRunner:
                 store_model_blob(db, model_id, glb_data)
                 task.status, task.progress, task.result_model_id = "completed", 100, model_id
                 task.updated_at = utcnow()
-                audit(db, requested_by, patient_id, "segmentation.complete", "segmentation_task", task_id)
+                audit(
+                    db,
+                    requested_by,
+                    patient_id,
+                    "segmentation.complete",
+                    "segmentation_task",
+                    task_id,
+                )
                 db.commit()
             with self.sessions() as db:
                 batch = db.get(SegmentationBatch, batch_id)
-                tasks = list(db.scalars(select(SegmentationTask).where(SegmentationTask.batch_id == batch_id)))
+                tasks = list(
+                    db.scalars(
+                        select(SegmentationTask).where(SegmentationTask.batch_id == batch_id)
+                    )
+                )
                 batch.completed_count = sum(item.status == "completed" for item in tasks)
                 batch.failed_count = sum(item.status == "failed" for item in tasks)
-                batch.progress = min(99, 60 + int(40 * batch.completed_count / max(batch.total_labels, 1)))
+                batch.progress = min(
+                    99, 60 + int(40 * batch.completed_count / max(batch.total_labels, 1))
+                )
                 batch.updated_at = utcnow()
                 db.commit()
         except Exception as exc:
@@ -616,7 +713,12 @@ class SegmentationRunner:
                 db.execute(
                     update(SegmentationTask)
                     .where(SegmentationTask.id == task_id)
-                    .values(status="failed", progress=100, error_message="This label failed to generate; verify the segmentation output", updated_at=utcnow())
+                    .values(
+                        status="failed",
+                        progress=100,
+                        error_message="This label failed to generate; verify the segmentation output",
+                        updated_at=utcnow(),
+                    )
                 )
                 db.commit()
             raise

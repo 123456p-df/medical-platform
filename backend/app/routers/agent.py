@@ -69,26 +69,31 @@ async def get_agent_status(config: Config):
     except Exception:
         pass
 
-    has_llm_key = bool(config.agent_llm_api_key and len(config.agent_llm_api_key.get_secret_value()) > 5)
+    has_llm_key = bool(
+        config.agent_llm_api_key and len(config.agent_llm_api_key.get_secret_value()) > 5
+    )
 
-    return success({
-        "pi_framework": {
-            "name": "@earendil-works/pi-coding-agent",
-            "version": "0.85.1",
-            "mode": "rpc",
-            "available": True
-        },
-        "llm_provider": {
-            "base_url": config.agent_llm_base_url or os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-            "model": config.agent_llm_model,
-            "key_configured": has_llm_key
-        },
-        "radsight_microservice": {
-            "url": radsight_url,
-            "status": radsight_status,
-            "details": radsight_details
+    return success(
+        {
+            "pi_framework": {
+                "name": "@earendil-works/pi-coding-agent",
+                "version": "0.85.1",
+                "mode": "rpc",
+                "available": True,
+            },
+            "llm_provider": {
+                "base_url": config.agent_llm_base_url
+                or os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                "model": config.agent_llm_model,
+                "key_configured": has_llm_key,
+            },
+            "radsight_microservice": {
+                "url": radsight_url,
+                "status": radsight_status,
+                "details": radsight_details,
+            },
         }
-    })
+    )
 
 
 @router.get("/conversations")
@@ -107,14 +112,16 @@ def list_conversations(
 
     convs = []
     for c in rows:
-        convs.append({
-            "id": c.id,
-            "patient_id": c.patient_id,
-            "doctor_id": c.doctor_id,
-            "title": c.title,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
-            "updated_at": c.updated_at.isoformat() if c.updated_at else None,
-        })
+        convs.append(
+            {
+                "id": c.id,
+                "patient_id": c.patient_id,
+                "doctor_id": c.doctor_id,
+                "title": c.title,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+            }
+        )
     return success(convs)
 
 
@@ -138,14 +145,16 @@ def create_conversation(
     db.commit()
     db.refresh(conv)
 
-    return success({
-        "id": conv.id,
-        "patient_id": conv.patient_id,
-        "doctor_id": conv.doctor_id,
-        "title": conv.title,
-        "created_at": conv.created_at.isoformat(),
-        "updated_at": conv.updated_at.isoformat(),
-    })
+    return success(
+        {
+            "id": conv.id,
+            "patient_id": conv.patient_id,
+            "doctor_id": conv.doctor_id,
+            "title": conv.title,
+            "created_at": conv.created_at.isoformat(),
+            "updated_at": conv.updated_at.isoformat(),
+        }
+    )
 
 
 @router.get("/conversations/{conversation_id}/messages")
@@ -164,16 +173,18 @@ def get_conversation_messages(
 
     msgs = []
     for m in rows:
-        msgs.append({
-            "id": m.id,
-            "conversation_id": m.conversation_id,
-            "role": m.role,
-            "content": m.content,
-            "tool_calls": m.tool_calls or [],
-            "selected_ct_series": m.selected_ct_series,
-            "thought": m.thought,
-            "created_at": m.created_at.isoformat() if m.created_at else None,
-        })
+        msgs.append(
+            {
+                "id": m.id,
+                "conversation_id": m.conversation_id,
+                "role": m.role,
+                "content": m.content,
+                "tool_calls": m.tool_calls or [],
+                "selected_ct_series": m.selected_ct_series,
+                "thought": m.thought,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+        )
     return success(msgs)
 
 
@@ -274,6 +285,7 @@ async def chat_stream(
 # Internal Agent Tool Data Endpoints (Invoked by Pi Medical Extension)
 # ==============================================================================
 
+
 def _resolve_ct_file_path(raw: str | None, storage_root: Path) -> str:
     if not raw:
         return ""
@@ -303,42 +315,50 @@ def get_patient_ct_scans_internal(patient_id: int, db: DB, config: Config):
     # Query MedicalImage
     images = db.scalars(select(MedicalImage).where(MedicalImage.patient_id == patient_id)).all()
     for img in images:
-        scans.append({
-            "study_id": f"study_{img.id}",
-            "series_id": img.series_uid or f"series_{img.id}",
-            "description": f"CT 扫描序列 ({img.organ_id}) #{img.id}",
-            "modality": img.image_type or "CT",
-            "study_date": img.study_date.strftime("%Y-%m-%d") if img.study_date else (img.created_at.strftime("%Y-%m-%d") if img.created_at else "2026-09-19"),
-            "slice_count": img.shape[2] if (img.shape and len(img.shape) >= 3) else 128,
-            "file_path": _resolve_ct_file_path(img.file_path, config.storage_root),
-            "is_segmented": True
-        })
+        scans.append(
+            {
+                "study_id": f"study_{img.id}",
+                "series_id": img.series_uid or f"series_{img.id}",
+                "description": f"CT 扫描序列 ({img.organ_id}) #{img.id}",
+                "modality": img.image_type or "CT",
+                "study_date": img.study_date.strftime("%Y-%m-%d")
+                if img.study_date
+                else (img.created_at.strftime("%Y-%m-%d") if img.created_at else "2026-09-19"),
+                "slice_count": img.shape[2] if (img.shape and len(img.shape) >= 3) else 128,
+                "file_path": _resolve_ct_file_path(img.file_path, config.storage_root),
+                "is_segmented": True,
+            }
+        )
 
     # If no images in DB, fallback to demo NIfTI samples
     if not scans:
         sample_file = "/Users/allenyuan/Downloads/0.nii.gz"
         if not os.path.exists(sample_file):
             sample_file = "backend/fixtures/0.nii.gz"
-        scans.append({
-            "study_id": "STD-DEMO-001",
-            "series_id": "SER-DEMO-001",
-            "description": "胸部薄层平扫 CT (常规筛查序列)",
-            "modality": "CT",
-            "study_date": "2026-09-15",
-            "slice_count": 128,
-            "file_path": sample_file,
-            "is_segmented": True
-        })
-        scans.append({
-            "study_id": "STD-DEMO-002",
-            "series_id": "SER-DEMO-002",
-            "description": "全腹部增强 CT (历史对比序列)",
-            "modality": "CT",
-            "study_date": "2026-06-10",
-            "slice_count": 160,
-            "file_path": sample_file,
-            "is_segmented": False
-        })
+        scans.append(
+            {
+                "study_id": "STD-DEMO-001",
+                "series_id": "SER-DEMO-001",
+                "description": "胸部薄层平扫 CT (常规筛查序列)",
+                "modality": "CT",
+                "study_date": "2026-09-15",
+                "slice_count": 128,
+                "file_path": sample_file,
+                "is_segmented": True,
+            }
+        )
+        scans.append(
+            {
+                "study_id": "STD-DEMO-002",
+                "series_id": "SER-DEMO-002",
+                "description": "全腹部增强 CT (历史对比序列)",
+                "modality": "CT",
+                "study_date": "2026-06-10",
+                "slice_count": 160,
+                "file_path": sample_file,
+                "is_segmented": False,
+            }
+        )
 
     return scans
 
@@ -351,15 +371,17 @@ def get_patient_records_internal(patient_id: int, db: DB):
 
     rec_list = []
     for r in records:
-        rec_list.append({
-            "id": r.id,
-            "organ_id": r.organ_id,
-            "diagnosis": r.diagnosis,
-            "description": r.description,
-            "recommendation": r.recommendation,
-            "date": r.record_date.isoformat() if r.record_date else None,
-            "reviewed": r.reviewed,
-        })
+        rec_list.append(
+            {
+                "id": r.id,
+                "organ_id": r.organ_id,
+                "diagnosis": r.diagnosis,
+                "description": r.description,
+                "recommendation": r.recommendation,
+                "date": r.record_date.isoformat() if r.record_date else None,
+                "reviewed": r.reviewed,
+            }
+        )
 
     age = 58
     if patient and patient.birth_date:
@@ -376,9 +398,9 @@ def get_patient_records_internal(patient_id: int, db: DB):
             "height": patient.height if patient else 174.0,
             "weight": patient.weight if patient else 68.5,
             "history": "慢性支气管炎病史5年，长期吸烟史（20支/日，30年），无药物过敏史。",
-            "symptoms": "间歇性干咳2周，偶有胸闷，无发热及咯血。"
+            "symptoms": "间歇性干咳2周，偶有胸闷，无发热及咯血。",
         },
-        "records": rec_list
+        "records": rec_list,
     }
 
 
@@ -411,23 +433,27 @@ def get_segmentation_qc_internal(patient_id: int, db: DB, study_id: Optional[str
         organ_name = m.label_name or ORGANS.get(m.organ_id, m.organ_id)
         vol = round(m.volume_cm3, 2) if m.volume_cm3 is not None else None
         status = volume_status(f"{m.organ_id} {organ_name}", vol)
-        organs.append({
-            "organ_id": m.organ_id,
-            "name": organ_name,
-            "volume_ml": vol,
-            "image_id": m.image_id,
-            "label_id": m.label_id,
-            "status": status,
-        })
+        organs.append(
+            {
+                "organ_id": m.organ_id,
+                "name": organ_name,
+                "volume_ml": vol,
+                "image_id": m.image_id,
+                "label_id": m.label_id,
+                "status": status,
+            }
+        )
 
     qc_status = "missing"
     if organs:
-        qc_status = "failed" if any(item["status"] == "implausible" for item in organs) else "passed"
+        qc_status = (
+            "failed" if any(item["status"] == "implausible" for item in organs) else "passed"
+        )
 
     return {
         "study_id": study_id or (organ_models[0].image_id if organ_models else None),
         "model_engine": "VISTA-3D (nv-segment-ctmr)",
-        "resolution": "1mm 各向同性重建",
+        "resolution": "官方 1.5mm 推理网格，原始空间回映射",
         "qc_status": qc_status,
         "organs": organs,
     }

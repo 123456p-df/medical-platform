@@ -53,7 +53,6 @@ onMounted(async () => {
 
 const pageTitles: Record<string, string> = {
   'doctor-dashboard': 'Patient Workspace',
-  'doctor-report-templates': 'ui.reportTemplates.title',
   'doctor-admin-users': 'ui.adminUsers.title',
   'doctor-admin-access': 'ui.patientAccess.title',
   'doctor-admin-stats': 'ui.adminStats.title',

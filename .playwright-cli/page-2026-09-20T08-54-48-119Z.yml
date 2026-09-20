@@ -1,0 +1,80 @@
+- generic [ref=f2e3]:
+  - link "跳到主要内容" [ref=f2e4] [cursor=pointer]:
+    - /url: "#main-content"
+  - button "打开 AI 助手" [ref=f2e6] [cursor=pointer]:
+    - generic [ref=f2e9]: AI 助手
+  - complementary [ref=f2e10]:
+    - generic [ref=f2e15]:
+      - strong [ref=f2e16]: PulmoLink
+      - generic [ref=f2e17]: 医学 AI 平台
+    - button "收起侧边栏" [ref=f2e18] [cursor=pointer]
+    - generic [ref=f2e22]: 临床工作台
+    - navigation "医生工作区导航" [ref=f2e23]:
+      - generic [ref=f2e24]:
+        - button "患者管理" [expanded] [ref=f2e25] [cursor=pointer]
+        - link "患者工作台" [ref=f2e34] [cursor=pointer]:
+          - /url: /doctor/dashboard
+      - generic [ref=f2e41]:
+        - button "临床工作流 1" [expanded] [ref=f2e42] [cursor=pointer]:
+          - generic [ref=f2e47]:
+            - strong [ref=f2e48]: 临床工作流
+            - generic [ref=f2e49]: "1"
+        - generic [ref=f2e52]:
+          - link "患者概览" [ref=f2e53] [cursor=pointer]:
+            - /url: /doctor/patients/1
+          - link "医学影像" [ref=f2e58] [cursor=pointer]:
+            - /url: /doctor/patients/1/imaging
+          - link "AI 辅助诊断" [ref=f2e65] [cursor=pointer]:
+            - /url: /doctor/patients/1/ai
+          - link "临床报告" [ref=f2e69] [cursor=pointer]:
+            - /url: /doctor/patients/1/report
+          - link "3D 器官模型" [ref=f2e74] [cursor=pointer]:
+            - /url: /doctor/patients/1/3d
+    - generic [ref=f2e79]:
+      - generic [ref=f2e80]:
+        - generic [ref=f2e81]: d
+        - generic [ref=f2e82]:
+          - strong [ref=f2e83]: demo_doctor
+          - generic [ref=f2e84]: 医生端
+      - button "退出登录" [ref=f2e85] [cursor=pointer]
+  - generic [ref=f2e89]:
+    - banner [ref=f2e90]:
+      - generic [ref=f2e92]:
+        - generic [ref=f2e93]: 临床工作台
+        - strong [ref=f2e94]: AI 辅助诊断
+      - generic [ref=f2e95]:
+        - generic [ref=f2e96]: 您好，demo_doctor
+        - button "将界面语言切换为英文" [ref=f2e97] [cursor=pointer]: 中 / EN
+        - button "通知" [ref=f2e99] [cursor=pointer]
+        - link "打开个人资料" [ref=f2e103] [cursor=pointer]:
+          - /url: /doctor/profile
+          - generic [ref=f2e104]: d
+          - generic [ref=f2e105]:
+            - strong [ref=f2e106]: demo_doctor
+            - generic [ref=f2e107]: 医生 · 个人资料
+    - group "已打开的工作页面" [ref=f2e110]:
+      - generic "患者工作台" [ref=f2e111]:
+        - button "患者工作台" [ref=f2e112] [cursor=pointer]
+        - button "关闭 患者工作台" [ref=f2e114] [cursor=pointer]
+      - generic "1 · AI 辅助诊断" [ref=f2e118]:
+        - button "1 · AI 辅助诊断" [ref=f2e119] [cursor=pointer]
+        - button "关闭 1 · AI 辅助诊断" [ref=f2e121] [cursor=pointer]
+    - main [ref=f2e125]:
+      - generic [ref=f2e126]: 本地测试环境 · 包含合成演示档案与明确标注的公开 CT / MRI 测试样本
+      - generic [ref=f2e127]:
+        - button "返回工作台" [ref=f2e128] [cursor=pointer]
+        - navigation "Patient record sections" [ref=f2e131]:
+          - link "概览" [ref=f2e132] [cursor=pointer]:
+            - /url: /doctor/patients/1
+          - link "影像" [ref=f2e133] [cursor=pointer]:
+            - /url: /doctor/patients/1/imaging
+          - link "报告" [ref=f2e134] [cursor=pointer]:
+            - /url: /doctor/patients/1/report
+          - link "AI 辅助诊断" [ref=f2e135] [cursor=pointer]:
+            - /url: /doctor/patients/1/ai
+          - link "3D 器官模型" [ref=f2e136] [cursor=pointer]:
+            - /url: /doctor/patients/1/3d
+          - link "虚拟模拟" [ref=f2e137] [cursor=pointer]:
+            - /url: /doctor/patients/1/simulation
+        - status [ref=f2e138]:
+          - paragraph [ref=f2e142]: 正在加载患者档案…

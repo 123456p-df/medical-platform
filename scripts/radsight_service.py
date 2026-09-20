@@ -26,6 +26,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from radsight_runtime.env import load_settings  # noqa: E402
+from radsight_runtime.infer import VolumeTensorCache  # noqa: E402
 from radsight_runtime.volume import inspect_nifti_volume  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -33,6 +34,8 @@ logger = logging.getLogger("radsight-service")
 
 SETTINGS = load_settings()
 PROJECT_ROOT = SCRIPT_DIR.parent
+_inference_lock = threading.Lock()
+_volume_cache = VolumeTensorCache(SETTINGS.volume_cache_entries)
 
 
 @asynccontextmanager
@@ -117,6 +120,7 @@ def _health_payload() -> dict[str, Any]:
             "quant_cache": _runtime["quant_cache"],
             "quant_cache_hit": _runtime["quant_cache_hit"],
             "error": _runtime["error"],
+            "volume_cache": _volume_cache.info(),
         }
 
 
@@ -228,13 +232,18 @@ def talk_to_ct(req: TalkToCTRequest):
 
     bundle = _runtime["bundle"]
     try:
-        generated = generate_volume_answer(
-            bundle,
-            volume_meta["resolved_path"],
-            _build_question(req),
-            max_new_tokens=SETTINGS.max_new_tokens,
-            search_roots=None,
-        )
+        # Generation is deliberately serialized: concurrent 8B runs on one accelerator
+        # increase latency sharply and can exhaust unified/GPU memory.
+        with _inference_lock:
+            generated = generate_volume_answer(
+                bundle,
+                volume_meta["resolved_path"],
+                _build_question(req),
+                max_new_tokens=SETTINGS.max_new_tokens,
+                num_frames=SETTINGS.num_frames,
+                search_roots=None,
+                volume_cache=_volume_cache,
+            )
     except Exception as exc:
         logger.exception("RadSight generate failed")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -248,6 +257,8 @@ def talk_to_ct(req: TalkToCTRequest):
         "loaded": True,
         "stub": False,
         "latency_ms": generated["latency_ms"],
+        "timings_ms": generated["timings_ms"],
+        "volume_cache_hit": generated["volume_cache_hit"],
         "series_info": {
             "filename": volume_meta["filename"],
             "slice_count": volume_meta["slice_count"],

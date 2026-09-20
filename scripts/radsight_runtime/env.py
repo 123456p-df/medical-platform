@@ -45,6 +45,8 @@ class RadSightSettings:
     dtype_name: str
     attn: str
     max_new_tokens: int
+    num_frames: int
+    volume_cache_entries: int
     allow_stub: bool
     port: int
     load_timeout_s: float
@@ -72,7 +74,9 @@ def load_settings() -> RadSightSettings:
         device=detect_device(),
         dtype_name=os.environ.get("RADSIGHT_DTYPE", "bfloat16").strip().lower(),
         attn=os.environ.get("RADSIGHT_ATTN", "sdpa").strip().lower(),
-        max_new_tokens=int(os.environ.get("RADSIGHT_MAX_NEW_TOKENS", "2048")),
+        max_new_tokens=int(os.environ.get("RADSIGHT_MAX_NEW_TOKENS", "512")),
+        num_frames=max(1, int(os.environ.get("RADSIGHT_NUM_FRAMES", "12"))),
+        volume_cache_entries=max(0, int(os.environ.get("RADSIGHT_VOLUME_CACHE_ENTRIES", "2"))),
         allow_stub=_bool_env("RADSIGHT_ALLOW_STUB", False),
         port=int(os.environ.get("RADSIGHT_PORT", "8001")),
         load_timeout_s=float(os.environ.get("RADSIGHT_LOAD_TIMEOUT_S", "600")),

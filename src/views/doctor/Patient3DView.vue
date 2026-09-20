@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Box, Layers, ScanLine } from 'lucide-vue-next'
+import { Box, Layers, ScanLine, Scissors } from 'lucide-vue-next'
 import { usePatientStore } from '@/stores/patients'
 import { capabilityForStudy } from '@/utils/capabilities'
 import { useAuthStore } from '@/stores/auth'
@@ -26,6 +26,10 @@ async function openViewer() {
     query: exam ? { image: exam.id } : {},
   })
 }
+
+async function openSimulation() {
+  await router.push({ name: 'doctor-patient-simulation', params: { id: patientId.value } })
+}
 </script>
 
 <template>
@@ -47,6 +51,10 @@ async function openViewer() {
       </div>
     </div>
     <div class="launch-action">
+      <button type="button" class="btn btn-primary launch-btn" @click="openSimulation">
+        <span>{{ $t('ui.patient3d.openSimulation') }}</span>
+        <Scissors :size="16" />
+      </button>
       <button v-if="reconstructableStudies.length" type="button" class="btn btn-primary launch-btn" @click="openViewer">
         <span>{{ $t('ui.patient3d.openInTab') }}</span>
         <ScanLine :size="16" />
@@ -114,6 +122,8 @@ async function openViewer() {
 }
 
 .launch-action {
+  display: grid;
+  gap: 8px;
   flex-shrink: 0;
 }
 

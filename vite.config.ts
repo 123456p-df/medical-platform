@@ -33,6 +33,15 @@ export default defineConfig({
       '/health': { target: process.env.VMRB_BACKEND_URL || 'http://127.0.0.1:8080', changeOrigin: true },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-vue': ['vue', 'vue-router', 'pinia', 'vue-i18n', 'lucide-vue-next'],
+        },
+      },
+    },
+  },
   worker: {
     format: 'es',
   },

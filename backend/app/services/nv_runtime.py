@@ -7,14 +7,14 @@ from contextlib import nullcontext
 from functools import wraps
 from pathlib import Path
 
+from app.services.mps_ops import apply_mps_operator_shims
+
 logger = logging.getLogger(__name__)
 
 try:
     import torch
 except ImportError:
     torch = None
-
-from app.services.mps_ops import apply_mps_operator_shims
 
 
 def mps_supports_vista3d() -> bool:
@@ -148,6 +148,10 @@ def wrap_pipeline_for_device(pipeline, device_name: str):
     original = pipeline._forward
     original_post = getattr(pipeline, "postprocess", None)
     infer_device = torch.device(device_name)
+    network = getattr(getattr(pipeline, "model", None), "network", None)
+    if network is not None:
+        network.to(infer_device)
+        network.eval()
 
     @wraps(original)
     def _forward(inputs, mode=None, amp=True, hyper_kwargs=None, **kwargs):
@@ -158,7 +162,8 @@ def wrap_pipeline_for_device(pipeline, device_name: str):
         if hyper_kwargs is not None:
             call_kwargs["hyper_kwargs"] = hyper_kwargs
         pipeline.device = infer_device
-        return original(inputs, **call_kwargs)
+        with torch.inference_mode():
+            return original(inputs, **call_kwargs)
 
     pipeline._forward = _forward
     if original_post is not None and device_name == "mps":

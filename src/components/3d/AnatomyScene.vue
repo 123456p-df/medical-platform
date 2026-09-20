@@ -286,6 +286,10 @@ function styleMesh(mesh: THREE.Mesh, name: string) {
     clearcoatRoughness = 0.12
   }
 
+  if (mesh.geometry) {
+    mesh.geometry.computeVertexNormals()
+  }
+
   const material = new THREE.MeshPhysicalMaterial({
     color,
     roughness,
@@ -646,11 +650,15 @@ onMounted(() => {
     scene.add(new THREE.HemisphereLight(0xffffff, 0xcfd8dc, 1.4))
     keyLight = new THREE.DirectionalLight(0xffffff, 2.2)
     keyLight.position.set(0.6, 0.8, 1.4)
+    keyLight.target.position.set(0, 0, -1)
     camera.add(keyLight)
+    camera.add(keyLight.target)
 
     const cameraFill = new THREE.DirectionalLight(0xe0e7eb, 1.1)
     cameraFill.position.set(-0.9, -0.5, 1.2)
+    cameraFill.target.position.set(0, 0, -1)
     camera.add(cameraFill)
+    camera.add(cameraFill.target)
 
     const rim = new THREE.DirectionalLight(0x90a4ae, 0.5)
     rim.position.set(0, 2.0, -3.0)
@@ -659,11 +667,15 @@ onMounted(() => {
     scene.add(new THREE.HemisphereLight(0xddeeff, 0x182026, 1.2))
     keyLight = new THREE.DirectionalLight(0xfff6ee, 2.6)
     keyLight.position.set(0.6, 0.8, 1.4)
+    keyLight.target.position.set(0, 0, -1)
     camera.add(keyLight)
+    camera.add(keyLight.target)
 
     const cameraFill = new THREE.DirectionalLight(0x90c5e8, 1.2)
     cameraFill.position.set(-0.9, -0.5, 1.2)
+    cameraFill.target.position.set(0, 0, -1)
     camera.add(cameraFill)
+    camera.add(cameraFill.target)
 
     const rim = new THREE.DirectionalLight(0x5eead4, 0.8)
     rim.position.set(0, 2.0, -3.0)

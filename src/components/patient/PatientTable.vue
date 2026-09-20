@@ -88,7 +88,6 @@ function openFromRow(event: KeyboardEvent, patient: Patient) {
               <PatientDeleteButton
                 :id="patient.id"
                 :name="patient.name"
-                :id-number="patient.idNumber"
                 compact
                 stay
                 @removed="emit('removed', $event)"

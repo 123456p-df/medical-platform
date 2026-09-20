@@ -33,11 +33,6 @@ const router = createRouter({
           component: () => import('@/views/doctor/DoctorDashboardView.vue'),
         },
         {
-          path: 'report-templates',
-          name: 'doctor-report-templates',
-          component: () => import('@/views/doctor/ReportTemplatesView.vue'),
-        },
-        {
           path: 'admin/users',
           name: 'doctor-admin-users',
           component: () => import('@/views/doctor/AdminUsersView.vue'),
@@ -97,6 +92,11 @@ const router = createRouter({
               path: '3d',
               name: 'doctor-patient-3d',
               component: () => import('@/views/doctor/Patient3DView.vue'),
+            },
+            {
+              path: 'simulation',
+              name: 'doctor-patient-simulation',
+              component: () => import('@/views/doctor/SurgerySimulation.vue'),
             },
             {
               path: 'viewer',
