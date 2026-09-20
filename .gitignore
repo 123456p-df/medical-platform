@@ -42,6 +42,10 @@ htmlcov/
 build/
 .cache/
 .vite/
+/tmp/
+/output/
+*.pdf
+*.txt
 /medical/
 *.tsbuildinfo
 

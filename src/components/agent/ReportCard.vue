@@ -34,29 +34,29 @@ function handleFillReport() {
     <div class="report-header">
       <div class="report-title">
         <span class="badge-icon">📋</span>
-        <span class="title-text">放射学结构化诊断报告草案</span>
+        <span class="title-text">{{ $t('ui.copilot.report.title') }}</span>
       </div>
-      <span class="badge-status">AI 初拟待复核</span>
+      <span class="badge-status">{{ $t('ui.copilot.report.review') }}</span>
     </div>
 
     <div class="report-body">
       <div class="section-item">
-        <div class="section-label">【检查技术】</div>
+        <div class="section-label">{{ $t('ui.copilot.report.technique') }}</div>
         <div class="section-content">{{ report.exam_technique }}</div>
       </div>
 
       <div class="section-item">
-        <div class="section-label">【影像所见】</div>
+        <div class="section-label">{{ $t('ui.copilot.report.findings') }}</div>
         <div class="section-content findings-text">{{ report.findings }}</div>
       </div>
 
       <div class="section-item">
-        <div class="section-label">【诊断印象】</div>
+        <div class="section-label">{{ $t('ui.copilot.report.impression') }}</div>
         <div class="section-content impression-text">{{ report.impression }}</div>
       </div>
 
       <div v-if="report.recommendations" class="section-item">
-        <div class="section-label">【临床建议】</div>
+        <div class="section-label">{{ $t('ui.copilot.report.recommendations') }}</div>
         <div class="section-content">{{ report.recommendations }}</div>
       </div>
     </div>
@@ -68,8 +68,8 @@ function handleFillReport() {
         :class="{ success: filled }"
         @click="handleFillReport"
       >
-        <span v-if="!filled">✍️ 一键填入诊断报告书</span>
-        <span v-else>✓ 已成功同步填入报告表单</span>
+        <span v-if="!filled">{{ $t('ui.copilot.report.fill') }}</span>
+        <span v-else>{{ $t('ui.copilot.report.filled') }}</span>
       </button>
     </div>
   </div>

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from math import isfinite
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -38,6 +38,84 @@ class TokenOut(BaseModel):
 class DoctorProvisionInput(Credentials):
     password: str = Field(min_length=8, max_length=128)
     department: str = Field(default="", max_length=100)
+
+
+class AdminUserOut(BaseModel):
+    user_id: int
+    username: str
+    role: Literal["admin", "doctor", "patient"]
+    is_active: bool
+    department: str = ""
+    last_login_at: datetime | None = None
+    created_at: datetime
+    deleted_at: datetime | None = None
+
+
+class AdminUserPage(BaseModel):
+    items: list[AdminUserOut]
+    page: int
+    page_size: int
+    total: int
+
+
+class UserStatusInput(Input):
+    is_active: bool
+
+
+class PasswordResetInput(Input):
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class PatientAccessInput(Input):
+    doctor_user_id: int
+    patient_id: int
+    status: Literal["active", "revoked"] = "active"
+
+
+class PatientAccessOut(BaseModel):
+    doctor_user_id: int
+    doctor_username: str
+    doctor_name: str
+    patient_id: int
+    patient_name: str | None
+    status: Literal["active", "revoked"]
+    created_at: datetime
+
+
+class PatientAccessPage(BaseModel):
+    items: list[PatientAccessOut]
+    total: int
+
+
+class DailyMetric(BaseModel):
+    date: date
+    count: int
+
+
+class DoctorActivityMetric(BaseModel):
+    user_id: int
+    username: str
+    display_name: str
+    signed_reports: int
+    images_uploaded: int
+    audit_actions: int
+
+
+class AdminStatsOut(BaseModel):
+    days: int
+    new_patients: list[DailyMetric]
+    image_uploads: list[DailyMetric]
+    ai_tasks: list[DailyMetric]
+    signed_reports: list[DailyMetric]
+    doctor_activity: list[DoctorActivityMetric]
+
+
+class TemplateUsageOut(BaseModel):
+    template_id: str | None = None
+    template_name: str
+    doctor_user_id: int
+    doctor_name: str
+    report_count: int
 
 
 class BreakGlassInput(Input):
@@ -198,6 +276,73 @@ class ProfilePatch(Input):
         return value.strip()
 
 
+class ReportTemplateField(Input):
+    key: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z][a-zA-Z0-9_]*$")
+    label: str = Field(min_length=1, max_length=160)
+    section: str = Field(default="findings", min_length=1, max_length=160)
+    type: Literal["text", "textarea", "number", "date", "select", "boolean"]
+    required: bool = False
+    options: list[str] = Field(default_factory=list, max_length=100)
+    unit: str | None = Field(default=None, max_length=40)
+
+
+class ReportTemplateCreate(Input):
+    name: str = Field(min_length=1, max_length=160)
+    modality: Literal["CT", "MRI", "X-Ray"] | None = None
+    organ_id: str | None = Field(default=None, max_length=64)
+    fields: list[ReportTemplateField] = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def nonblank_name(cls, value):
+        if not value.strip():
+            raise ValueError("Template name must not be blank")
+        return value.strip()
+
+
+class ReportTemplatePatch(Input):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    modality: Literal["CT", "MRI", "X-Ray"] | None = None
+    organ_id: str | None = Field(default=None, max_length=64)
+    fields: list[ReportTemplateField] | None = Field(default=None, min_length=1, max_length=100)
+    is_active: bool | None = None
+    is_default: bool | None = None
+
+
+class ReportTemplateOut(BaseModel):
+    template_id: str
+    name: str
+    modality: Literal["CT", "MRI", "X-Ray"] | None = None
+    organ_id: str | None = None
+    version: int
+    is_active: bool
+    is_default: bool = False
+    fields: list[ReportTemplateField]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReportTemplateVersionOut(BaseModel):
+    version_id: int
+    template_id: str
+    version: int
+    name: str
+    modality: Literal["CT", "MRI", "X-Ray"] | None = None
+    organ_id: str | None = None
+    fields: list[ReportTemplateField]
+    is_active: bool
+    is_default: bool
+    created_at: datetime
+
+
+class StructuredReportOut(BaseModel):
+    record_id: int
+    report_template_id: str | None = None
+    report_template: ReportTemplateOut | None = None
+    structured_data: dict[str, Any] | None = None
+    updated_at: datetime
+
+
 class RecordCreate(Input):
     organ_id: str = Field(min_length=1, max_length=64)
     organ_ids: list[str] | None = Field(None, min_length=1, max_length=10)
@@ -205,6 +350,8 @@ class RecordCreate(Input):
     diagnosis: str = Field(min_length=1, max_length=10000)
     description: str = Field(min_length=1, max_length=30000)
     recommendation: str = Field(default="", max_length=10000)
+    report_template_id: str | None = Field(default=None, max_length=64)
+    structured_data: dict[str, Any] | None = None
     reviewed: bool = False
     record_date: date
 
@@ -234,14 +381,25 @@ class RecordPatch(Input):
     diagnosis: str | None = Field(default=None, min_length=1, max_length=10000)
     description: str | None = Field(default=None, min_length=1, max_length=30000)
     recommendation: str | None = Field(default=None, max_length=10000)
+    report_template_id: str | None = Field(default=None, max_length=64)
+    structured_data: dict[str, Any] | None = None
     reviewed: bool | None = None
     record_date: date | None = None
 
     @model_validator(mode="after")
     def nonempty(self):
         values = self.model_dump(exclude_unset=True)
-        if not values or any(
-            v is None or (isinstance(v, str) and not v.strip()) for v in values.values()
+        meaningful = {
+            key: value
+            for key, value in values.items()
+            if key not in {"report_template_id", "structured_data"}
+        }
+        has_structured_change = any(
+            key in values and values[key] is not None
+            for key in {"report_template_id", "structured_data"}
+        )
+        if (not meaningful and not has_structured_change) or any(
+            v is None or (isinstance(v, str) and not v.strip()) for v in meaningful.values()
         ):
             raise ValueError("Provide at least one non-null, non-blank field")
         if self.organ_ids is not None:
@@ -283,6 +441,9 @@ class RecordOut(BaseModel):
     diagnosis: str
     description: str
     recommendation: str
+    report_template_id: str | None = None
+    structured_data: dict[str, Any] | None = None
+    report_template: ReportTemplateOut | None = None
     reviewed: bool
     signed_at: datetime | None
     record_date: date

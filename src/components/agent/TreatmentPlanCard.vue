@@ -22,9 +22,9 @@ const sections: Array<{ key: keyof StructuredTreatmentPlan; label: string }> = [
     <div class="plan-header">
       <div class="plan-title">
         <span class="badge-icon">🩺</span>
-        <span class="title-text">完整临床治疗计划草案</span>
+        <span class="title-text">{{ $t('ui.copilot.plan.title') }}</span>
       </div>
-      <span class="badge-status">须医师复核 · 非自动医嘱</span>
+      <span class="badge-status">{{ $t('ui.copilot.plan.review') }}</span>
     </div>
 
     <div class="plan-body">

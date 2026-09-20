@@ -63,7 +63,7 @@ const filtered = computed(() => {
           <span class="finding-swatch" />
           <span class="name finding-label">
             <span class="ai-badge">AI</span>
-            肿瘤 / 结节病灶
+            {{ $t('ui.anatomy.tumorNodule') }}
           </span>
           <span class="count finding-count-badge">{{ findingsCount }} 个</span>
         </label>

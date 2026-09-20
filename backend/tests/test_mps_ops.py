@@ -1,8 +1,9 @@
 import pytest
-import torch
-import torch.nn.functional as F
 
 from app.services.mps_ops import conv_transpose3d_via_conv3d
+
+torch = pytest.importorskip("torch")
+F = pytest.importorskip("torch.nn.functional")
 
 
 def _cases():

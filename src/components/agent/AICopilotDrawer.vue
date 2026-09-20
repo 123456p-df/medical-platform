@@ -269,8 +269,8 @@ onUnmounted(() => {
     <div class="badge-pulse"></div>
     <div class="badge-icon">🩺</div>
     <div class="badge-text">
-      <span class="main-label">AI Copilot</span>
-      <span class="sub-label">Talk to CT</span>
+      <span class="main-label">{{ $t('ui.copilot.brand') }}</span>
+      <span class="sub-label">{{ $t('ui.copilot.talkToCt') }}</span>
     </div>
   </div>
 
@@ -287,8 +287,8 @@ onUnmounted(() => {
         <span class="agent-avatar">🧠</span>
         <div class="header-meta">
           <div class="title-row">
-            <span class="title">AI 影像会诊 Copilot</span>
-            <span class="version-tag">Pi RPC + RadSight-8B</span>
+            <span class="title">{{ $t('ui.copilot.title') }}</span>
+            <span class="version-tag">{{ $t('ui.copilot.engine') }}</span>
           </div>
           <div class="context-row">
             <span class="context-pill">患者 #{{ currentPatientId }}</span>
@@ -333,15 +333,15 @@ onUnmounted(() => {
       <!-- Welcome Intro -->
       <div v-if="messages.length === 0 && !isStreaming" class="welcome-box">
         <div class="welcome-icon">🏥</div>
-        <h4>您好，我是您的放射与临床决策 AI 助手</h4>
+        <h4>{{ $t('ui.copilot.welcome') }}</h4>
         <p v-if="radsightReady">基于 Pi 框架自主调度，本地 RadSight-8B 3D CT 多模态大模型已加载（{{ radsightDetails.quant || 'bf16' }}）。</p>
         <p v-else>基于 Pi 框架自主调度。{{ radsightStatusLabel }}，Talk to CT 将在权重就绪后进行真推理。</p>
         <div class="feature-badges">
-          <span>🔬 3D CT 容积理解</span>
-          <span>📋 电子病历检索</span>
-          <span>📐 解剖分割质控</span>
-          <span>✍️ 结构化报告起草</span>
-          <span>🩺 完整治疗计划</span>
+          <span>{{ $t('ui.copilot.featureCt') }}</span>
+          <span>{{ $t('ui.copilot.featureRecords') }}</span>
+          <span>{{ $t('ui.copilot.featureQc') }}</span>
+          <span>{{ $t('ui.copilot.featureReport') }}</span>
+          <span>{{ $t('ui.copilot.featurePlan') }}</span>
         </div>
       </div>
 
@@ -358,7 +358,7 @@ onUnmounted(() => {
         <div class="bubble-content">
           <!-- Collapsible Thought -->
           <details v-if="msg.thought" class="thought-box">
-            <summary>💡 思考推理过程</summary>
+            <summary>{{ $t('ui.copilot.thinkingHistory') }}</summary>
             <div class="thought-content">{{ msg.thought }}</div>
           </details>
 
@@ -379,7 +379,7 @@ onUnmounted(() => {
         <div class="bubble-content">
           <!-- Streaming Thinking -->
           <details v-if="currentThinking" open class="thought-box active">
-            <summary>💡 思考推理中...</summary>
+            <summary>{{ $t('ui.copilot.thinkingNow') }}</summary>
             <div class="thought-content">{{ currentThinking }}</div>
           </details>
 
@@ -432,35 +432,35 @@ onUnmounted(() => {
         class="prompt-chip"
         @click="handleQuickPrompt('Talk to CT：请全面分析当前CT序列是否存在肺结节或占位征象')"
       >
-        💬 Talk to CT 结节筛查
+        {{ $t('ui.copilot.quickCt') }}
       </button>
       <button
         type="button"
         class="prompt-chip"
         @click="handleQuickPrompt('查询当前患者的既往病史、过敏史与实验室检验指标')"
       >
-        📋 查询病史与检验
+        {{ $t('ui.copilot.quickRecords') }}
       </button>
       <button
         type="button"
         class="prompt-chip"
         @click="handleQuickPrompt('核验当前 3D 解剖器官分割体积统计与质控指标')"
       >
-        📐 核验器官分割体积
+        {{ $t('ui.copilot.quickQc') }}
       </button>
       <button
         type="button"
         class="prompt-chip"
         @click="handleQuickPrompt('根据当前 CT 影像征象与病历，帮我起草一份标准放射学诊断报告')"
       >
-        ✍️ 起草放射诊断报告
+        {{ $t('ui.copilot.quickReport') }}
       </button>
       <button
         type="button"
         class="prompt-chip"
         @click="handleQuickPrompt('请深入分析该患者症状、病史、CT 与分割质控后，列出完整的治疗计划（须调用全部临床工具，禁止编造影像征象）')"
       >
-        🩺 完整治疗计划
+        {{ $t('ui.copilot.featurePlan') }}
       </button>
     </div>
 

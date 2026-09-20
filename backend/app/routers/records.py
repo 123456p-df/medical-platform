@@ -6,8 +6,9 @@ from sqlalchemy import func, select
 from app.audit import audit
 from app.deps import DB, CurrentUser, check_patient_access, require_doctor
 from app.errors import APIError, Envelope, success
-from app.models import Doctor, MedicalImage, MedicalRecord, RecordAddendum, User, utcnow
+from app.models import Doctor, MedicalImage, MedicalRecord, RecordAddendum, ReportTemplate, User, utcnow
 from app.organs import require_organ
+from app.report_templates import template_out, validate_structured_data
 from app.schemas import (
     AddendumCreate,
     AddendumOut,
@@ -26,6 +27,7 @@ def record_out(db, record):
         .join(Doctor, Doctor.user_id == User.id)
         .where(Doctor.id == record.doctor_id)
     )
+    template = db.get(ReportTemplate, record.report_template_id) if record.report_template_id else None
     return {
         "record_id": record.id,
         "patient_id": record.patient_id,
@@ -35,6 +37,9 @@ def record_out(db, record):
         "diagnosis": record.diagnosis,
         "description": record.description,
         "recommendation": record.recommendation,
+        "report_template_id": record.report_template_id,
+        "structured_data": record.structured_data,
+        "report_template": template_out(template) if template else None,
         "reviewed": record.reviewed,
         "signed_at": record.signed_at,
         "record_date": record.record_date,
@@ -66,6 +71,8 @@ def snapshot(record):
         "diagnosis": record.diagnosis,
         "description": record.description,
         "recommendation": record.recommendation,
+        "report_template_id": record.report_template_id,
+        "structured_data": record.structured_data,
         "reviewed": record.reviewed,
         "signed_at": record.signed_at.isoformat() if record.signed_at else None,
         "record_date": record.record_date.isoformat(),
@@ -96,6 +103,23 @@ def validate_examination(db, patient_id, examination_id):
     image = db.get(MedicalImage, examination_id)
     if image is None or image.patient_id != patient_id:
         raise APIError(422, 42202, "Examination does not belong to this patient")
+
+
+def prepare_structured_report(db, template_id, data, current=None):
+    if template_id is None and data is None:
+        return template_id, data
+    resolved_template_id = (
+        template_id or current.get("report_template_id") if current else template_id
+    )
+    resolved_data = dict(data) if data is not None else (
+        dict(current.get("structured_data") or {}) if current else {}
+    )
+    if not resolved_template_id:
+        raise APIError(422, 42204, "A report template is required for structured data")
+    template = db.get(ReportTemplate, resolved_template_id)
+    if template is None or not template.is_active:
+        raise APIError(404, 40410, "Report template not found or inactive")
+    return template.id, validate_structured_data(template, resolved_data)
 
 
 @router.get("/patients/{patient_id}/organs/{organ_id}/records", response_model=Envelope[RecordPage])
@@ -203,7 +227,15 @@ def create_record(patient_id: int, body: RecordCreate, db: DB, user: CurrentUser
     for organ_id in body.organ_ids or []:
         require_organ(organ_id)
     validate_examination(db, patient_id, body.examination_id)
-    record = MedicalRecord(patient_id=patient_id, doctor_id=doctor.id, **body.model_dump())
+    values = body.model_dump()
+    template_id, structured_data = prepare_structured_report(
+        db,
+        values.get("report_template_id"),
+        values.get("structured_data"),
+    )
+    values["report_template_id"] = template_id
+    values["structured_data"] = structured_data
+    record = MedicalRecord(patient_id=patient_id, doctor_id=doctor.id, **values)
     record.signed_at = utcnow() if record.reviewed else None
     db.add(record)
     db.flush()
@@ -230,8 +262,23 @@ def update_record(record_id: int, body: RecordPatch, db: DB, user: CurrentUser):
         require_organ(organ_id)
     if "examination_id" in body.model_fields_set:
         validate_examination(db, record.patient_id, body.examination_id)
+    values = body.model_dump(exclude_unset=True)
+    if "report_template_id" in body.model_fields_set or "structured_data" in body.model_fields_set:
+        template_id, structured_data = prepare_structured_report(
+            db,
+            values.get("report_template_id"),
+            values.get("structured_data"),
+            current={
+                "report_template_id": record.report_template_id,
+                "structured_data": record.structured_data or {},
+            },
+        )
+        values["report_template_id"] = template_id
+        values["structured_data"] = structured_data
     before = snapshot(record)
-    for key, value in body.model_dump(exclude_unset=True, exclude={"organ_ids"}).items():
+    for key, value in values.items():
+        if key == "organ_ids":
+            continue
         setattr(record, key, value)
     if body.organ_ids is not None:
         organ_ids = body.organ_ids

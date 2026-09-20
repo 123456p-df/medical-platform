@@ -1,16 +1,37 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { CheckCircle2, Clock3, FileText, Printer } from 'lucide-vue-next'
 import { organNames } from '@/api/mappers'
 import type { Report } from '@/types'
-import { locale } from '@/i18n'
+import { locale, t } from '@/i18n'
 
-defineProps<{
+const props = defineProps<{
   report: Report
   patientFacing?: boolean
   patientName?: string
 }>()
 const printing = ref(false)
+
+const structuredSections = computed(() => {
+  const fields = props.report.reportTemplate?.fields || []
+  const data = props.report.structuredData || {}
+  const grouped = new Map<string, { label: string; rows: Array<{ label: string; value: string }> }>()
+  for (const field of fields) {
+    const value = data[field.key]
+    if (value === undefined || value === null || value === '') continue
+    const section = field.section || 'ui.reportTemplate.section.findings'
+    if (!grouped.has(section)) grouped.set(section, { label: section, rows: [] })
+    grouped.get(section)?.rows.push({
+      label: field.label,
+      value: field.type === 'select'
+        ? t(String(value))
+        : field.type === 'boolean'
+          ? value ? t('ui.reportTemplate.yes') : t('ui.reportTemplate.no')
+          : `${value}${field.unit ? ` ${field.unit}` : ''}`,
+    })
+  }
+  return [...grouped.entries()].map(([key, value]) => ({ key, ...value }))
+})
 
 function formatDate(value: string) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value)
@@ -55,6 +76,17 @@ async function printReport() {
     </div>
     <div class="record-organ-tags"><span v-for="id in report.organIds || [report.organId || 'other']" :key="id">{{ $t(organNames[id]) }}</span></div><h4>{{ report.diagnosis }}</h4>
     <p>{{ report.description }}</p>
+    <div v-if="structuredSections.length" class="structured-report-content">
+      <section v-for="section in structuredSections" :key="section.key" class="structured-print-section">
+        <span>{{ $t(section.label) }}</span>
+        <dl>
+          <div v-for="row in section.rows" :key="row.label">
+            <dt>{{ $t(row.label) }}</dt>
+            <dd>{{ row.value }}</dd>
+          </div>
+        </dl>
+      </section>
+    </div>
     <div class="report-content">
       <div v-if="report.recommendation" class="report-section">
         <span>{{ $t("Recommendation") }}</span>
@@ -149,6 +181,50 @@ async function printReport() {
   margin: 0;
   color: var(--text-soft);
   font-size: 13px;
+}
+
+.structured-report-content {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.structured-print-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.structured-print-section > span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 720;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.structured-print-section dl {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0 0;
+}
+
+.structured-print-section dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) 1fr;
+  gap: 10px;
+}
+
+.structured-print-section dt {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.structured-print-section dd {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 .report-section {

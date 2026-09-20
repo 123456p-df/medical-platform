@@ -88,6 +88,8 @@ async function submit() {
       if (localPreview) {
         const patientId = await patients.createPatient(draft)
         auth.markProfileComplete(patientId)
+        window.location.assign('/patient/dashboard')
+        return
       } else {
         const result = await api<{ patient_id: number }>('/patient/onboarding', {
           method: 'PATCH',
@@ -99,6 +101,8 @@ async function submit() {
       if (localPreview) {
         const patientId = linkInPreview()
         auth.markProfileComplete(patientId)
+        window.location.assign('/patient/dashboard')
+        return
       } else {
         const result = await api<{ patient_id: number }>('/patient/link', {
           method: 'POST',

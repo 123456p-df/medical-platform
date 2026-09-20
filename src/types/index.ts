@@ -88,6 +88,31 @@ export interface Finding {
   revision?: number
 }
 
+export type ReportTemplateFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'boolean'
+
+export interface ReportTemplateField {
+  key: string
+  label: string
+  section: string
+  type: ReportTemplateFieldType
+  required: boolean
+  options?: string[]
+  unit?: string | null
+}
+
+export interface ReportTemplate {
+  id: string
+  name: string
+  modality: ExaminationType | null
+  organId: string | null
+  version: number
+  isActive: boolean
+  isDefault?: boolean
+  fields: ReportTemplateField[]
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface Report {
   organIds?: string[]
   organId?: string
@@ -103,6 +128,9 @@ export interface Report {
   signedAt?: string | null
   createdAt?: string
   updatedAt?: string
+  reportTemplateId?: string
+  structuredData?: Record<string, unknown>
+  reportTemplate?: ReportTemplate
   addenda?: ReportAddendum[]
 }
 
@@ -158,4 +186,56 @@ export interface ArchivedPatient {
   name: string
   reason: string
   archivedAt: string
+}
+
+export interface AdminUser {
+  userId: number
+  username: string
+  role: 'admin' | 'doctor' | 'patient'
+  isActive: boolean
+  department: string
+  lastLoginAt?: string | null
+  createdAt: string
+  deletedAt?: string | null
+}
+
+export interface PatientAccess {
+  doctorUserId: number
+  doctorUsername: string
+  doctorName: string
+  patientId: number
+  patientName?: string | null
+  status: 'active' | 'revoked'
+  createdAt: string
+}
+
+export interface DailyMetric {
+  date: string
+  count: number
+}
+
+export interface DoctorActivityMetric {
+  userId: number
+  username: string
+  displayName: string
+  signedReports: number
+  imagesUploaded: number
+  auditActions: number
+}
+
+export interface AdminStats {
+  days: number
+  newPatients: DailyMetric[]
+  imageUploads: DailyMetric[]
+  aiTasks: DailyMetric[]
+  signedReports: DailyMetric[]
+  doctorActivity: DoctorActivityMetric[]
+}
+
+export interface TemplateUsage {
+  templateId?: string | null
+  templateName: string
+  doctorUserId: number
+  doctorName: string
+  reportCount: number
 }

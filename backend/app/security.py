@@ -33,6 +33,7 @@ def create_token(user: User, settings: Settings) -> str:
         {
             "sub": str(user.id),
             "jti": uuid4().hex,
+            "ver": user.token_version,
             "iat": now,
             "nbf": now,
             "exp": now + timedelta(minutes=settings.access_token_minutes),
@@ -44,7 +45,7 @@ def create_token(user: User, settings: Settings) -> str:
     )
 
 
-def decode_token(token: str, settings: Settings) -> tuple[int, str, datetime]:
+def decode_token(token: str, settings: Settings) -> tuple[int, str, datetime, int]:
     payload = jwt.decode(
         token,
         settings.jwt_secret.get_secret_value(),
@@ -59,7 +60,10 @@ def decode_token(token: str, settings: Settings) -> tuple[int, str, datetime]:
     jti = payload["jti"]
     if not isinstance(jti, str) or len(jti) > 64 or not jti:
         raise ValueError("Invalid token ID")
-    return user_id, jti, datetime.fromtimestamp(payload["exp"], UTC)
+    token_version = int(payload.get("ver", 1))
+    if token_version < 1:
+        raise ValueError("Invalid token version")
+    return user_id, jti, datetime.fromtimestamp(payload["exp"], UTC), token_version
 
 
 def normalize_id(value: str) -> str:

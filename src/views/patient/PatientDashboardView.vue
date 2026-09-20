@@ -241,7 +241,7 @@ onMounted(async () => {
       <template #actions>
         <div class="header-actions">
           <div v-if="studies.length > 1" class="study-selector">
-            <label for="study-select">{{ $t('ui.patient.health.studyPeriod') || '检查时期：' }}</label>
+            <label for="study-select">{{ $t('ui.patient.studyPeriod') }}</label>
             <select id="study-select" v-model="selectedStudyId">
               <option v-for="s in studies" :key="s.id" :value="s.id">
                 {{ s.date }} · {{ s.organ }} · {{ s.sliceCount }} {{ $t('ui.patient.health.slices') || '层' }}
@@ -302,7 +302,7 @@ onMounted(async () => {
                 <span class="inspection-title">
                   {{ selectedOrganInfo.group_name || selectedOrganInfo.display_name || selectedOrganInfo.name }}
                 </span>
-                <button type="button" class="close-btn" aria-label="Close" title="Close" @click="selectedLabelId = null">
+                <button type="button" class="close-btn" :aria-label="$t('ui.patient.closeInspection')" @click="selectedLabelId = null">
                   <X :size="14" />
                 </button>
               </div>

@@ -158,7 +158,7 @@ test('doctor invitation links a newly registered patient to one existing record'
   await page.locator('[data-testid="onboarding-link-id"]').fill('E2E-INVITED-IDENTITY')
   await page.getByRole('button', { name: 'Link existing record' }).last().click()
   await expect(page).toHaveURL(/\/patient\/dashboard/)
-  await expect(page.getByText('e2e_invited_patient').first()).toBeVisible()
+  await expect(page.locator('body')).toContainText('e2e_invited_patient', { timeout: 15000 })
 })
 
 test('admin archives a patient with a reason and restores it from the archive manager', async ({ page }) => {

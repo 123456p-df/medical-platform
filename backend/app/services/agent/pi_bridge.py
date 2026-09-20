@@ -214,7 +214,7 @@ class PiAgentBridge:
         synthesizes structured tertiary hospital radiology findings.
         """
         # Step 1: Thinking
-        yield f"data: {json.dumps({'type': 'thinking', 'delta': '正在分析临床问题意图：识别问诊范畴（CT影像解读 / 既往病历 / 器官分割质控 / 报告起草）...\\n'}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'thinking', 'delta': '正在分析临床问题意图：识别问诊范畴（CT影像解读 / 既往病历 / 器官分割质控 / 报告起草）...' + chr(10)}, ensure_ascii=False)}\n\n"
         await asyncio.sleep(0.3)
 
         # Step 2: Fetch patient CT scans
@@ -288,7 +288,7 @@ class PiAgentBridge:
         # Execute Talk to CT (RadSight-8B)
         radsight_result = None
         if needs_ct_analysis or needs_report:
-            yield f"data: {json.dumps({'type': 'thinking', 'delta': '正在调用本地 RadSight-8B 多模态微服务进行 3D CT 容积视觉特征感知与结节检测...\\n'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'thinking', 'delta': '正在调用本地 RadSight-8B 多模态微服务进行 3D CT 容积视觉特征感知与结节检测...' + chr(10)}, ensure_ascii=False)}\n\n"
             yield f"data: {json.dumps({'type': 'tool_call_start', 'tool': 'talk_to_ct', 'args': {'ct_path': selected_file, 'question': user_message}}, ensure_ascii=False)}\n\n"
 
             async with httpx.AsyncClient(timeout=300.0) as client:

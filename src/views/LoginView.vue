@@ -65,6 +65,10 @@ async function submit(previewAccount?: PreviewAccount) {
     const destination = redirect.startsWith(portalPrefix) && !redirect.startsWith('//')
       ? redirect
       : destinationRole === 'doctor' ? '/doctor/dashboard' : '/patient/dashboard'
+    if (preview) {
+      window.location.assign(destination)
+      return
+    }
     await router.push(destination)
   } catch (reason) {
     if (reason instanceof ApiError && reason.details.fieldErrors) {
