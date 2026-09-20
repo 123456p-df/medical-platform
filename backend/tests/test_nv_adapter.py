@@ -1,5 +1,6 @@
 import nibabel as nib
 import numpy as np
+import pytest
 
 from app.adapters.nv_segment_ct import NVSegmentCT
 
@@ -8,7 +9,8 @@ def test_nvidia_wrapper_requires_complete_model_and_runtime(app_env, tmp_path, m
     _, _, settings, _ = app_env
     model_root = tmp_path / "NV-Segment-CTMR"
     (model_root / "vista3d_pretrained_model").mkdir(parents=True)
-    (model_root / "hugging_face_pipeline.py").write_text("", encoding="utf-8")
+    for name in ("vista3d_config.py", "vista3d_model.py", "vista3d_pipeline.py"):
+        (model_root / name).write_text("", encoding="utf-8")
     settings.nv_segment_ct_dir = model_root
     adapter = NVSegmentCT(settings)
 
@@ -56,3 +58,45 @@ def test_nvidia_wrapper_uses_organ_labels_and_excludes_unknown_voxels(
     np.testing.assert_allclose(mask.affine, nib.load(nifti_file).affine)
     assert adapter.image_types == {"CT", "MRI"}
     assert progress == [20, 75]
+
+
+def test_nvidia_postprocess_discretizes_multilabel_output_once(app_env):
+    torch = pytest.importorskip("torch")
+    _, _, settings, _ = app_env
+    adapter = NVSegmentCT(settings)
+    adapter._inverse_prediction = lambda record: record
+
+    logits = torch.zeros((1, 2, 2, 2, 2), dtype=torch.float32)
+    logits[0, 0, 0, 0, 0] = 3
+    logits[0, 1, 1, 1, 1] = 4
+    outputs = {
+        "pred": logits,
+        "image": torch.zeros((1, 1, 2, 2, 2)),
+        "label": None,
+        "label_prompt": torch.tensor([[[10], [20]]]),
+        "points": None,
+        "point_labels": None,
+    }
+
+    one_mm, native = adapter._postprocess_prediction(outputs)
+
+    assert one_mm[0, 0, 0] == 10
+    assert one_mm[1, 1, 1] == 20
+    np.testing.assert_array_equal(native, one_mm)
+
+
+def test_nvidia_vectorized_discretize_matches_vista_transform():
+    torch = pytest.importorskip("torch")
+    from monai.apps.vista3d.transforms import VistaPostTransformd
+
+    logits = torch.randn((5, 8, 7, 6), generator=torch.Generator().manual_seed(7))
+    logits[:, 0, 0, 0] = -1
+    prompt = torch.tensor([[3], [7], [12], [28], [115]])
+    expected = VistaPostTransformd(keys="pred")(
+        {"pred": logits.clone(), "label_prompt": prompt.clone(), "points": None}
+    )["pred"]
+    actual = NVSegmentCT._discretize_prediction(
+        {"pred": logits.clone(), "label_prompt": prompt.clone(), "points": None}
+    )["pred"]
+
+    torch.testing.assert_close(actual, expected)

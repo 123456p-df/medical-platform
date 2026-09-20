@@ -1,0 +1,43 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e9]:
+      - strong [ref=e10]: PulmoLink
+      - generic [ref=e11]: 医学 AI 平台
+    - generic [ref=e12]:
+      - text: AI 医学影像与数字人体
+      - heading "连接医学影像、AI 发现与临床审核。" [level=1] [ref=e13]
+      - paragraph [ref=e14]: 连接医生工作台与患者健康门户，从肺部影像检查开启完整诊疗流程。
+    - generic [ref=e15]:
+      - generic [ref=e16]: 医生审核流程
+      - generic [ref=e20]: 肺部临床模块
+  - generic [ref=e25]:
+    - generic [ref=e26]:
+      - text: PulmoLink 账号
+      - heading "登录 PulmoLink" [level=2] [ref=e27]
+      - paragraph [ref=e28]: 登录后查看您有权访问的医疗记录。
+    - generic "账号操作" [ref=e29]:
+      - button "登录" [ref=e30] [cursor=pointer]
+      - button "注册" [ref=e31] [cursor=pointer]
+    - generic [ref=e32]:
+      - generic [ref=e33]: 用户名
+      - textbox "用户名" [ref=e34]
+      - generic [ref=e35]: 密码
+      - textbox "密码" [ref=e36]
+      - generic [ref=e37]:
+        - checkbox "在本次应用运行期间保持登录" [checked] [ref=e38]
+        - generic [ref=e39]: 在本次应用运行期间保持登录
+      - button "登录" [ref=e40] [cursor=pointer]
+    - generic [ref=e41]:
+      - button "管理员 查看和管理全部演示患者 · admin / 123456" [ref=e42] [cursor=pointer]:
+        - generic [ref=e47]:
+          - strong [ref=e48]: 管理员
+          - generic [ref=e49]: 查看和管理全部演示患者 · admin / 123456
+      - button "医生端 临床审核、医学影像、AI 发现与报告。" [ref=e52] [cursor=pointer]:
+        - generic [ref=e58]:
+          - strong [ref=e59]: 医生端
+          - generic [ref=e60]: 临床审核、医学影像、AI 发现与报告。
+      - button "患者端 查看健康、检查、报告与数字人体。" [ref=e63] [cursor=pointer]:
+        - generic [ref=e68]:
+          - strong [ref=e69]: 患者端
+          - generic [ref=e70]: 查看健康、检查、报告与数字人体。
+    - generic [ref=e73]: 本地演示 · 以下快捷入口使用合成患者数据

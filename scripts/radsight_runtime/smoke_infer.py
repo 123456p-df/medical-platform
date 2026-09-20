@@ -38,6 +38,7 @@ def main() -> int:
         args.ct,
         args.question,
         max_new_tokens=settings.max_new_tokens,
+        num_frames=settings.num_frames,
     )
     text = result["raw_text"]
     print(f"latency_ms={result['latency_ms']}")

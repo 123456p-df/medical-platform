@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
+from radsight_runtime.infer import VolumeTensorCache  # noqa: E402
 from radsight_runtime.volume import (  # noqa: E402
     inspect_nifti_volume,
     looks_like_stub_template,
@@ -56,6 +57,32 @@ def test_radsight_hu_normalization():
     assert float(normalized.min()) == 0.0
     assert float(normalized.max()) == 1.0
     assert abs(float(normalized[2]) - 0.5) < 1e-6
+
+
+def test_radsight_volume_cache_hits_and_invalidates(tmp_path, monkeypatch):
+    import radsight_runtime.infer as infer
+    import torch
+
+    path = tmp_path / "ct.nii.gz"
+    path.write_bytes(b"first")
+    calls = []
+
+    def load(resolved):
+        calls.append(resolved.stat().st_size)
+        return torch.tensor([len(calls)], dtype=torch.float32)
+
+    monkeypatch.setattr(infer, "_load_volume_tensor", load)
+    cache = VolumeTensorCache(max_entries=1)
+    first, first_hit = cache.get(str(path))
+    second, second_hit = cache.get(str(path))
+    path.write_bytes(b"second-version")
+    third, third_hit = cache.get(str(path))
+
+    assert not first_hit and second_hit and not third_hit
+    assert first is second
+    assert third is not first
+    assert calls == [5, 14]
+    assert cache.info() == {"entries": 1, "max_entries": 1, "hits": 1, "misses": 2}
 
 
 def test_agent_status_endpoint(app_env, people):

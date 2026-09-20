@@ -2,6 +2,7 @@
   "name": "medical-imaging-platform",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@11.25.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -25,6 +26,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:bundle-budget": "node scripts/verify-bundle-budget.mjs",
     "test:performance": "node scripts/measure-performance.mjs",
+    "test:simulation": "vitest run src/simulation",
     "test:migrations": "node scripts/verify-migrations.mjs",
     "test:backend": "uv run --project backend pytest backend/tests -q",
     "contract:generate": "node scripts/generate-contract.mjs",
@@ -39,6 +41,7 @@
     "lucide-vue-next": "^0.468.0",
     "pinia": "^2.3.0",
     "three": "^0.172.0",
+    "three-mesh-bvh": "^0.9.15",
     "vue": "^3.5.13",
     "vue-i18n": "^11.4.10",
     "vue-router": "^4.5.0"
@@ -53,6 +56,7 @@
     "openapi-typescript": "^7.13.0",
     "typescript": "~5.7.2",
     "vite": "^6.0.7",
+    "vitest": "^3.2.7",
     "vue-tsc": "^2.2.0"
   }
 }

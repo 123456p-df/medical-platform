@@ -25,12 +25,14 @@ class Settings(BaseSettings):
     segmentation_image_types: list[str] = ["CT", "MRI"]
     nv_segment_ct_dir: Path | None = None
     nv_segment_device: str = "auto"
+    nv_segment_spacing: tuple[float, float, float] = (1.5, 1.5, 1.5)
     nv_segment_roi_size: tuple[int, int, int] = (192, 192, 128)
     nv_segment_overlap: float = Field(default=0.3, ge=0, lt=1)
-    segmentation_model_fingerprint: str = "nv-segment-ctmr-vista3d-1mm"
+    nv_segment_sw_batch_size: int = Field(default=1, ge=1, le=16)
+    segmentation_model_fingerprint: str = "nv-segment-ctmr-official-1p5mm-topology-v4"
     synthstrip_command: str | None = None
     dcm2niix_command: str | None = "dcm2niix"
-    segmentation_min_component_voxels: int = Field(default=5000, ge=1, le=100000)
+    segmentation_min_component_voxels: int = Field(default=128, ge=1, le=100000)
     segmentation_target_faces: int = Field(default=40000, ge=1000, le=200000)
     segmentation_label_map_retention_days: int = Field(default=7, ge=0, le=365)
     lung_nodule_callable: str | None = None
@@ -78,4 +80,6 @@ class Settings(BaseSettings):
             self.nv_segment_ct_dir = self.nv_segment_ct_dir.resolve()
         if any(size <= 0 for size in self.nv_segment_roi_size):
             raise ValueError("NV_SEGMENT_ROI_SIZE values must be positive")
+        if any(spacing <= 0 for spacing in self.nv_segment_spacing):
+            raise ValueError("NV_SEGMENT_SPACING values must be positive")
         return self

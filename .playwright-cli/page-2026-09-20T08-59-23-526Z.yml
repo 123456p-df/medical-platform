@@ -1,0 +1,194 @@
+- generic [ref=f3e3]:
+  - link "跳到主要内容" [ref=f3e4] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=f3e5]:
+    - dialog "AI 影像会诊 Copilot" [ref=f3e199]:
+      - generic [ref=f3e200]:
+        - generic [ref=f3e201]:
+          - generic [ref=f3e202]: 🧠
+          - generic [ref=f3e203]:
+            - generic [ref=f3e204]: AI 影像会诊 Copilot
+            - generic [ref=f3e206]:
+              - generic [ref=f3e207]: 患者 1
+              - generic "RadSight-8B 已就绪 (int8)" [ref=f3e208]
+        - generic [ref=f3e209]:
+          - button "☰" [expanded] [ref=f3e210] [cursor=pointer]
+          - button "＋" [ref=f3e211] [cursor=pointer]
+          - button "✧" [ref=f3e212] [cursor=pointer]
+          - button "⇱" [ref=f3e213] [cursor=pointer]
+          - button "✕" [ref=f3e214] [cursor=pointer]
+      - navigation "对话记录" [ref=f3e215]:
+        - generic [ref=f3e216]:
+          - strong [ref=f3e217]: 对话记录
+          - generic [ref=f3e218]: "9"
+        - generic [ref=f3e219]:
+          - button "请完成一次真实的复杂会诊：先检索并比较患者全部 CT 序列，选择最适合当 2026/9/20 16:56:39" [ref=f3e220] [cursor=pointer]:
+            - generic [ref=f3e221]: 请完成一次真实的复杂会诊：先检索并比较患者全部 CT 序列，选择最适合当
+            - generic [ref=f3e222]: 2026/9/20 16:56:39
+          - button "当前轮复杂 Agent 端到端验证 2026/9/20 16:36:41" [ref=f3e223] [cursor=pointer]:
+            - generic [ref=f3e224]: 当前轮复杂 Agent 端到端验证
+            - generic [ref=f3e225]: 2026/9/20 16:36:41
+          - button "高难度端到端会诊实测 2026/9/20 16:25:44" [ref=f3e226] [cursor=pointer]:
+            - generic [ref=f3e227]: 高难度端到端会诊实测
+            - generic [ref=f3e228]: 2026/9/20 16:25:44
+          - button "hello! 2026/9/20 16:14:56" [ref=f3e229] [cursor=pointer]:
+            - generic [ref=f3e230]: hello!
+            - generic [ref=f3e231]: 2026/9/20 16:14:56
+          - button "高难度症状分析与完整治疗计划 2026/9/20 16:14:35" [ref=f3e232] [cursor=pointer]:
+            - generic [ref=f3e233]: 高难度症状分析与完整治疗计划
+            - generic [ref=f3e234]: 2026/9/20 16:14:35
+          - button "高难度端到端会诊实测 2026/9/19 20:43:45" [ref=f3e235] [cursor=pointer]:
+            - generic [ref=f3e236]: 高难度端到端会诊实测
+            - generic [ref=f3e237]: 2026/9/19 20:43:45
+          - button "AI 放射与病历会诊 2026/9/19 19:54:26" [ref=f3e238] [cursor=pointer]:
+            - generic [ref=f3e239]: AI 放射与病历会诊
+            - generic [ref=f3e240]: 2026/9/19 19:54:26
+          - button "AI 放射与病历会诊 2026/9/19 19:50:06" [ref=f3e241] [cursor=pointer]:
+            - generic [ref=f3e242]: AI 放射与病历会诊
+            - generic [ref=f3e243]: 2026/9/19 19:50:06
+          - button "AI 放射与病历会诊 2026/9/19 19:34:02" [ref=f3e244] [cursor=pointer]:
+            - generic [ref=f3e245]: AI 放射与病历会诊
+            - generic [ref=f3e246]: 2026/9/19 19:34:02
+      - generic [ref=f3e248]:
+        - generic [ref=f3e249]: 👨‍⚕️
+        - generic [ref=f3e250]: 请完成一次真实的复杂会诊：先检索并比较患者全部 CT 序列，选择最适合当前肺部和肾上腺评估的序列；然后调用 Talk to CT 分析肺栓塞、急性胸部病变、肺结节和肾上腺结节；再调取病历、分割质控；最后起草结构化放射报告。必须显示工具调用过程，所有影像数字只允许来自 Talk to CT，明确说明平扫对肺栓塞的局限，不得使用 4.2mm 或 LU-RADS 2 模板。
+      - generic [ref=f3e252]:
+        - button "💬 Talk to CT 结节筛查" [ref=f3e253] [cursor=pointer]
+        - button "📋 查询病史与检验" [ref=f3e254] [cursor=pointer]
+        - button "📐 核验器官分割体积" [ref=f3e255] [cursor=pointer]
+        - button "✍️ 起草放射诊断报告" [ref=f3e256] [cursor=pointer]
+        - button "🩺 完整治疗计划" [ref=f3e257] [cursor=pointer]
+      - generic [ref=f3e258]:
+        - textbox "向 AI Copilot 提问，或指示 Talk to CT 分析当前影像 (Enter 发送)..." [ref=f3e259]
+        - button "发送" [disabled] [ref=f3e260]
+    - button "打开 AI 助手" [expanded] [active] [ref=f3e6] [cursor=pointer]
+  - complementary [ref=f3e10]:
+    - generic [ref=f3e15]:
+      - strong [ref=f3e16]: PulmoLink
+      - generic [ref=f3e17]: 医学 AI 平台
+    - button "收起侧边栏" [ref=f3e18] [cursor=pointer]
+    - generic [ref=f3e22]: 临床工作台
+    - navigation "医生工作区导航" [ref=f3e23]:
+      - generic [ref=f3e24]:
+        - button "患者管理" [expanded] [ref=f3e25] [cursor=pointer]
+        - link "患者工作台" [ref=f3e34] [cursor=pointer]:
+          - /url: /doctor/dashboard
+      - generic [ref=f3e41]:
+        - button "临床工作流 demo_patient" [expanded] [ref=f3e42] [cursor=pointer]:
+          - generic [ref=f3e47]:
+            - strong [ref=f3e48]: 临床工作流
+            - generic [ref=f3e49]: demo_patient
+        - generic [ref=f3e52]:
+          - link "患者概览" [ref=f3e53] [cursor=pointer]:
+            - /url: /doctor/patients/1
+          - link "医学影像" [ref=f3e58] [cursor=pointer]:
+            - /url: /doctor/patients/1/imaging
+          - link "AI 辅助诊断" [ref=f3e65] [cursor=pointer]:
+            - /url: /doctor/patients/1/ai
+          - link "临床报告" [ref=f3e69] [cursor=pointer]:
+            - /url: /doctor/patients/1/report
+          - link "3D 器官模型" [ref=f3e74] [cursor=pointer]:
+            - /url: /doctor/patients/1/3d
+    - generic [ref=f3e79]:
+      - generic [ref=f3e80]:
+        - generic [ref=f3e81]: d
+        - generic [ref=f3e82]:
+          - strong [ref=f3e83]: demo_doctor
+          - generic [ref=f3e84]: 医生端
+      - button "退出登录" [ref=f3e85] [cursor=pointer]
+  - generic [ref=f3e89]:
+    - banner [ref=f3e90]:
+      - generic [ref=f3e92]:
+        - generic [ref=f3e93]: 临床工作台
+        - strong [ref=f3e94]: AI 辅助诊断
+      - generic [ref=f3e95]:
+        - generic [ref=f3e96]: 您好，demo_doctor
+        - button "将界面语言切换为英文" [ref=f3e97] [cursor=pointer]: 中 / EN
+        - button "通知" [ref=f3e99] [cursor=pointer]
+        - link "打开个人资料" [ref=f3e104] [cursor=pointer]:
+          - /url: /doctor/profile
+          - generic [ref=f3e105]: d
+          - generic [ref=f3e106]:
+            - strong [ref=f3e107]: demo_doctor
+            - generic [ref=f3e108]: 医生 · 个人资料
+    - group "已打开的工作页面" [ref=f3e111]:
+      - generic "患者工作台" [ref=f3e112]:
+        - button "患者工作台" [ref=f3e113] [cursor=pointer]
+        - button "关闭 患者工作台" [ref=f3e115] [cursor=pointer]
+      - generic "demo_patient · AI 辅助诊断" [ref=f3e119]:
+        - button "demo_patient · AI 辅助诊断" [ref=f3e120] [cursor=pointer]
+        - button "关闭 demo_patient · AI 辅助诊断" [ref=f3e122] [cursor=pointer]
+    - main [ref=f3e126]:
+      - generic [ref=f3e127]: 本地测试环境 · 包含合成演示档案与明确标注的公开 CT / MRI 测试样本
+      - generic [ref=f3e128]:
+        - button "返回工作台" [ref=f3e129] [cursor=pointer]
+        - generic [ref=f3e132]:
+          - generic [ref=f3e133]:
+            - generic [ref=f3e134]: d
+            - generic [ref=f3e135]:
+              - generic [ref=f3e136]:
+                - heading "demo_patient" [level=1] [ref=f3e137]
+                - generic [ref=f3e138]: 未知
+              - paragraph [ref=f3e139]: 1 · 46 岁 · 男 · A · Rh 未知
+          - generic [ref=f3e140]:
+            - button "从工作台移除患者 demo_patient" [ref=f3e141] [cursor=pointer]:
+              - generic [ref=f3e145]: 从工作台移除
+            - generic [ref=f3e146]: 当前状态
+            - generic [ref=f3e147]: 未知
+            - generic [ref=f3e149]: "Latest: CT Lung"
+        - navigation "Patient record sections" [ref=f3e150]:
+          - link "概览" [ref=f3e151] [cursor=pointer]:
+            - /url: /doctor/patients/1
+          - link "影像" [ref=f3e152] [cursor=pointer]:
+            - /url: /doctor/patients/1/imaging
+          - link "报告" [ref=f3e153] [cursor=pointer]:
+            - /url: /doctor/patients/1/report
+          - link "AI 辅助诊断" [ref=f3e154] [cursor=pointer]:
+            - /url: /doctor/patients/1/ai
+          - link "3D 器官模型" [ref=f3e155] [cursor=pointer]:
+            - /url: /doctor/patients/1/3d
+          - link "虚拟模拟" [ref=f3e156] [cursor=pointer]:
+            - /url: /doctor/patients/1/simulation
+        - generic [ref=f3e157]:
+          - generic [ref=f3e158]:
+            - generic [ref=f3e159]:
+              - generic [ref=f3e160]:
+                - heading "肺结节候选 Findings" [level=3] [ref=f3e161]
+                - paragraph [ref=f3e164]: 模型候选结果不是诊断结论；医生可确认、修改或忽略。
+              - generic [ref=f3e165]:
+                - generic [ref=f3e166]: 影像
+                - combobox "影像" [ref=f3e167]:
+                  - option "全部影像" [selected]
+                  - option "2026-09-20 · CT Lung"
+                  - option "2026-09-19 · CT Lung"
+                  - option "2026-09-13 · CT Lung"
+            - status [ref=f3e169]:
+              - paragraph [ref=f3e174]: 所选影像还没有肺结节候选结果。请在影像页启动检测。
+          - generic [ref=f3e175]:
+            - generic [ref=f3e176]:
+              - generic [ref=f3e178]:
+                - heading "Medical AI Assistant" [level=3] [ref=f3e179]
+                - paragraph [ref=f3e182]: Summarize the patient’s documented history with record references.
+              - generic [ref=f3e183]:
+                - generic [ref=f3e184]:
+                  - text: 器官
+                  - combobox "器官" [ref=f3e185]:
+                    - option "肺" [selected]
+                    - option "肝脏"
+                    - option "心脏"
+                    - option "肾脏"
+                    - option "脑"
+                    - option "胃"
+                    - option "胰腺"
+                    - option "脾脏"
+                    - option "眼睛"
+                    - option "其他"
+                - generic [ref=f3e186]: Question
+                - textbox "Question" [ref=f3e187]
+                - button "Ask assistant" [disabled] [ref=f3e188]
+            - complementary [ref=f3e192]:
+              - heading "Evidence & context" [level=3] [ref=f3e194]
+              - generic [ref=f3e195]:
+                - paragraph [ref=f3e196]: Only authorized records for the selected organ are included. The assistant receives record text and imaging metadata.
+                - paragraph [ref=f3e197]: 肺结节检测与器官分割是独立任务；候选框和置信度必须结合原始 CT 审核。
+                - paragraph [ref=f3e198]: 用于辅助整理资料，回答需要医生结合原始记录核实。

@@ -26,7 +26,6 @@ const tabTitles: Record<string, string> = {
   'doctor-patient-ai': 'ui.sidebar.aiDiagnosis',
   'doctor-patient-report': 'ui.sidebar.clinicalReport',
   'doctor-patient-3d': 'ui.sidebar.organ3d',
-  'doctor-report-templates': 'ui.reportTemplates.title',
   'doctor-admin-users': 'ui.adminUsers.title',
   'doctor-admin-access': 'ui.patientAccess.title',
   'doctor-admin-stats': 'ui.adminStats.title',

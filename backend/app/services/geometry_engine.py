@@ -28,6 +28,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Face connectivity matches the topology produced by marching cubes. Edge/corner
+# touches do not form one renderable surface and must not pass as "connected".
+_SURFACE_CONNECTIVITY = ndi.generate_binary_structure(3, 1)
+_MULTIPART_ANATOMY = ("costal cartilage", "costal_cartilage")
+_FRAGMENT_RECOVERY_ANATOMY = ("left rib", "right rib", "lung")
+_CT_LEFT_LUNG_LABELS = (28, 29)
+_CT_RIGHT_LUNG_LABELS = (30, 31, 32)
+
 # Physiological sRGB color palette [0-255], roughness, alphaMode
 ORGAN_STYLES = {
     # Skeletal
@@ -149,6 +157,144 @@ def overlay_style(organ_id: str, threshold: float = 0.25) -> dict:
     }
 
 
+def _occupied_slices(mask: np.ndarray) -> tuple[slice, slice, slice] | None:
+    bounds: list[slice] = []
+    for axis in range(3):
+        other_axes = tuple(index for index in range(3) if index != axis)
+        indices = np.flatnonzero(np.any(mask, axis=other_axes))
+        if not len(indices):
+            return None
+        bounds.append(slice(int(indices[0]), int(indices[-1]) + 1))
+    return tuple(bounds)
+
+
+def largest_connected_component_voxels(mask: np.ndarray) -> int:
+    """Return the largest surface-connected foreground size without empty margins."""
+    boolean = np.asarray(mask, dtype=bool)
+    occupied = _occupied_slices(boolean)
+    if occupied is None:
+        return 0
+    labeled, count = ndi.label(boolean[occupied], structure=_SURFACE_CONNECTIVITY)
+    if count == 0:
+        return 0
+    return int(np.bincount(labeled.ravel())[1:].max(initial=0))
+
+
+def repair_anatomical_mask(
+    mask: np.ndarray,
+    organ_id: str = "generic",
+    min_component_voxels: int = 50,
+) -> tuple[np.ndarray, dict]:
+    """Remove disconnected inference replicas while respecting multipart anatomy.
+
+    Most catalog labels describe one anatomical structure, so retaining several
+    unrelated large islands turns sliding-window errors into visibly shattered
+    meshes. Face connectivity matches the eventual surface topology instead of
+    treating edge/corner contacts as a joined organ. The small set of labels that
+    intentionally aggregate many structures uses an adaptive relative threshold.
+    """
+    boolean = np.asarray(mask, dtype=bool)
+    if boolean.ndim != 3:
+        raise ValueError(f"Expected 3D volume, got shape {boolean.shape}")
+    occupied = _occupied_slices(boolean)
+    if occupied is None:
+        raise ValueError("Mask contains no foreground voxels.")
+
+    sub_mask = boolean[occupied]
+    labeled, component_count = ndi.label(sub_mask, structure=_SURFACE_CONNECTIVITY)
+    sizes = np.bincount(labeled.ravel())[1:]
+    main_label = int(np.argmax(sizes) + 1)
+    clean_name = (organ_id or "").lower().replace("_", " ")
+    multipart = any(token in clean_name for token in _MULTIPART_ANATOMY)
+    recover_fragments = any(token in clean_name for token in _FRAGMENT_RECOVERY_ANATOMY)
+
+    if multipart:
+        relative_floor = max(64, int(sizes[main_label - 1] * 0.025))
+        keep_ids = np.flatnonzero(sizes >= relative_floor) + 1
+        clean_sub = np.isin(labeled, keep_ids)
+        retained_count = len(keep_ids)
+        policy = "anatomical_multipart"
+    elif recover_fragments:
+        # A rib is long and thin, and diseased lung tissue can interrupt a lobe
+        # mask. A short low-confidence gap can therefore divide one anatomical
+        # structure into several large pieces. Dropping every piece except the
+        # largest visibly amputates it. Keep only substantial pieces of the same
+        # prompt label; the relative floor still rejects stray sliding-window
+        # islands without inventing a bridge through tissue.
+        relative_floor = max(32, min_component_voxels // 2, int(sizes[main_label - 1] * 0.01))
+        keep_ids = np.flatnonzero(sizes >= relative_floor) + 1
+        clean_sub = np.isin(labeled, keep_ids)
+        retained_count = len(keep_ids)
+        policy = "elongated_fragment_recovery"
+    else:
+        clean_sub = labeled == main_label
+        retained_count = 1
+        policy = "primary_component"
+
+    clean_mask = np.zeros(boolean.shape, dtype=bool)
+    clean_mask[occupied] = clean_sub
+    original_voxels = int(boolean.sum())
+    retained_voxels = int(clean_sub.sum())
+    metadata = {
+        "component_policy": policy,
+        "original_component_count": int(component_count),
+        "retained_component_count": int(retained_count),
+        "original_voxels": original_voxels,
+        "retained_voxels": retained_voxels,
+        "retained_fraction": retained_voxels / original_voxels,
+        "min_component_voxels": int(min_component_voxels),
+    }
+    return clean_mask, metadata
+
+
+def build_ct_lung_supports(
+    label_values: np.ndarray,
+    min_component_voxels: int,
+) -> dict[str, np.ndarray]:
+    """Find the two coherent lungs and assign them using the model's lobe votes."""
+    values = np.asarray(label_values)
+    left_ids = np.asarray(_CT_LEFT_LUNG_LABELS)
+    right_ids = np.asarray(_CT_RIGHT_LUNG_LABELS)
+    lung_mask = np.isin(values, np.concatenate((left_ids, right_ids)))
+    occupied = _occupied_slices(lung_mask)
+    if occupied is None:
+        return {}
+
+    sub_values = values[occupied]
+    sub_mask = lung_mask[occupied]
+    labeled, component_count = ndi.label(sub_mask, structure=_SURFACE_CONNECTIVITY)
+    if component_count < 2:
+        return {}
+    sizes = np.bincount(labeled.ravel())[1:]
+    two_largest = (np.argsort(sizes)[-2:] + 1).tolist()
+    if any(int(sizes[label - 1]) < min_component_voxels for label in two_largest):
+        return {}
+
+    scores: dict[int, tuple[int, int]] = {}
+    for component in two_largest:
+        component_values = sub_values[labeled == component]
+        scores[component] = (
+            int(np.isin(component_values, left_ids).sum()),
+            int(np.isin(component_values, right_ids).sum()),
+        )
+    first, second = two_largest
+    direct = scores[first][0] + scores[second][1]
+    swapped = scores[second][0] + scores[first][1]
+    left_component, right_component = (first, second) if direct >= swapped else (second, first)
+    if scores[left_component][0] == 0 or scores[right_component][1] == 0:
+        return {}
+
+    supports = {}
+    for group_id, component in (
+        ("left_lung", left_component),
+        ("right_lung", right_component),
+    ):
+        support = np.zeros(values.shape, dtype=bool)
+        support[occupied] = labeled == component
+        supports[group_id] = support
+    return supports
+
+
 def extract_subvoxel_surface(
     field: np.ndarray,
     affine: np.ndarray,
@@ -158,6 +304,7 @@ def extract_subvoxel_surface(
     is_probability: bool = False,
     min_component_voxels: int = 100,
     smooth_iterations: int = 0,
+    preserve_multiple_components: bool = True,
 ) -> tuple[trimesh.Trimesh, dict]:
     """
     Extracts a high-precision, watertight, sub-voxel continuous 3D surface mesh.
@@ -187,10 +334,10 @@ def extract_subvoxel_surface(
     if num_cc > 1:
         sizes = ndi.sum(mask, labeled, range(1, num_cc + 1))
         main_label = int(np.argmax(sizes) + 1)
-        keep_mask = (labeled == main_label)
+        keep_mask = labeled == main_label
         for c in range(1, num_cc + 1):
             if c != main_label and sizes[c - 1] >= min_component_voxels:
-                keep_mask |= (labeled == c)
+                keep_mask |= labeled == c
         clean_field = field.copy()
         clean_field[~keep_mask & mask] = pad_val
     else:
@@ -198,7 +345,9 @@ def extract_subvoxel_surface(
 
     # 2. Sealed Boundary Zero-Padding (guarantees watertight closed cap at volume margins)
     pad_width = 2
-    padded_field = np.pad(clean_field, pad_width=pad_width, mode="constant", constant_values=pad_val)
+    padded_field = np.pad(
+        clean_field, pad_width=pad_width, mode="constant", constant_values=pad_val
+    )
 
     # 3. Extract surface in Pure Unit Index Space (spacing=(1.0, 1.0, 1.0))
     verts_ijk, faces, _, _ = marching_cubes(
@@ -220,8 +369,12 @@ def extract_subvoxel_surface(
     parts = mesh_ijk.split(only_watertight=False)
     if len(parts) > 1:
         valid_parts = [p for p in parts if len(p.faces) >= 100]
-        if valid_parts:
-            mesh_ijk = trimesh.util.concatenate(valid_parts) if len(valid_parts) > 1 else valid_parts[0]
+        if valid_parts and not preserve_multiple_components:
+            mesh_ijk = max(valid_parts, key=lambda part: len(part.faces))
+        elif valid_parts:
+            mesh_ijk = (
+                trimesh.util.concatenate(valid_parts) if len(valid_parts) > 1 else valid_parts[0]
+            )
 
     # 5. Controlled Feature-Preserving Taubin Smoothing in Unit Space (Optional)
     # When smooth_iterations == 0, Taubin is bypassed, delivering 100% authentic raw sub-voxel anatomy!
@@ -254,11 +407,11 @@ def extract_subvoxel_surface(
                 trimesh.repair.fill_holes(candidate_mesh)
             candidate_mesh.fix_normals()
             source_volume = abs(float(mesh_ijk.volume)) if mesh_ijk.is_watertight else 0.0
-            candidate_volume = abs(float(candidate_mesh.volume)) if candidate_mesh.is_watertight else 0.0
+            candidate_volume = (
+                abs(float(candidate_mesh.volume)) if candidate_mesh.is_watertight else 0.0
+            )
             volume_error = (
-                0.0
-                if not source_volume
-                else abs(candidate_volume - source_volume) / source_volume
+                0.0 if not source_volume else abs(candidate_volume - source_volume) / source_volume
             )
             topology_ok = candidate_mesh.is_watertight == mesh_ijk.is_watertight
             # Keep a strict gate for normal cases, but allow a bounded 5% volume
@@ -348,20 +501,12 @@ def extract_subvoxel_surface_from_mask(
     if mask.ndim != 3:
         raise ValueError(f"Expected 3D volume, got shape {mask.shape}")
 
-    # 1. Clean small noisy fragments
-    labeled, num_cc = ndi.label(mask)
-    if num_cc > 1:
-        sizes = ndi.sum(mask, labeled, range(1, num_cc + 1))
-        main_label = int(np.argmax(sizes) + 1)
-        clean_mask = (labeled == main_label)
-        for c in range(1, num_cc + 1):
-            if c != main_label and sizes[c - 1] >= min_component_voxels:
-                clean_mask |= (labeled == c)
-    else:
-        clean_mask = mask.astype(bool)
-
-    if not np.any(clean_mask):
-        raise ValueError("Mask contains no foreground voxels.")
+    # 1. Apply organ-aware topology repair before computing the continuous field.
+    clean_mask, topology = repair_anatomical_mask(
+        mask,
+        organ_id=organ_id,
+        min_component_voxels=min_component_voxels,
+    )
 
     # 2. Local bounding-box crop for rapid EDT computation
     min_c = np.empty(3, dtype=np.intp)
@@ -373,7 +518,7 @@ def extract_subvoxel_surface_from_mask(
         min_c[axis] = max(0, int(indices[0]) - margin_voxels)
         max_c[axis] = min(mask.shape[axis], int(indices[-1]) + margin_voxels + 1)
 
-    sub_mask = clean_mask[min_c[0]:max_c[0], min_c[1]:max_c[1], min_c[2]:max_c[2]]
+    sub_mask = clean_mask[min_c[0] : max_c[0], min_c[1] : max_c[1], min_c[2] : max_c[2]]
 
     # Sub-box affine: update translation
     sub_affine = affine.copy()
@@ -417,8 +562,9 @@ def extract_subvoxel_surface_from_mask(
             target_faces=target_faces,
             organ_id=organ_id,
             is_probability=False,
-            min_component_voxels=min_component_voxels,
+            min_component_voxels=1,
             smooth_iterations=smooth_iterations,
+            preserve_multiple_components=topology["component_policy"] != "primary_component",
         )
         sdf_fallback = False
     except ValueError:
@@ -435,8 +581,9 @@ def extract_subvoxel_surface_from_mask(
             target_faces=target_faces,
             organ_id=organ_id,
             is_probability=False,
-            min_component_voxels=min_component_voxels,
+            min_component_voxels=1,
             smooth_iterations=smooth_iterations,
+            preserve_multiple_components=topology["component_policy"] != "primary_component",
         )
         sdf_fallback = True
 
@@ -447,4 +594,5 @@ def extract_subvoxel_surface_from_mask(
     metadata["sdf_fallback"] = sdf_fallback
 
     metadata["voxel_volume_cm3"] = voxel_vol_cm3
+    metadata["topology"] = topology
     return mesh, metadata

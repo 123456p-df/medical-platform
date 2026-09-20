@@ -23,6 +23,7 @@ const tabs = [
   { label: 'Report', name: 'doctor-patient-report' },
   { label: 'ui.patientDetail.ai', name: 'doctor-patient-ai' },
   { label: 'ui.patientDetail.organ3d', name: 'doctor-patient-3d' },
+  { label: 'Simulation', name: 'doctor-patient-simulation' },
 ]
 
 async function loadPatient() {

@@ -1,0 +1,133 @@
+- generic [ref=f1e3]:
+  - link "跳到主要内容" [ref=f1e4] [cursor=pointer]:
+    - /url: "#main-content"
+  - button "打开 AI 助手" [ref=f1e6] [cursor=pointer]:
+    - generic [ref=f1e9]: AI 助手
+  - complementary [ref=f1e10]:
+    - generic [ref=f1e15]:
+      - strong [ref=f1e16]: PulmoLink
+      - generic [ref=f1e17]: 医学 AI 平台
+    - button "收起侧边栏" [ref=f1e18] [cursor=pointer]
+    - generic [ref=f1e22]: 临床工作台
+    - navigation "医生工作区导航" [ref=f1e23]:
+      - generic [ref=f1e24]:
+        - button "患者管理" [expanded] [ref=f1e25] [cursor=pointer]
+        - link "患者工作台" [ref=f1e34] [cursor=pointer]:
+          - /url: /doctor/dashboard
+      - generic [ref=f1e41]:
+        - button "临床工作流 demo_patient" [expanded] [ref=f1e42] [cursor=pointer]:
+          - generic [ref=f1e47]:
+            - strong [ref=f1e48]: 临床工作流
+            - generic [ref=f1e49]: demo_patient
+        - generic [ref=f1e52]:
+          - link "患者概览" [ref=f1e53] [cursor=pointer]:
+            - /url: /doctor/patients/1
+          - link "医学影像" [ref=f1e58] [cursor=pointer]:
+            - /url: /doctor/patients/1/imaging
+          - link "AI 辅助诊断" [active] [ref=f1e65] [cursor=pointer]:
+            - /url: /doctor/patients/1/ai
+          - link "临床报告" [ref=f1e69] [cursor=pointer]:
+            - /url: /doctor/patients/1/report
+          - link "3D 器官模型" [ref=f1e74] [cursor=pointer]:
+            - /url: /doctor/patients/1/3d
+    - generic [ref=f1e79]:
+      - generic [ref=f1e80]:
+        - generic [ref=f1e81]: d
+        - generic [ref=f1e82]:
+          - strong [ref=f1e83]: demo_doctor
+          - generic [ref=f1e84]: 医生端
+      - button "退出登录" [ref=f1e85] [cursor=pointer]
+  - generic [ref=f1e89]:
+    - banner [ref=f1e90]:
+      - generic [ref=f1e92]:
+        - generic [ref=f1e93]: 临床工作台
+        - strong [ref=f1e94]: AI 辅助诊断
+      - generic [ref=f1e95]:
+        - generic [ref=f1e96]: 您好，demo_doctor
+        - button "将界面语言切换为英文" [ref=f1e97] [cursor=pointer]: 中 / EN
+        - button "通知" [ref=f1e99] [cursor=pointer]
+        - link "打开个人资料" [ref=f1e104] [cursor=pointer]:
+          - /url: /doctor/profile
+          - generic [ref=f1e105]: d
+          - generic [ref=f1e106]:
+            - strong [ref=f1e107]: demo_doctor
+            - generic [ref=f1e108]: 医生 · 个人资料
+    - group "已打开的工作页面" [ref=f1e111]:
+      - generic "患者工作台" [ref=f1e112]:
+        - button "患者工作台" [ref=f1e113] [cursor=pointer]
+        - button "关闭 患者工作台" [ref=f1e115] [cursor=pointer]
+      - generic "demo_patient · AI 辅助诊断" [ref=f1e384]:
+        - button "demo_patient · AI 辅助诊断" [ref=f1e385] [cursor=pointer]
+        - button "关闭 demo_patient · AI 辅助诊断" [ref=f1e387] [cursor=pointer]
+    - main [ref=f1e119]:
+      - generic [ref=f1e120]: 本地测试环境 · 包含合成演示档案与明确标注的公开 CT / MRI 测试样本
+      - generic [ref=f1e391]:
+        - button "返回工作台" [ref=f1e392] [cursor=pointer]
+        - generic [ref=f1e395]:
+          - generic [ref=f1e396]:
+            - generic [ref=f1e397]: d
+            - generic [ref=f1e398]:
+              - generic [ref=f1e399]:
+                - heading "demo_patient" [level=1] [ref=f1e400]
+                - generic [ref=f1e401]: 未知
+              - paragraph [ref=f1e402]: 1 · 46 岁 · 男 · A · Rh 未知
+          - generic [ref=f1e403]:
+            - button "从工作台移除患者 demo_patient" [ref=f1e404] [cursor=pointer]:
+              - generic [ref=f1e408]: 从工作台移除
+            - generic [ref=f1e409]: 当前状态
+            - generic [ref=f1e410]: 未知
+            - generic [ref=f1e412]: "Latest: CT Lung"
+        - navigation "Patient record sections" [ref=f1e413]:
+          - link "概览" [ref=f1e414] [cursor=pointer]:
+            - /url: /doctor/patients/1
+          - link "影像" [ref=f1e415] [cursor=pointer]:
+            - /url: /doctor/patients/1/imaging
+          - link "报告" [ref=f1e416] [cursor=pointer]:
+            - /url: /doctor/patients/1/report
+          - link "AI 辅助诊断" [ref=f1e417] [cursor=pointer]:
+            - /url: /doctor/patients/1/ai
+          - link "3D 器官模型" [ref=f1e418] [cursor=pointer]:
+            - /url: /doctor/patients/1/3d
+        - generic [ref=f1e419]:
+          - generic [ref=f1e420]:
+            - generic [ref=f1e421]:
+              - generic [ref=f1e422]:
+                - heading "肺结节候选 Findings" [level=3] [ref=f1e423]
+                - paragraph [ref=f1e426]: 模型候选结果不是诊断结论；医生可确认、修改或忽略。
+              - generic [ref=f1e427]:
+                - generic [ref=f1e428]: 影像
+                - combobox "影像" [ref=f1e429]:
+                  - option "全部影像" [selected]
+                  - option "2026-09-20 · CT Lung"
+                  - option "2026-09-19 · CT Lung"
+                  - option "2026-09-13 · CT Lung"
+            - status [ref=f1e431]:
+              - paragraph [ref=f1e436]: 所选影像还没有肺结节候选结果。请在影像页启动检测。
+          - generic [ref=f1e437]:
+            - generic [ref=f1e438]:
+              - generic [ref=f1e440]:
+                - heading "Medical AI Assistant" [level=3] [ref=f1e441]
+                - paragraph [ref=f1e444]: Summarize the patient’s documented history with record references.
+              - generic [ref=f1e445]:
+                - generic [ref=f1e446]:
+                  - text: 器官
+                  - combobox "器官" [ref=f1e447]:
+                    - option "肺" [selected]
+                    - option "肝脏"
+                    - option "心脏"
+                    - option "肾脏"
+                    - option "脑"
+                    - option "胃"
+                    - option "胰腺"
+                    - option "脾脏"
+                    - option "眼睛"
+                    - option "其他"
+                - generic [ref=f1e448]: Question
+                - textbox "Question" [ref=f1e449]
+                - button "Ask assistant" [disabled] [ref=f1e450]
+            - complementary [ref=f1e454]:
+              - heading "Evidence & context" [level=3] [ref=f1e456]
+              - generic [ref=f1e457]:
+                - paragraph [ref=f1e458]: Only authorized records for the selected organ are included. The assistant receives record text and imaging metadata.
+                - paragraph [ref=f1e459]: 肺结节检测与器官分割是独立任务；候选框和置信度必须结合原始 CT 审核。
+                - paragraph [ref=f1e460]: 用于辅助整理资料，回答需要医生结合原始记录核实。

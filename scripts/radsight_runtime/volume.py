@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
@@ -51,10 +52,11 @@ def resolve_volume_path(file_path: str, search_roots: Optional[list[Path]] = Non
     raise FileNotFoundError(f"CT volume file not found: {file_path}")
 
 
-def inspect_nifti_volume(file_path: str, search_roots: Optional[list[Path]] = None) -> dict[str, Any]:
+@lru_cache(maxsize=16)
+def _inspect_nifti_cached(path: str, size: int, mtime_ns: int) -> dict[str, Any]:
     import nibabel as nib
 
-    resolved_path = resolve_volume_path(file_path, search_roots=search_roots)
+    resolved_path = Path(path)
     img = nib.load(str(resolved_path))
     data = img.get_fdata(dtype=np.float32)
     header = img.header
@@ -80,6 +82,20 @@ def inspect_nifti_volume(file_path: str, search_roots: Optional[list[Path]] = No
             "soft_tissue_ml": round(soft_tissue_voxels * voxel_volume_ml, 2),
             "bone_ml": round(bone_voxels * voxel_volume_ml, 2),
         },
+    }
+
+
+def inspect_nifti_volume(file_path: str, search_roots: Optional[list[Path]] = None) -> dict[str, Any]:
+    resolved_path = resolve_volume_path(file_path, search_roots=search_roots)
+    stat = resolved_path.stat()
+    # Return fresh containers so callers cannot mutate the shared cached metadata.
+    cached = _inspect_nifti_cached(str(resolved_path), stat.st_size, stat.st_mtime_ns)
+    return {
+        **cached,
+        "dimensions": list(cached["dimensions"]),
+        "spacing": list(cached["spacing"]),
+        "hu_range": list(cached["hu_range"]),
+        "estimated_volumes_ml": dict(cached["estimated_volumes_ml"]),
     }
 
 
