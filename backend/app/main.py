@@ -16,11 +16,11 @@ from app.db import make_engine, make_session_factory
 from app.errors import APIError, success
 from app.report_templates import seed_default_report_templates
 from app.routers import (
+    agent,
     ai,
     admin,
     analysis,
     auth,
-    catalog,
     dicom,
     images,
     organ_models,
@@ -257,7 +257,6 @@ def create_app(
         profile.router,
         workflow.router,
         auth.router,
-        catalog.router,
         dicom.router,
         patients.router,
         records.router,
@@ -267,6 +266,7 @@ def create_app(
         analysis.router,
         organ_models.router,
         ai.router,
+        agent.router,
         admin.router,
     ]:
         app.include_router(router, prefix="/api/v1")

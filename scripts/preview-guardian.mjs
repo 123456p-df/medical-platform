@@ -21,14 +21,12 @@ function ownerIsRunning() {
 const timer = setInterval(() => {
   if (ownerIsRunning()) return
   clearInterval(timer)
-  const result = spawnSync('powershell.exe', [
-    '-NoLogo',
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    stopScript,
-  ], {
+  const isPowershell = stopScript.endsWith('.ps1') || process.platform === 'win32'
+  const cmd = isPowershell ? 'powershell.exe' : 'bash'
+  const args = isPowershell
+    ? ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', stopScript]
+    : [stopScript]
+  const result = spawnSync(cmd, args, {
     cwd: root,
     env: process.env,
     stdio: 'ignore',

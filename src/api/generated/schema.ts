@@ -208,6 +208,151 @@ export type paths = {
         patch: operations["set_user_status_api_v1_admin_users__user_id__status_patch"];
         trace?: never;
     };
+    "/api/v1/agent/chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat Stream
+         * @description Stream agent chat turn using Server-Sent Events (SSE).
+         *     Saves the user message and final assistant response to PostgreSQL.
+         */
+        post: operations["chat_stream_api_v1_agent_chat_stream_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversations
+         * @description List persistent agent conversations for the given patient.
+         */
+        get: operations["list_conversations_api_v1_agent_conversations_get"];
+        put?: never;
+        /**
+         * Create Conversation
+         * @description Create a new agent conversation for the patient.
+         */
+        post: operations["create_conversation_api_v1_agent_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation Messages
+         * @description Retrieve message history for a conversation.
+         */
+        get: operations["get_conversation_messages_api_v1_agent_conversations__conversation_id__messages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/internal/patients/{patient_id}/ct_scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Patient Ct Scans Internal
+         * @description Returns all CT scans and series available for the given patient.
+         */
+        get: operations["get_patient_ct_scans_internal_api_v1_agent_internal_patients__patient_id__ct_scans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/internal/patients/{patient_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Patient Records Internal
+         * @description Returns clinical profile and medical history for the given patient.
+         */
+        get: operations["get_patient_records_internal_api_v1_agent_internal_patients__patient_id__records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/internal/patients/{patient_id}/segmentation_qc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Segmentation Qc Internal
+         * @description Returns 3D segmented organ volumes and quality metrics.
+         */
+        get: operations["get_segmentation_qc_internal_api_v1_agent_internal_patients__patient_id__segmentation_qc_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Status
+         * @description Check Pi runtime readiness, configured LLM provider, and RadSight microservice.
+         */
+        get: operations["get_agent_status_api_v1_agent_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/chat": {
         parameters: {
             query?: never;
@@ -989,8 +1134,8 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        /** Images */
-        get: operations["images_api_v1_patients__patient_id__medical_images_get"];
+        /** List Patient Images */
+        get: operations["list_patient_images_api_v1_patients__patient_id__medical_images_get"];
         put?: never;
         /** Upload Image */
         post: operations["upload_image_api_v1_patients__patient_id__medical_images_post"];
@@ -1007,8 +1152,8 @@ export type paths = {
             path?: never;
             cookie?: never;
         };
-        /** Records */
-        get: operations["records_api_v1_patients__patient_id__medical_records_get"];
+        /** List Patient Records */
+        get: operations["list_patient_records_api_v1_patients__patient_id__medical_records_get"];
         put?: never;
         /** Create Record */
         post: operations["create_record_api_v1_patients__patient_id__medical_records_post"];
@@ -1455,6 +1600,21 @@ export type components = {
             /** References */
             references: components["schemas"]["Reference"][];
         };
+        /** ChatStreamInput */
+        ChatStreamInput: {
+            /** Active Series Id */
+            active_series_id?: string | null;
+            /** Active Slice */
+            active_slice?: number | null;
+            /** Active Study Id */
+            active_study_id?: string | null;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message */
+            message: string;
+            /** Patient Id */
+            patient_id: number;
+        };
         /** ComparisonCandidateOut */
         ComparisonCandidateOut: {
             /** Comparable */
@@ -1486,6 +1646,16 @@ export type components = {
             warnings?: string[];
             /** World Matrix */
             world_matrix?: number[][] | null;
+        };
+        /** CreateConversationInput */
+        CreateConversationInput: {
+            /** Patient Id */
+            patient_id: number;
+            /**
+             * Title
+             * @default AI 放射与病历会诊
+             */
+            title: string | null;
         };
         /** Credentials */
         Credentials: {
@@ -4867,6 +5037,1227 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Envelope_AdminUserOut_"];
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    chat_stream_api_v1_agent_chat_stream_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatStreamInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    list_conversations_api_v1_agent_conversations_get: {
+        parameters: {
+            query: {
+                /** @description Patient ID to filter conversations */
+                patient_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    create_conversation_api_v1_agent_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateConversationInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    get_conversation_messages_api_v1_agent_conversations__conversation_id__messages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    get_patient_ct_scans_internal_api_v1_agent_internal_patients__patient_id__ct_scans_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patient_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    get_patient_records_internal_api_v1_agent_internal_patients__patient_id__records_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patient_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    get_segmentation_qc_internal_api_v1_agent_internal_patients__patient_id__segmentation_qc_get: {
+        parameters: {
+            query?: {
+                study_id?: string | null;
+            };
+            header?: never;
+            path: {
+                patient_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Error envelope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+            /** @description Error envelope */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        code: number;
+                        data: null;
+                        message: string;
+                    };
+                };
+            };
+        };
+    };
+    get_agent_status_api_v1_agent_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Error envelope */
@@ -13272,7 +14663,7 @@ export interface operations {
             };
         };
     };
-    images_api_v1_patients__patient_id__medical_images_get: {
+    list_patient_images_api_v1_patients__patient_id__medical_images_get: {
         parameters: {
             query?: {
                 page?: number;
@@ -13583,7 +14974,7 @@ export interface operations {
             };
         };
     };
-    records_api_v1_patients__patient_id__medical_records_get: {
+    list_patient_records_api_v1_patients__patient_id__medical_records_get: {
         parameters: {
             query?: {
                 page?: number;

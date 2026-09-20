@@ -1,10 +1,11 @@
 from contextvars import ContextVar
 from uuid import uuid4
+
 from sqlalchemy.orm import Session
 
 from app.models import AuditEvent
 
-_audit_context: ContextVar[dict] = ContextVar("audit_context", default={})
+_audit_context: ContextVar[dict | None] = ContextVar("audit_context", default=None)
 
 
 def set_request_context(request_id: str | None, ip_address: str | None, user_agent: str | None):
@@ -33,7 +34,7 @@ def audit(
     after=None,
 ):
     # Only record allowlisted snapshots. Never log credentials or identity numbers.
-    context = _audit_context.get()
+    context = _audit_context.get() or {}
     db.add(
         AuditEvent(
             actor_user_id=actor,

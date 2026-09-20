@@ -45,6 +45,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "@types/three": "^0.172.0",

@@ -19,6 +19,7 @@ import { positionToSlice, sliceToPosition } from '@/utils/sliceSync'
 import { localPreview } from '@/utils/runtime'
 import { VolumeRenderer } from '@/utils/volumeRenderer'
 import { activeMedicalTool } from '@/composables/useViewportGestures'
+import { ApiError } from '@/api/client'
 import { t } from '@/i18n'
 
 const ORIENTATION_OPTIONS = [
@@ -377,7 +378,17 @@ async function loadBatch(id: string, target: typeof batch) {
     target.value = await viewerApi.getBatch(id)
   } catch (reason) {
     target.value = null
-    if (reason instanceof Error && !reason.message.includes('not found') && !reason.message.includes('Segmentation')) {
+    if (reason instanceof ApiError && (reason.status === 404 || reason.code === 40406 || reason.code === 40410)) {
+      return
+    }
+    if (
+      reason instanceof Error &&
+      !reason.message.includes('not found') &&
+      !reason.message.includes('Segmentation') &&
+      !reason.message.includes('分割') &&
+      !reason.message.includes('DICOM') &&
+      !reason.message.includes('未找到')
+    ) {
       error.value = reason.message
     }
   }
@@ -469,6 +480,25 @@ async function startBatchSegmentation() {
   } finally {
     batchBusy.value = false
   }
+}
+
+function formatBatchStatus(b: SegmentationBatch | null): string {
+  if (!b) return ''
+  if (b.status === 'queued') return t('ui.viewer3d.status.queued')
+  if (b.status === 'running') return t('ui.viewer3d.status.running', { progress: b.progress })
+  if (b.status === 'completed') return t('ui.viewer3d.status.completed')
+  if (b.status === 'partial') return t('ui.viewer3d.status.partial')
+  if (b.status === 'failed') return t('ui.viewer3d.status.failed')
+  return b.status
+}
+
+function formatSceneStatus(b: SegmentationBatch | null): string {
+  if (!b) return t('ui.viewer3d.notSegmented')
+  if (b.status === 'queued') return t('ui.viewer3d.status.queued')
+  if (b.status === 'running') return t('ui.viewer3d.status.runningScene', { progress: b.progress })
+  if (b.status === 'completed') return t('ui.viewer3d.status.completed')
+  if (b.status === 'failed') return t('ui.viewer3d.status.failed')
+  return ''
 }
 
 function selectStudy(id: string) {
@@ -799,7 +829,7 @@ onBeforeUnmount(() => {
           {{ batchBusy ? $t('ui.viewer3d.starting') : batch?.status === 'failed' ? $t('ui.viewer3d.resegment') : $t('ui.viewer3d.startSegmentation') }}
         </button>
         <p v-else class="batch-status" :class="batch.status">
-          {{ $t('ui.viewer3d.segmentationProgress', { status: batch.status, progress: batch.progress, completed: batch.completed_count, total: batch.total_labels }) }}
+          {{ formatBatchStatus(batch) }}
         </p>
       </div>
     </header>
@@ -818,7 +848,7 @@ onBeforeUnmount(() => {
             :shape="shapeOf(primary)"
             :spacing="spacingOf(primary)"
             :affine="affineOf(primary)"
-            :status="batch ? $t('ui.viewer3d.segmentationStatus', { status: batch.status }) : $t('ui.viewer3d.notSegmented')"
+            :status="formatSceneStatus(batch)"
             :organ-meta="organMetaMap"
             :findings="findings"
             :active-finding-id="activeFindingId"

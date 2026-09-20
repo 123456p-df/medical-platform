@@ -6,14 +6,14 @@ from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.audit import audit
 from app.deps import DB, Config, CurrentUser, check_patient_access
 from app.errors import APIError, Envelope, success
 from app.models import MedicalImage, OrganModel, SegmentationBatch
 from app.organs import require_organ
-from app.schemas import ComparisonCandidateOut, ImageAcquisitionPatch, ImageOut
+from app.schemas import ComparisonCandidateOut, ImageAcquisitionPatch, ImageOut, ImagePage
 from app.services.comparison import compare_studies
 from app.services.dicom_ingest import collect_dicom_bytes, convert_series, series_from_files
 from app.services.imaging import (
@@ -351,4 +351,34 @@ def get_slice(
             "X-Slice-Axis": axis,
             "Cache-Control": "private, max-age=120",
         },
+    )
+
+
+@router.get("/patients/{patient_id}/medical-images", response_model=Envelope[ImagePage])
+def list_patient_images(
+    patient_id: int,
+    db: DB,
+    user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    check_patient_access(db, user, patient_id)
+    query = select(MedicalImage).where(MedicalImage.patient_id == patient_id)
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
+    rows = db.scalars(
+        query.order_by(
+            MedicalImage.study_date.desc().nullslast(),
+            MedicalImage.created_at.desc(),
+            MedicalImage.id.desc(),
+        )
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return success(
+        {
+            "items": [image_out(row, db) for row in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
     )

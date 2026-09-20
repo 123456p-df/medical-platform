@@ -1,4 +1,6 @@
 allowBuilds:
+  '@google/genai': false
   core-js-pure: true
   esbuild: true
+  protobufjs: false
   vue-demi: true

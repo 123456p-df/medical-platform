@@ -324,3 +324,33 @@ def delete_record(record_id: int, db: DB, user: CurrentUser):
     )
     db.commit()
     return success(None)
+
+
+@router.get("/patients/{patient_id}/medical-records", response_model=Envelope[RecordPage])
+def list_patient_records(
+    patient_id: int,
+    db: DB,
+    user: CurrentUser,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    check_patient_access(db, user, patient_id)
+    query = select(MedicalRecord).where(
+        MedicalRecord.patient_id == patient_id, MedicalRecord.deleted_at.is_(None)
+    )
+    if user.role == "patient":
+        query = query.where(MedicalRecord.reviewed.is_(True))
+    total = db.scalar(select(func.count()).select_from(query.subquery()))
+    rows = db.scalars(
+        query.order_by(MedicalRecord.record_date.desc(), MedicalRecord.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    return success(
+        {
+            "items": [record_out(db, row) for row in rows],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )

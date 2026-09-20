@@ -41,6 +41,13 @@ from app.config import Settings
 from app.services.geometry_engine import extract_subvoxel_surface_from_mask
 from app.services.imaging import refine_boundary_native_grid
 from app.services.label_catalog import LabelCatalog, keep_detected_label
+from app.services.nv_runtime import (
+    apply_non_cuda_torch_patches,
+    load_vista3d_inner_weights,
+    resolve_nv_segment_device,
+    wrap_pipeline_for_device,
+)
+from app.services.organ_metrics import assert_body_label_map_sane
 
 logger = logging.getLogger(__name__)
 
@@ -106,20 +113,38 @@ class NVSegmentCT:
             if str(folder) not in sys.path:
                 sys.path.insert(0, str(folder))
             helper_cls = importlib.import_module("hugging_face_pipeline").HuggingFacePipelineHelper
-            device = torch.device(self.settings.nv_segment_device)
+            apply_non_cuda_torch_patches()
+            device_name = resolve_nv_segment_device(self.settings.nv_segment_device)
+            init_device = torch.device(device_name)
 
             logger.info(
-                "Initializing NV-Segment-CTMR pipeline (1.0mm isotropic, roi=%s, overlap=%s)",
+                "Initializing NV-Segment-CTMR pipeline (device=%s, 1.0mm isotropic, roi=%s, overlap=%s)",
+                device_name,
                 self.settings.nv_segment_roi_size,
                 self.settings.nv_segment_overlap,
             )
-            self.pipeline = helper_cls("vista3d").init_pipeline(
-                str(folder / "vista3d_pretrained_model"),
+            weights_dir = folder / "vista3d_pretrained_model"
+            pipeline = helper_cls("vista3d").init_pipeline(
+                str(weights_dir),
                 resample_spacing=(1.0, 1.0, 1.0),
                 roi_size=self.settings.nv_segment_roi_size,
                 overlap=self.settings.nv_segment_overlap,
-                device=device,
+                device=init_device,
             )
+            loaded = load_vista3d_inner_weights(pipeline.model, weights_dir)
+            logger.info("Reloaded %s inner VISTA3D tensors after HuggingFace prefix mismatch", loaded)
+            if device_name == "mps":
+                pipeline.device = torch.device("mps")
+                if hasattr(pipeline, "model"):
+                    pipeline.model.to("mps")
+            self.pipeline = wrap_pipeline_for_device(pipeline, device_name)
+            self._resolved_device = device_name
+
+    @staticmethod
+    def _predictions_to_cpu(outputs):
+        if torch is not None and isinstance(outputs, dict) and torch.is_tensor(outputs.get("pred")):
+            outputs["pred"] = outputs["pred"].detach().cpu()
+        return outputs
 
     def run_batch(
         self,
@@ -142,7 +167,7 @@ class NVSegmentCT:
         prep = self.pipeline.preprocess({"image": str(image_path), "modality": modality})
         affine_1mm = prep["image"].affine[0].cpu().numpy()
         progress(25)
-        outputs = self.pipeline._forward(prep)
+        outputs = self._predictions_to_cpu(self.pipeline._forward(prep))
         progress(60)
         decol_data = decollate_batch(outputs)[0]
         post_res = VistaPostTransformd(keys="pred")(decol_data)
@@ -150,6 +175,7 @@ class NVSegmentCT:
         label_map = np.asarray(label_map).squeeze()
         if label_map.ndim != 3:
             raise ValueError(f"Expected a 3D all-label prediction, got shape {label_map.shape}")
+        assert_body_label_map_sane(label_map, modality=modality)
 
         max_label = int(label_map.max()) if label_map.size else 0
         dtype = np.uint8 if max_label <= np.iinfo(np.uint8).max else np.uint16
@@ -244,11 +270,11 @@ class NVSegmentCT:
         # 2. Global sliding-window forward pass using configured device and memory budget.
         logger.info(
             "[Pure 1-Stage] Running 1.0mm inference on %s (roi=%s, overlap=%s)...",
-            self.settings.nv_segment_device,
+            getattr(self, "_resolved_device", self.settings.nv_segment_device),
             self.settings.nv_segment_roi_size,
             self.settings.nv_segment_overlap,
         )
-        outputs = self.pipeline._forward(prep)
+        outputs = self._predictions_to_cpu(self.pipeline._forward(prep))
         progress(70)
 
         # 3. Postprocess multi-class field on 1.0mm grid

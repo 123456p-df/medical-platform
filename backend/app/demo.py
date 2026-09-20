@@ -24,20 +24,41 @@ DEMO_SCAN_FILENAMES = {
     "patient-001": "0.nii",
     "patient-002": "1.nii",
 }
+ADDITIONAL_DEMO_SCANS = [
+    # (fixture_id, filename, image_id, day_offset, diagnosis, description)
+    (
+        "patient-001",
+        "10.nii",
+        "img_demo_0003",
+        0,
+        "复查胸部 CT 扫描",
+        "双肺随访复查，对比基线影像未见明显新发实质性病灶。",
+    ),
+]
 DEMO_PASSWORD = "123456"
 
 
-def demo_scan_path(filename: str) -> Path | None:
+def demo_scan_path(filename: str, required: bool = True) -> Path | None:
     configured_root = os.environ.get("VMRB_DEMO_SCAN_DIR")
     if not configured_root:
         return None
     root = Path(configured_root).expanduser()
-    for candidate in (root / filename, root / f"{filename}.gz"):
+    base = filename.removesuffix(".gz").removesuffix(".nii")
+    candidates = (
+        root / filename,
+        root / f"{filename}.gz",
+        root / f"{filename}.nii.gz",
+        root / f"{base}.nii.gz",
+        root / f"{base}.nii",
+    )
+    for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise FileNotFoundError(
-        f"Demo scan {filename} was not found in {root}; set VMRB_DEMO_SCAN_DIR to the sample directory"
-    )
+    if required:
+        raise FileNotFoundError(
+            f"Demo scan {filename} was not found in {root}; set VMRB_DEMO_SCAN_DIR to the sample directory"
+        )
+    return None
 
 
 def install_demo_image(db, settings, patient_id: int, image_id: str, source: Path, day_offset: int):
@@ -134,22 +155,66 @@ def seed(settings):
                 if source is not None:
                     image_id = f"img_demo_{index + 1:04d}"
                     is_new = install_demo_image(
-                        db, settings, patient_id, image_id, source, index
+                        db, settings, patient_id, image_id, source, index * 7 + 7
                     )
-                    if is_new:
+                    if is_new or not db.scalar(
+                        select(MedicalRecord).where(MedicalRecord.examination_id == image_id)
+                    ):
                         template = DEMO_FIXTURE.record_template
-                        for days in template.day_offsets:
-                            db.add(
-                                MedicalRecord(
-                                    patient_id=patient_id,
-                                    doctor_id=doctor.id,
-                                    organ_id=template.organ_id,
-                                    diagnosis=template.diagnosis,
-                                    description=template.description,
-                                    record_date=date.today() - timedelta(days=days + index),
-                                )
+                        diagnosis = "基线胸部 CT 扫描" if index == 0 else "常规胸部 CT 体检"
+                        desc = "右肺及各叶段走形正常，初次影像归档。" if index == 0 else "双侧胸廓对称，未见明显活动性病变。"
+                        db.add(
+                            MedicalRecord(
+                                patient_id=patient_id,
+                                doctor_id=doctor.id,
+                                examination_id=image_id,
+                                organ_id=template.organ_id,
+                                diagnosis=diagnosis,
+                                description=desc,
+                                record_date=date.today() - timedelta(days=index * 7 + 7),
                             )
+                        )
                 db.commit()
+
+            for (
+                fixture_id,
+                filename,
+                image_id,
+                day_offset,
+                diagnosis,
+                description,
+            ) in ADDITIONAL_DEMO_SCANS:
+                add_source = demo_scan_path(filename, required=False)
+                if add_source is not None:
+                    target_fixture_patient = next(
+                        (p for p in DEMO_PATIENTS if p.fixture_id == fixture_id), None
+                    )
+                    if target_fixture_patient:
+                        user = db.scalar(
+                            select(User).where(User.username == target_fixture_patient.username)
+                        )
+                        if user:
+                            patient = db.scalar(select(Patient).where(Patient.user_id == user.id))
+                            if patient:
+                                patient_id = patient.id
+                                is_new = install_demo_image(
+                                    db, settings, patient_id, image_id, add_source, day_offset
+                                )
+                                if is_new or not db.scalar(
+                                    select(MedicalRecord).where(MedicalRecord.examination_id == image_id)
+                                ):
+                                    db.add(
+                                        MedicalRecord(
+                                            patient_id=patient_id,
+                                            doctor_id=doctor.id,
+                                            examination_id=image_id,
+                                            organ_id="lung",
+                                            diagnosis=diagnosis,
+                                            description=description,
+                                            record_date=date.today() - timedelta(days=day_offset),
+                                        )
+                                    )
+                                    db.commit()
 
             for organ in ORGANS:
                 if organ == "other":
@@ -200,7 +265,7 @@ if __name__ == "__main__":
         raise SystemExit("Demo seed is restricted to the explicitly enabled vmrb_preview database")
     seed(settings)
     scan_count = sum(
-        demo_scan_path(DEMO_SCAN_FILENAMES[item.fixture_id]) is not None
+        demo_scan_path(DEMO_SCAN_FILENAMES[item.fixture_id], required=False) is not None
         for item in DEMO_PATIENTS
-    )
+    ) + sum(demo_scan_path(item[1], required=False) is not None for item in ADDITIONAL_DEMO_SCANS)
     print(f"Demo accounts and patients are ready ({scan_count} CT fixtures configured).")

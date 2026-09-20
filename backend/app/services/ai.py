@@ -10,8 +10,6 @@ from app.errors import APIError
 from app.models import MedicalImage, MedicalRecord, OrganModel, SegmentationTask
 from app.organs import ORGANS
 
-
-
 _PHI_PATTERNS = (
     re.compile(r"\b\d{17}[\dXx]\b"),
     re.compile(r"(?<!\d)1\d{10}(?!\d)"),

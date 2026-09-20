@@ -29,6 +29,7 @@ from app.services.glb import (
 from app.services.imaging import mask_to_glb, prepare_label_cache
 from app.services.label_catalog import LabelCatalog
 from app.services.mri_metadata import resolve_segmentation_mode
+from app.services.organ_metrics import choose_volume_cm3
 from app.services.storage import relative_path, stored_path
 
 logger = logging.getLogger(__name__)
@@ -476,7 +477,7 @@ class SegmentationRunner:
                 batch.updated_at = utcnow()
                 db.commit()
         except Exception as exc:
-            logger.error("Segmentation batch %s failed (%s)", batch_id, type(exc).__name__)
+            logger.exception("Segmentation batch %s failed", batch_id)
             with self.sessions() as db:
                 db.execute(
                     update(SegmentationBatch)
@@ -571,8 +572,7 @@ class SegmentationRunner:
             )
             model_id = f"model_{uuid4().hex}"
             glb_data = export_mesh_glb(mesh)
-            volume = metadata.get("volume_cm3")
-            volume = float(volume) if volume is not None and np.isfinite(volume) else None
+            volume = choose_volume_cm3(metadata)
             centroid = metadata.get("centroid_m")
             bounds = {
                 "min_m": metadata.get("bounds_min_m"),

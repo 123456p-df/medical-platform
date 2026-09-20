@@ -13,13 +13,12 @@ Strictly complies with the 32-point truth baseline and verified audit:
 """
 
 import logging
-from typing import Dict, Optional, Tuple
 
 import nibabel as nib
 import numpy as np
 import scipy.ndimage as ndi
-from skimage.measure import marching_cubes
 import trimesh
+from skimage.measure import marching_cubes
 from trimesh.visual.material import PBRMaterial
 
 try:
@@ -105,7 +104,7 @@ def srgb_to_linear(color_srgb: list) -> list:
     return [float(r), float(g), float(b), float(a)]
 
 
-def get_style_for_organ(organ_id: str) -> Tuple[list, float, str]:
+def get_style_for_organ(organ_id: str) -> tuple[list, float, str]:
     """Returns (linear_color, roughness, alpha_mode) for an organ."""
     clean = (organ_id or "").lower().replace(" ", "_")
     for key, (srgb, roughness, alpha_mode) in ORGAN_STYLES.items():
@@ -159,7 +158,7 @@ def extract_subvoxel_surface(
     is_probability: bool = False,
     min_component_voxels: int = 100,
     smooth_iterations: int = 0,
-) -> Tuple[trimesh.Trimesh, Dict]:
+) -> tuple[trimesh.Trimesh, dict]:
     """
     Extracts a high-precision, watertight, sub-voxel continuous 3D surface mesh.
 
@@ -339,7 +338,7 @@ def extract_subvoxel_surface_from_mask(
     smooth_iterations: int = 0,
     margin_voxels: int = 4,
     sdf_sigma: float = 0.0,
-) -> Tuple[trimesh.Trimesh, Dict]:
+) -> tuple[trimesh.Trimesh, dict]:
     """
     Extracts a high-precision watertight sub-voxel 3D surface mesh from a binary mask.
     Uses narrow-band Signed Distance Field (SDF) zero-crossing at level=0.0.

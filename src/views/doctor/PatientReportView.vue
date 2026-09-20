@@ -124,6 +124,24 @@ function fillForm(report?: Report) {
   nextTick(() => { hydrating = false })
 }
 
+function onFillReportEvent(e: Event) {
+  const customEvent = e as CustomEvent<any>
+  if (customEvent.detail) {
+    if (customEvent.detail.impression) form.diagnosis = customEvent.detail.impression
+    if (customEvent.detail.findings) form.description = customEvent.detail.findings
+    if (customEvent.detail.recommendations) form.recommendation = customEvent.detail.recommendations
+    message.value = '已从 AI Copilot 成功填入诊断报告草稿！'
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('vmrb-fill-radiology-report', onFillReportEvent)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('vmrb-fill-radiology-report', onFillReportEvent)
+})
+
 watch([currentReport, activeExamination], () => fillForm(currentReport.value), { immediate: true })
 watch(activeExamination, () => { void loadTemplates() }, { immediate: true })
 watch(locale, () => { if (!dirty.value) fillForm(currentReport.value) })

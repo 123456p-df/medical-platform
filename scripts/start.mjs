@@ -63,7 +63,7 @@ function runToCompletion(command, args, env = process.env) {
   })
 }
 
-function startWindowsGuardian(stopScript) {
+function startGuardian(stopScript) {
   const guardianScript = fileURLToPath(new URL('./preview-guardian.mjs', import.meta.url))
   const guardian = spawn(
     process.execPath,
@@ -130,35 +130,48 @@ const frontendOnly = process.argv.includes('--frontend-only')
 if (frontendOnly) {
   console.log('Starting the frontend-only synthetic demo...')
   run(process.execPath, viteArgs, { ...process.env, VITE_LOCAL_PREVIEW: 'true' })
-} else if (process.platform === 'win32' && !configuredBackend) {
+} else if (!configuredBackend && !process.env.VMRB_USE_DOCKER) {
   ensureLocalConfiguration()
-  const startScript = fileURLToPath(new URL('./start-preview.ps1', import.meta.url))
-  const stopScript = fileURLToPath(new URL('./stop-preview.ps1', import.meta.url))
-  const powershellArgs = script => [
-    '-NoLogo',
-    '-NoProfile',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    script,
-  ]
-  console.log('Starting local PostgreSQL, FastAPI, and the frontend on Windows...')
-  const code = await runToCompletion('powershell.exe', powershellArgs(startScript))
-  if (code !== 0) process.exit(code)
-  // Ctrl+C is delivered to the whole pnpm console process tree on Windows and
-  // can interrupt in-process cleanup. A detached guardian performs the same
-  // cleanup after this launcher disappears, including when the terminal closes.
-  startWindowsGuardian(stopScript)
+  const isWindows = process.platform === 'win32'
+  const startScript = fileURLToPath(new URL(isWindows ? './start-preview.ps1' : './start-preview.sh', import.meta.url))
+  const stopScript = fileURLToPath(new URL(isWindows ? './stop-preview.ps1' : './stop-preview.sh', import.meta.url))
+  const scriptArgs = script => isWindows
+    ? ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script]
+    : [script]
+  const launcher = isWindows ? 'powershell.exe' : 'bash'
+
+  const platformName = isWindows ? 'Windows' : (process.platform === 'darwin' ? 'macOS' : 'Linux')
+  console.log(`Starting local PostgreSQL, FastAPI, and the frontend natively on ${platformName}...`)
+  const code = await runToCompletion(launcher, scriptArgs(startScript))
+  if (code !== 0) {
+    spawnSync(launcher, scriptArgs(stopScript), {
+      cwd: root,
+      env: process.env,
+      stdio: 'inherit',
+      windowsHide: true,
+    })
+    process.exit(code)
+  }
+  // Ctrl+C is delivered to the console process tree and can interrupt
+  // in-process cleanup. A detached guardian performs the same cleanup
+  // after this launcher disappears, including when the terminal closes.
+  startGuardian(stopScript)
   const healthy = await backendIsHealthy('http://127.0.0.1:8000')
   if (!healthy) {
-    console.error('The Windows launcher returned, but FastAPI is not healthy on port 8000.')
+    console.error('The native launcher returned, but FastAPI is not healthy on port 8000.')
+    spawnSync(launcher, scriptArgs(stopScript), {
+      cwd: root,
+      env: process.env,
+      stdio: 'inherit',
+      windowsHide: true,
+    })
     process.exit(1)
   }
   console.log('Full stack is ready at http://127.0.0.1:4173. Press Ctrl+C to stop it.')
   await new Promise(resolve => {
     // Signal listeners alone do not keep Node's event loop alive. Keep a
     // referenced timer until shutdown so pnpm start remains the foreground
-    // owner of the Windows services it launched.
+    // owner of the services it launched.
     const keepAlive = setInterval(() => {}, 60_000)
     let stopping = false
     const stop = () => {
@@ -166,7 +179,7 @@ if (frontendOnly) {
       stopping = true
       clearInterval(keepAlive)
       console.log('\nStopping the local full stack...')
-      const result = spawnSync('powershell.exe', powershellArgs(stopScript), {
+      const result = spawnSync(launcher, scriptArgs(stopScript), {
         cwd: root,
         env: process.env,
         stdio: 'inherit',

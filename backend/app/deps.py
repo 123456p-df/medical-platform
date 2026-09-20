@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.errors import APIError
-from app.models import BreakGlassGrant, Doctor, DoctorPatientAccess, JwtRevocation, Patient, User, utcnow
+from app.models import (
+    BreakGlassGrant,
+    Doctor,
+    DoctorPatientAccess,
+    JwtRevocation,
+    Patient,
+    User,
+    utcnow,
+)
 from app.security import decode_token
 
 bearer = HTTPBearer(auto_error=False)
