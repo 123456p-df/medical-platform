@@ -1,6 +1,11 @@
 export const enUS: Record<string, string> = {
   'ui.copilot.brand': "AI Copilot",
   'ui.copilot.talkToCt': "Talk to CT",
+  'ui.copilot.mode': 'Imaging consult',
+  'ui.copilot.recordsMode': 'Record Q&A',
+  'ui.copilot.history': 'Conversation history',
+  'ui.copilot.newChat': 'New conversation',
+  'ui.copilot.noHistory': 'No conversations yet. Send a message to begin.',
   'ui.copilot.title': "AI Imaging Copilot",
   'ui.copilot.engine': "Pi RPC + RadSight-8B",
   'ui.copilot.welcome': "Hello, I am your imaging and clinical decision copilot.",

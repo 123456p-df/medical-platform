@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { usePatientStore } from '@/stores/patients'
+import { localPreview } from '@/utils/runtime'
 import {
   getAgentStatus,
   listAgentConversations,
@@ -9,6 +12,7 @@ import {
   streamAgentChat,
   type AgentStatus,
   type AgentMessageItem,
+  type AgentConversationItem,
   type StructuredReport,
   type StructuredTreatmentPlan,
 } from '@/api/agent'
@@ -16,16 +20,21 @@ import ReportCard from './ReportCard.vue'
 import TreatmentPlanCard from './TreatmentPlanCard.vue'
 
 const route = useRoute()
+const auth = useAuthStore()
+const patients = usePatientStore()
+defineProps<{ open: boolean }>()
+const emit = defineEmits<{ close: []; openRecords: [] }>()
 
 // UI State
-const isOpen = ref(false)
 const isExpanded = ref(false)
+const historyOpen = ref(true)
 const inputMessage = ref('')
 const isStreaming = ref(false)
 const statusInfo = ref<AgentStatus | null>(null)
+const historyError = ref('')
 
 // Conversation State
-const conversations = ref<Array<{ id: string; title: string }>>([])
+const conversations = ref<AgentConversationItem[]>([])
 const activeConversationId = ref<string>('')
 const messages = ref<AgentMessageItem[]>([])
 
@@ -37,6 +46,27 @@ const currentReport = ref<StructuredReport | null>(null)
 const currentPlan = ref<StructuredTreatmentPlan | null>(null)
 const selectedCTSeries = ref<string>('')
 
+type PreviewConversation = AgentConversationItem & { messages: AgentMessageItem[] }
+const patientScope = computed(() => String(route.params.id || patients.selectedPatientId || ''))
+const previewKey = computed(() => `pulmolink-agent-history-v1:${auth.session?.username || 'anonymous'}:${patientScope.value || 'none'}`)
+
+function readPreviewConversations(): PreviewConversation[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(previewKey.value) || '[]')
+    return Array.isArray(value) ? value : []
+  } catch { return [] }
+}
+
+function savePreviewMessages() {
+  if (!localPreview || !activeConversationId.value) return
+  const list = readPreviewConversations()
+  const entry = list.find(item => item.id === activeConversationId.value)
+  if (!entry) return
+  entry.messages = [...messages.value]
+  entry.updated_at = new Date().toISOString()
+  localStorage.setItem(previewKey.value, JSON.stringify(list))
+}
+
 function extractTreatmentPlan(content: string | undefined | null): StructuredTreatmentPlan | null {
   if (!content) return null
   const start = content.indexOf('[TREATMENT_PLAN_START]')
@@ -44,6 +74,18 @@ function extractTreatmentPlan(content: string | undefined | null): StructuredTre
   if (start < 0 || end < 0) return null
   try {
     return JSON.parse(content.slice(start + '[TREATMENT_PLAN_START]'.length, end))
+  } catch {
+    return null
+  }
+}
+
+function extractReport(content: string | undefined | null): StructuredReport | null {
+  if (!content) return null
+  const start = content.indexOf('[REPORT_CARD_START]')
+  const end = content.indexOf('[REPORT_CARD_END]')
+  if (start < 0 || end < 0) return null
+  try {
+    return JSON.parse(content.slice(start + '[REPORT_CARD_START]'.length, end))
   } catch {
     return null
   }
@@ -75,9 +117,9 @@ const radsightStatusLabel = computed(() => {
 })
 
 const currentPatientId = computed<number>(() => {
-  const pId = route.params.patientId || route.params.id || route.query.patientId
-  if (pId && !isNaN(Number(pId))) return Number(pId)
-  return 1 // Default demo patient
+  const pId = route.params.patientId || route.params.id || route.query.patientId || patients.selectedPatientId
+  if (pId && /^[1-9]\d*$/.test(String(pId))) return Number(pId)
+  return localPreview ? 1 : 0
 })
 
 const activeStudyId = computed<string>(() => {
@@ -95,6 +137,7 @@ function scrollToBottom() {
 }
 
 async function loadStatus() {
+  if (localPreview) return
   try {
     statusInfo.value = await getAgentStatus()
   } catch (err) {
@@ -103,39 +146,64 @@ async function loadStatus() {
 }
 
 async function initConversations() {
+  historyError.value = ''
+  activeConversationId.value = ''
+  messages.value = []
   try {
-    const list = await listAgentConversations(currentPatientId.value)
+    const list = localPreview ? readPreviewConversations() : currentPatientId.value ? await listAgentConversations(currentPatientId.value) : []
     conversations.value = list
     if (list.length > 0) {
       activeConversationId.value = list[0].id
       await loadMessages(list[0].id)
-    } else {
-      await startNewConversation()
     }
   } catch (err) {
-    console.error('Failed to init conversations', err)
+    historyError.value = err instanceof Error ? err.message : '读取对话记录失败'
   }
 }
 
-async function startNewConversation() {
+function newChat() {
+  if (isStreaming.value) return
+  activeConversationId.value = ''
+  messages.value = []
+  inputMessage.value = ''
+  selectedCTSeries.value = ''
+  scrollToBottom()
+}
+
+async function startNewConversation(title: string): Promise<boolean> {
   try {
-    const newConv = await createAgentConversation(currentPatientId.value, 'AI 放射与病历会诊')
+    const now = new Date().toISOString()
+    const newConv: AgentConversationItem = localPreview
+      ? { id: `preview_${crypto.randomUUID()}`, patient_id: currentPatientId.value, doctor_id: 0, title, created_at: now, updated_at: now }
+      : await createAgentConversation(currentPatientId.value, title)
     activeConversationId.value = newConv.id
     conversations.value.unshift(newConv)
     messages.value = []
+    if (localPreview) localStorage.setItem(previewKey.value, JSON.stringify([{ ...newConv, messages: [] }, ...readPreviewConversations()]))
+    return true
   } catch (err) {
-    console.error('Failed to create new conversation', err)
+    historyError.value = err instanceof Error ? err.message : '创建对话失败'
+    return false
   }
 }
 
 async function loadMessages(convId: string) {
   try {
-    const list = await getAgentMessages(convId)
+    const list = localPreview
+      ? readPreviewConversations().find(item => item.id === convId)?.messages || []
+      : await getAgentMessages(convId)
     messages.value = list
     scrollToBottom()
   } catch (err) {
-    console.error('Failed to load messages', err)
+    historyError.value = err instanceof Error ? err.message : '读取消息失败'
   }
+}
+
+async function selectConversation(convId: string) {
+  if (isStreaming.value || activeConversationId.value === convId) return
+  activeConversationId.value = convId
+  historyError.value = ''
+  await loadMessages(convId)
 }
 
 function handleQuickPrompt(promptText: string) {
@@ -147,8 +215,13 @@ async function handleSendMessage() {
   const text = inputMessage.value.trim()
   if (!text || isStreaming.value) return
 
+  if (!localPreview && !currentPatientId.value) {
+    historyError.value = '请先打开患者档案，再开始影像会诊。'
+    return
+  }
+
   if (!activeConversationId.value) {
-    await startNewConversation()
+    if (!await startNewConversation(text.slice(0, 36))) return
   }
 
   // Push user message locally for instant feedback
@@ -160,6 +233,7 @@ async function handleSendMessage() {
     tool_calls: [],
     created_at: new Date().toISOString(),
   })
+  savePreviewMessages()
 
   inputMessage.value = ''
   isStreaming.value = true
@@ -169,6 +243,21 @@ async function handleSendMessage() {
   currentReport.value = null
   currentPlan.value = null
   scrollToBottom()
+
+  if (localPreview) {
+    messages.value.push({
+      id: Date.now() + 1,
+      conversation_id: activeConversationId.value,
+      role: 'assistant',
+      content: '当前为本地演示。问题已保存到对话记录；连接临床后端后可运行影像与病历分析。',
+      tool_calls: [],
+      created_at: new Date().toISOString(),
+    })
+    isStreaming.value = false
+    savePreviewMessages()
+    scrollToBottom()
+    return
+  }
 
   try {
     await streamAgentChat({
@@ -221,6 +310,9 @@ async function handleSendMessage() {
           plan: currentPlan.value || extractTreatmentPlan(content),
         })
 
+        const active = conversations.value.find(item => item.id === activeConversationId.value)
+        if (active) active.updated_at = new Date().toISOString()
+
         currentThinking.value = ''
         currentTextDelta.value = ''
         currentTools.value = []
@@ -248,15 +340,17 @@ async function handleSendMessage() {
   }
 }
 
-watch(currentPatientId, () => {
+watch(patientScope, () => {
   initConversations()
 })
 
 let statusTimer: number | undefined
 onMounted(() => {
-  loadStatus()
   initConversations()
-  statusTimer = window.setInterval(loadStatus, 10000)
+  if (!localPreview) {
+    loadStatus()
+    statusTimer = window.setInterval(loadStatus, 10000)
+  }
 })
 onUnmounted(() => {
   if (statusTimer) window.clearInterval(statusTimer)
@@ -264,22 +358,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- Floating Launch Badge -->
-  <div v-if="!isOpen" class="copilot-badge" @click="isOpen = true" title="打开 AI 影像与临床会诊助手">
-    <div class="badge-pulse"></div>
-    <div class="badge-icon">🩺</div>
-    <div class="badge-text">
-      <span class="main-label">{{ $t('ui.copilot.brand') }}</span>
-      <span class="sub-label">{{ $t('ui.copilot.talkToCt') }}</span>
-    </div>
-  </div>
-
-  <!-- Slide-in Drawer Container -->
   <aside
-    v-show="isOpen"
+    v-if="open"
     class="copilot-drawer"
     :class="{ expanded: isExpanded }"
-    aria-label="AI 临床与影像助手"
+    role="dialog"
+    :aria-label="$t('ui.copilot.title')"
   >
     <!-- Header -->
     <div class="drawer-header">
@@ -291,7 +375,7 @@ onUnmounted(() => {
             <span class="version-tag">{{ $t('ui.copilot.engine') }}</span>
           </div>
           <div class="context-row">
-            <span class="context-pill">患者 #{{ currentPatientId }}</span>
+            <span class="context-pill">{{ patientScope ? `患者 ${patientScope}` : '请选择患者' }}</span>
             <span class="context-pill" :title="radsightStatusLabel">{{ radsightStatusLabel }}</span>
             <span v-if="selectedCTSeries" class="series-pill" :title="selectedCTSeries">
               CT: {{ selectedCTSeries }}
@@ -304,11 +388,21 @@ onUnmounted(() => {
         <button
           type="button"
           class="icon-btn"
-          @click="startNewConversation"
-          title="开启新会诊对话"
+          @click="historyOpen = !historyOpen"
+          :aria-expanded="historyOpen"
+          :title="$t('ui.copilot.history')"
         >
-          ➕
+          ☰
         </button>
+        <button
+          type="button"
+          class="icon-btn"
+          @click="newChat"
+          :title="$t('ui.copilot.newChat')"
+        >
+          ＋
+        </button>
+        <button type="button" class="icon-btn" :title="$t('ui.copilot.recordsMode')" @click="emit('openRecords')">✧</button>
         <button
           type="button"
           class="icon-btn"
@@ -320,13 +414,24 @@ onUnmounted(() => {
         <button
           type="button"
           class="icon-btn close"
-          @click="isOpen = false"
+          @click="emit('close')"
           title="最小化助手"
         >
           ✕
         </button>
       </div>
     </div>
+
+    <nav v-if="historyOpen" class="conversation-history" :aria-label="$t('ui.copilot.history')">
+      <div class="history-heading"><strong>{{ $t('ui.copilot.history') }}</strong><span>{{ conversations.length }}</span></div>
+      <p v-if="historyError" class="history-error" role="alert">{{ historyError }}</p>
+      <p v-if="!conversations.length" class="history-empty">{{ $t('ui.copilot.noHistory') }}</p>
+      <div v-else class="history-list">
+        <button v-for="conversation in conversations" :key="conversation.id" type="button" class="history-item" :class="{ selected: activeConversationId === conversation.id }" :disabled="isStreaming" @click="selectConversation(conversation.id)">
+          <span>{{ conversation.title }}</span><small>{{ conversation.updated_at ? new Date(conversation.updated_at).toLocaleString() : '' }}</small>
+        </button>
+      </div>
+    </nav>
 
     <!-- Messages Body -->
     <div ref="messagesContainer" class="drawer-messages">
@@ -368,7 +473,8 @@ onUnmounted(() => {
           </div>
 
           <!-- Message Text -->
-          <div class="text-body markdown-rendered" v-html="displayMessageText(msg.content).replace(/\n/g, '<br/>')"></div>
+          <div class="text-body markdown-rendered">{{ displayMessageText(msg.content) }}</div>
+          <ReportCard v-if="extractReport(msg.content)" :report="extractReport(msg.content)!" />
           <TreatmentPlanCard v-if="msg.plan || extractTreatmentPlan(msg.content)" :plan="(msg.plan || extractTreatmentPlan(msg.content))!" />
         </div>
       </div>
@@ -417,7 +523,7 @@ onUnmounted(() => {
           </div>
 
           <!-- Streaming Text Delta -->
-          <div class="text-body" v-html="currentTextDelta.replace(/\n/g, '<br/>')"></div>
+          <div class="text-body">{{ currentTextDelta }}</div>
 
           <ReportCard v-if="currentReport" :report="currentReport" />
           <TreatmentPlanCard v-if="currentPlan" :plan="currentPlan" />
@@ -488,65 +594,20 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Launcher Floating Badge */
-.copilot-badge {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
-  color: #ffffff;
-  padding: 10px 16px;
-  border-radius: 9999px;
-  box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.4), 0 8px 10px -6px rgba(37, 99, 235, 0.2);
-  cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.copilot-badge:hover {
-  transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 14px 28px -5px rgba(37, 99, 235, 0.5);
-}
-
-.badge-icon {
-  font-size: 20px;
-}
-
-.badge-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.main-label {
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.sub-label {
-  font-size: 10px;
-  opacity: 0.85;
-  font-weight: 500;
-}
-
 /* Drawer Container */
 .copilot-drawer {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  bottom: 98px;
+  right: 28px;
   width: 440px;
   height: 640px;
-  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 115px);
   background: #ffffff;
   border-radius: 16px;
-  box-shadow: 0 20px 35px -10px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 22px 90px #173a3a33, 0 0 0 1px #d9e6e2;
   display: flex;
   flex-direction: column;
-  z-index: 9999;
+  z-index: 60;
   overflow: hidden;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -557,23 +618,27 @@ onUnmounted(() => {
 
 /* Header */
 .drawer-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 12px 16px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(130deg,#f0f8f5,#fff);
+  border-bottom: 1px solid #d9e6e2;
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .agent-avatar {
-  font-size: 24px;
+  font-size: 20px;
 }
+
+.header-meta{min-width:0}
 
 .title-row {
   display: flex;
@@ -584,23 +649,19 @@ onUnmounted(() => {
 .title {
   font-size: 14px;
   font-weight: 700;
-  color: #0f172a;
+  color: #173a3a;
 }
 
 .version-tag {
-  font-size: 10px;
-  background: #eff6ff;
-  color: #2563eb;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-weight: 600;
+  display:none;
 }
 
 .context-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-top: 2px;
+  flex-wrap:wrap;
 }
 
 .context-pill, .series-pill {
@@ -621,6 +682,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink:0;
 }
 
 .icon-btn {
@@ -635,9 +697,21 @@ onUnmounted(() => {
 }
 
 .icon-btn:hover {
-  background: #e2e8f0;
-  color: #0f172a;
+  background: #dcefe7;
+  color: #176766;
 }
+
+.conversation-history{padding:10px 14px;border-bottom:1px solid #d9e6e2;background:#fff}
+.history-heading{display:flex;justify-content:space-between;align-items:center;color:#234e4b;font-size:12px;margin-bottom:7px}
+.history-heading span{color:#728981}
+.history-list{max-height:112px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.history-item{display:flex;justify-content:space-between;gap:8px;text-align:left;background:#fff;border:1px solid transparent;border-radius:8px;padding:7px 9px;color:#324e49;cursor:pointer;font-size:12px}
+.history-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.history-item small{font-size:10px;white-space:nowrap;color:#748981}
+.history-item:hover,.history-item.selected{background:#eef7f3;border-color:#c7dfd7}
+.history-item:disabled{opacity:.6;cursor:default}
+.history-empty,.history-error{font-size:11px;margin:6px 0;color:#728981}
+.history-error{color:#a24e50}
 
 .icon-btn.close:hover {
   background: #fee2e2;
@@ -652,7 +726,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: #f8fafc;
+  background: #f8fbf9;
 }
 
 .welcome-box {
@@ -725,10 +799,12 @@ onUnmounted(() => {
 }
 
 .message-row.user .bubble-content {
-  background: #2563eb;
+  background: #267c72;
   color: #ffffff;
-  border-color: #1d4ed8;
+  border-color: #176766;
 }
+
+.text-body{white-space:pre-wrap;overflow-wrap:anywhere}
 
 /* Thoughts */
 .thought-box {
@@ -742,8 +818,8 @@ onUnmounted(() => {
 }
 
 .thought-box.active {
-  border-color: #93c5fd;
-  background: #eff6ff;
+  border-color: #a5d2c4;
+  background: #eef7f3;
 }
 
 .thought-box summary {
@@ -822,9 +898,9 @@ onUnmounted(() => {
 }
 
 .prompt-chip:hover {
-  background: #e0f2fe;
-  color: #0369a1;
-  border-color: #bae6fd;
+  background: #e5f3ed;
+  color: #176766;
+  border-color: #a5d2c4;
 }
 
 /* Footer Input */
@@ -849,12 +925,12 @@ onUnmounted(() => {
 }
 
 .chat-input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+  border-color: #3e9990;
+  box-shadow: 0 0 0 2px rgba(62,153,144,.15);
 }
 
 .send-btn {
-  background: #2563eb;
+  background: #267c72;
   color: #ffffff;
   border: none;
   padding: 0 16px;
@@ -866,11 +942,13 @@ onUnmounted(() => {
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #1d4ed8;
+  background: #176766;
 }
 
 .send-btn:disabled {
   background: #94a3b8;
   cursor: not-allowed;
 }
+@media(max-width:760px){.copilot-drawer.expanded{width:calc(100vw - 32px)}}
+@media(max-width:500px){.copilot-drawer{right:16px;bottom:90px;width:calc(100vw - 32px);max-height:calc(100dvh - 105px)}.context-row{flex-wrap:wrap}.version-tag{display:none}}
 </style>
